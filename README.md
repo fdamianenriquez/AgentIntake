@@ -21,19 +21,6 @@ Replace multi-step forms with **one conversation**. Define what each backend end
 
 > **Security decision (non-negotiable):** the model provider's API key **never touches the browser**. Every LLM call happens server-side in the Node backend. The React hook only talks to your own server over HTTP. This is both a security requirement and how this would be built in production.
 
----
-
-## How this differs from ConvoForm
-
-[ConvoForm](https://github.com/growupanand/ConvoForm) is an excellent AI-powered conversational form platform (one form → one destination, schema AI-generated from a text description). AgentIntake targets a different, narrower problem:
-
-| | ConvoForm | AgentIntake |
-|---|---|---|
-| Core unit | One form → one destination | One conversation → **multiple independent endpoints/microservices**, each with its own contract |
-| Distribution | Hosted SaaS / self-hosted full platform (own DB, auth, dashboard) | Headless library you drop into **your own** backend — closer to `react-hook-form` than to Typeform |
-| Schema origin | AI-generated from a natural-language description | Developer-defined in code (`FlowDef`/`EndpointDef`), typed and testable — "config-driven," not "AI-guessed" |
-| Target use case | Surveys, lead gen, HR forms | Multi-service enterprise flows (the pattern behind real production insurance/fintech onboarding flows) |
-
 ## The problem
 
 Traditional apps that need data from multiple backend endpoints (e.g. "create a policy" touching a customer-info service, a vehicle-info service, and a payment service) force the user through several screens/forms — one per endpoint — even when the data is related and could be gathered in a single natural conversation.
