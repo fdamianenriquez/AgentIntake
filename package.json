@@ -1,0 +1,24 @@
+{
+  "name": "agent-intake",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Replace multi-step forms with a single conversational flow — an AI agent collects data and calls multiple backend endpoints in the right order.",
+  "license": "MIT",
+  "workspaces": [
+    "server",
+    "packages/react-agent-intake",
+    "demo"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,demo -c blue,magenta \"npm run dev -w server\" \"npm run dev -w demo\"",
+    "dev:server": "npm run dev -w server",
+    "dev:demo": "npm run dev -w demo",
+    "build": "npm run build -w server && npm run build -w packages/react-agent-intake && npm run build -w demo",
+    "test": "npm run test -w server && npm run test -w packages/react-agent-intake",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w packages/react-agent-intake && npm run typecheck -w demo"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.7.2"
+  }
+}

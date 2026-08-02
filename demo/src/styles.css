@@ -1,0 +1,42 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  color: #1a1a1a;
+  background: #f4f5f7;
+}
+
+main {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+
+header {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+header h1 {
+  margin: 0 0 8px;
+  font-size: 32px;
+  letter-spacing: -0.5px;
+}
+
+header p {
+  margin: 0 auto;
+  max-width: 520px;
+  color: #555;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+code {
+  background: #e8e8ec;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 13px;
+}
