@@ -1,0 +1,28 @@
+openapi: 3.0.3
+info:
+  title: Ref Fixture API
+  version: 1.0.0
+paths:
+  /widgets:
+    post:
+      operationId: createWidget
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Widget'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Widget:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        quantity:
+          type: integer
+          minimum: 1

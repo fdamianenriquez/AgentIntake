@@ -1,0 +1,235 @@
+import { z } from 'zod';
+import SwaggerParser from '@apidevtools/swagger-parser';
+import type { OpenAPIV3 } from 'openapi-types';
+import { EndpointDefSchema, type AuthRequirement, type FieldDef } from './flowSchema.js';
+
+// A ParsedEndpoint is an EndpointDef without `execute`: the mechanical parser
+// only ever produces data, never the runtime function that calls the target
+// API -- that gets wired up by the flow author later (see flowSchema.ts).
+export const ParsedEndpointSchema = EndpointDefSchema.omit({ execute: true });
+export type ParsedEndpoint = z.infer<typeof ParsedEndpointSchema>;
+
+const WRITE_METHODS = ['post', 'put', 'patch'] as const;
+type WriteMethod = (typeof WRITE_METHODS)[number];
+
+const MAX_NESTING_DEPTH = 5;
+
+/**
+ * Parses an already-dereferenced OpenAPI 3.x document into a raw, unenriched
+ * list of endpoints (one per write operation). No LLM involved -- this is
+ * pure mechanical extraction. Base schema enrichment
+ * (grouping, labels, descriptions, ambiguous-field flags) happens later in
+ * flowGenerator.ts.
+ */
+export function parseOpenApiDocument(doc: OpenAPIV3.Document): ParsedEndpoint[] {
+  if (!doc.openapi || !doc.openapi.startsWith('3.')) {
+    throw new Error(
+      `AgentIntake only supports OpenAPI 3.x specs (got openapi: "${doc.openapi ?? 'unknown'}")`
+    );
+  }
+
+  const securitySchemes = doc.components?.securitySchemes as
+    | Record<string, OpenAPIV3.SecuritySchemeObject>
+    | undefined;
+
+  const endpoints: ParsedEndpoint[] = [];
+
+  for (const [path, pathItem] of Object.entries(doc.paths ?? {})) {
+    if (!pathItem) continue;
+
+    for (const method of WRITE_METHODS) {
+      const operation = pathItem[method];
+      if (!operation) continue;
+
+      const fields: FieldDef[] = [];
+
+      for (const param of (operation.parameters ?? []) as OpenAPIV3.ParameterObject[]) {
+        if (!param.schema) continue;
+        const field = schemaToFieldDef(
+          param.name,
+          param.schema as OpenAPIV3.SchemaObject,
+          param.required ?? false,
+          param.description
+        );
+        if (field) fields.push(field);
+      }
+
+      const requestBody = operation.requestBody as OpenAPIV3.RequestBodyObject | undefined;
+      const bodySchema = requestBody?.content?.['application/json']?.schema as
+        | OpenAPIV3.SchemaObject
+        | undefined;
+      if (bodySchema) {
+        flattenSchemaToFields(bodySchema, '', 0, fields);
+      }
+
+      endpoints.push({
+        id: operation.operationId ?? deriveEndpointId(method, path),
+        title: operation.summary ?? `${method.toUpperCase()} ${path}`,
+        description: operation.description,
+        fields,
+        auth: extractAuthRequirement(operation.security ?? doc.security, securitySchemes),
+      });
+    }
+  }
+
+  return endpoints;
+}
+
+/** Loads and $ref-dereferences a spec from a file path or URL, then parses it. */
+export async function parseOpenApiFile(pathOrUrl: string): Promise<ParsedEndpoint[]> {
+  const dereferenced = await SwaggerParser.dereference(pathOrUrl);
+  return parseOpenApiDocument(dereferenced as OpenAPIV3.Document);
+}
+
+function deriveEndpointId(method: WriteMethod, path: string): string {
+  const slug = path
+    .replace(/[{}]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
+  return `${method}-${slug}`;
+}
+
+function humanize(name: string): string {
+  const spaced = name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .trim();
+  return spaced
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+// Nested object properties are flattened into dot-notation field names
+// (e.g. "address.city") since FieldDef has no nested/object type -- each
+// flattened leaf becomes its own real form control. A field's `required` is
+// taken from its own level's `required` array only; it isn't multiplied by
+// whether an ancestor object itself is required, which would make an
+// otherwise-required leaf field ambiguous when its parent is optional.
+function flattenSchemaToFields(
+  schema: OpenAPIV3.SchemaObject,
+  prefix: string,
+  depth: number,
+  out: FieldDef[]
+): void {
+  if (depth > MAX_NESTING_DEPTH) {
+    console.warn(`openapiParser: max nesting depth exceeded at "${prefix}", skipping deeper fields`);
+    return;
+  }
+
+  const required = new Set('required' in schema ? schema.required ?? [] : []);
+  const properties = 'properties' in schema ? schema.properties ?? {} : {};
+
+  for (const [propName, rawPropSchema] of Object.entries(properties)) {
+    const propSchema = rawPropSchema as OpenAPIV3.SchemaObject;
+    const fieldName = prefix ? `${prefix}.${propName}` : propName;
+
+    if (propSchema.type === 'object' && 'properties' in propSchema && propSchema.properties) {
+      flattenSchemaToFields(propSchema, fieldName, depth + 1, out);
+      continue;
+    }
+
+    if (propSchema.type === 'array') {
+      console.warn(`openapiParser: array field "${fieldName}" is not supported in v1, skipping`);
+      continue;
+    }
+
+    const field = schemaToFieldDef(fieldName, propSchema, required.has(propName), propSchema.description);
+    if (field) out.push(field);
+  }
+}
+
+function schemaToFieldDef(
+  name: string,
+  schema: OpenAPIV3.SchemaObject,
+  required: boolean,
+  description?: string
+): FieldDef | null {
+  const label = humanize(name.split('.').pop() ?? name);
+
+  if (schema.enum && schema.enum.length > 0) {
+    return {
+      name,
+      type: 'enum',
+      label,
+      description,
+      required,
+      enumValues: schema.enum.map(String),
+    };
+  }
+
+  if (schema.type === 'string' && (schema.format === 'date' || schema.format === 'date-time')) {
+    return { name, type: 'date', label, description, required };
+  }
+
+  if (schema.type === 'string') {
+    return {
+      name,
+      type: 'string',
+      label,
+      description,
+      required,
+      validation: schema.pattern ? { pattern: schema.pattern } : undefined,
+    };
+  }
+
+  if (schema.type === 'integer' || schema.type === 'number') {
+    const hasRange = schema.minimum !== undefined || schema.maximum !== undefined;
+    return {
+      name,
+      type: 'number',
+      label,
+      description,
+      required,
+      validation: hasRange ? { min: schema.minimum, max: schema.maximum } : undefined,
+    };
+  }
+
+  if (schema.type === 'boolean') {
+    return { name, type: 'boolean', label, description, required };
+  }
+
+  console.warn(
+    `openapiParser: unsupported schema for field "${name}" (type: ${schema.type ?? 'unknown'}), skipping`
+  );
+  return null;
+}
+
+// AgentIntake's AuthRequirement models exactly one scheme. A "security" array
+// entry can itself require several schemes combined with AND (multiple keys
+// in one object) or offer several OR'd alternatives (multiple array entries);
+// v1 doesn't attempt to represent that full boolean expression, so it takes
+// the first scheme of the first alternative as a reasonable single summary.
+function extractAuthRequirement(
+  security: OpenAPIV3.SecurityRequirementObject[] | undefined,
+  schemes: Record<string, OpenAPIV3.SecuritySchemeObject> | undefined
+): AuthRequirement {
+  if (!security || security.length === 0) return { type: 'none' };
+
+  const schemeName = Object.keys(security[0] ?? {})[0];
+  const scheme = schemeName ? schemes?.[schemeName] : undefined;
+  if (!scheme) return { type: 'none' };
+
+  switch (scheme.type) {
+    case 'apiKey':
+      return {
+        type: 'apiKey',
+        in: isParamLocation(scheme.in) ? scheme.in : undefined,
+        name: scheme.name,
+      };
+    case 'http':
+      return { type: 'http', scheme: scheme.scheme };
+    case 'oauth2':
+      return { type: 'oauth2' };
+    case 'openIdConnect':
+      return { type: 'openIdConnect' };
+    default:
+      return { type: 'none' };
+  }
+}
+
+function isParamLocation(value: string): value is 'header' | 'query' | 'cookie' {
+  return value === 'header' || value === 'query' || value === 'cookie';
+}
