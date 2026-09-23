@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -96,5 +96,73 @@ describe('runGenerate', () => {
   it('rejects with a clear error and writes nothing when the spec file does not exist', async () => {
     await expect(runGenerate({ spec: './nope-does-not-exist.yaml', output: outputPath })).rejects.toThrow();
     await expect(readFile(outputPath, 'utf-8')).rejects.toThrow(/ENOENT/);
+  });
+
+  it('throws a clear error when the spec has no write operations at all', async () => {
+    const noWriteSpecPath = path.join(outputDir, 'no-writes.openapi.json');
+    await writeFile(
+      noWriteSpecPath,
+      JSON.stringify({
+        openapi: '3.0.3',
+        info: { title: 'Read-only Fixture API', version: '1.0.0' },
+        paths: {
+          '/widgets': { get: { responses: { '200': { description: 'OK' } } } },
+        },
+      })
+    );
+
+    await expect(runGenerate({ spec: noWriteSpecPath, output: outputPath })).rejects.toThrow(
+      /No write operations/
+    );
+    expect(mockedGenerateStructured).not.toHaveBeenCalled();
+  });
+
+  it('warns (but still generates) when the spec has more write operations than v1 is tuned for', async () => {
+    const endpointCount = 16;
+    const paths: Record<string, unknown> = {};
+    for (let i = 0; i < endpointCount; i++) {
+      paths[`/widgets${i}`] = {
+        post: {
+          operationId: `createWidget${i}`,
+          responses: { '201': { description: 'Created' } },
+        },
+      };
+    }
+    const largeSpecPath = path.join(outputDir, 'large.openapi.json');
+    await writeFile(
+      largeSpecPath,
+      JSON.stringify({
+        openapi: '3.0.3',
+        info: { title: 'Large Fixture API', version: '1.0.0' },
+        paths,
+      })
+    );
+
+    const largeResult: FlowGenerationResult = {
+      flow: {
+        id: 'large-flow',
+        title: 'Large Flow',
+        description: 'Many endpoints.',
+        endpoints: Array.from({ length: endpointCount }, (_, i) => ({
+          id: `createWidget${i}`,
+          title: `Create Widget ${i}`,
+          fields: [],
+          auth: { type: 'none' as const },
+        })),
+      },
+      ambiguousFields: [],
+    };
+    mockedGenerateStructured.mockResolvedValueOnce(largeResult);
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await runGenerate({ spec: largeSpecPath, output: outputPath });
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/16 write operations/));
+
+    const written = JSON.parse(await readFile(outputPath, 'utf-8'));
+    expect(written.endpoints).toHaveLength(endpointCount);
+
+    warnSpy.mockRestore();
   });
 });
