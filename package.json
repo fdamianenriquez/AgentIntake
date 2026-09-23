@@ -19,6 +19,7 @@
     "@ai-sdk/openai": "^4.0.72",
     "@apidevtools/swagger-parser": "^13.1.0",
     "ai": "^7.0.111",
+    "commander": "^15.0.0",
     "openapi-types": "^12.1.3",
     "zod": "^4.6.5"
   },
