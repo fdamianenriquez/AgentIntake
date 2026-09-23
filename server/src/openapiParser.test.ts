@@ -46,6 +46,18 @@ describe('parseOpenApiDocument', () => {
     expect(endpoints[0].id).toBe('createWidget');
   });
 
+  it('derives an id and title from method+path when operationId is missing', () => {
+    const doc = baseDoc({
+      '/candidates/{id}/notes': {
+        put: { responses: {} },
+      },
+    });
+
+    const [endpoint] = parseOpenApiDocument(doc);
+    expect(endpoint.id).toBe('put-candidates-id-notes');
+    expect(endpoint.title).toBe('PUT /candidates/{id}/notes');
+  });
+
   it('maps simple scalar types with validation constraints', () => {
     const doc = baseDoc({
       '/candidates': {
@@ -338,6 +350,31 @@ describe('parseOpenApiDocument', () => {
           post: { operationId: 'createCandidate', responses: {} },
         },
       });
+
+      const [endpoint] = parseOpenApiDocument(doc);
+      expect(endpoint.auth).toEqual({ type: 'none' });
+    });
+
+    it('honors an explicit empty security array as "no auth", even with doc-level security set', () => {
+      const doc = baseDoc(
+        {
+          '/candidates': {
+            post: {
+              operationId: 'createCandidate',
+              security: [],
+              responses: {},
+            },
+          },
+        },
+        {
+          security: [{ apiKeyAuth: [] }],
+          components: {
+            securitySchemes: {
+              apiKeyAuth: { type: 'apiKey', in: 'header', name: 'X-API-Key' },
+            },
+          },
+        }
+      );
 
       const [endpoint] = parseOpenApiDocument(doc);
       expect(endpoint.auth).toEqual({ type: 'none' });
