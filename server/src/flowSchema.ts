@@ -61,3 +61,17 @@ export const FlowDefSchema = z.object({
   endpoints: z.array(EndpointDefSchema),
 });
 export type FlowDef = z.infer<typeof FlowDefSchema>;
+
+// An EndpointDef without `execute`: shared by openapiParser.ts (mechanical
+// extraction never produces execute) and flowGenerator.ts (an LLM can't
+// return a function either -- execute is wired up by the flow author once
+// the generated flow is reviewed human review step).
+export const ParsedEndpointSchema = EndpointDefSchema.omit({ execute: true });
+export type ParsedEndpoint = z.infer<typeof ParsedEndpointSchema>;
+
+// The shape of flowGenerator.ts's LLM structured output: a full flow, but
+// with execute-less endpoints (see ParsedEndpointSchema above).
+export const GeneratedFlowSchema = FlowDefSchema.extend({
+  endpoints: z.array(ParsedEndpointSchema),
+});
+export type GeneratedFlow = z.infer<typeof GeneratedFlowSchema>;

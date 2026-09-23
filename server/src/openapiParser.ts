@@ -1,13 +1,8 @@
-import { z } from 'zod';
 import SwaggerParser from '@apidevtools/swagger-parser';
 import type { OpenAPIV3 } from 'openapi-types';
-import { EndpointDefSchema, type AuthRequirement, type FieldDef } from './flowSchema.js';
+import { type AuthRequirement, type FieldDef, type ParsedEndpoint } from './flowSchema.js';
 
-// A ParsedEndpoint is an EndpointDef without `execute`: the mechanical parser
-// only ever produces data, never the runtime function that calls the target
-// API -- that gets wired up by the flow author later (see flowSchema.ts).
-export const ParsedEndpointSchema = EndpointDefSchema.omit({ execute: true });
-export type ParsedEndpoint = z.infer<typeof ParsedEndpointSchema>;
+export { ParsedEndpointSchema, type ParsedEndpoint } from './flowSchema.js';
 
 const WRITE_METHODS = ['post', 'put', 'patch'] as const;
 type WriteMethod = (typeof WRITE_METHODS)[number];
