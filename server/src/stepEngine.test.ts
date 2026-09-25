@@ -45,6 +45,15 @@ describe('selectStepFields', () => {
     expect(mockedGenerateStructured).not.toHaveBeenCalled();
   });
 
+  it('reports degraded: false for a no-fields endpoint even with AGENTINTAKE_STATIC_MODE on', async () => {
+    process.env.AGENTINTAKE_STATIC_MODE = 'true';
+
+    const result = await selectStepFields({ endpoint: { ...endpoint, fields: [] } });
+
+    expect(result).toEqual({ fields: [], suggestedValues: {}, degraded: false });
+    expect(mockedGenerateStructured).not.toHaveBeenCalled();
+  });
+
   it('returns the full base list without calling the LLM when AGENTINTAKE_STATIC_MODE is on', async () => {
     process.env.AGENTINTAKE_STATIC_MODE = 'true';
 
@@ -123,6 +132,19 @@ describe('validateStepSubmission', () => {
 
     expect(mockedGenerateStructured).not.toHaveBeenCalled();
     expect(execute).toHaveBeenCalledWith({}, {});
+    expect(result).toEqual({ success: true, errors: {}, degraded: false });
+  });
+
+  it('reports degraded: false for a no-fields endpoint even with AGENTINTAKE_STATIC_MODE on (matches selectStepFields)', async () => {
+    process.env.AGENTINTAKE_STATIC_MODE = 'true';
+    const execute = makeExecute();
+
+    const result = await validateStepSubmission({
+      endpoint: { ...endpoint, fields: [], execute },
+      data: {},
+    });
+
+    expect(mockedGenerateStructured).not.toHaveBeenCalled();
     expect(result).toEqual({ success: true, errors: {}, degraded: false });
   });
 

@@ -146,36 +146,43 @@ export async function validateStepSubmission(
 ): Promise<ValidateStepSubmissionResult> {
   const { endpoint, data } = input;
 
-  if (endpoint.fields.length > 0 && !isStaticMode()) {
-    try {
-      const outputSchema = z.object({
-        valid: z.boolean(),
-        errors: z.array(
-          z.object({
-            name: fieldNameEnum(endpoint.fields),
-            message: z.string(),
-          })
-        ),
-      });
+  // Nothing to semantically validate either way -- same as selectStepFields,
+  // this takes priority over static mode: with zero fields there was never
+  // going to be an LLM call, static or not, so this isn't a "degraded" path.
+  if (endpoint.fields.length === 0) {
+    return runExecute(endpoint, data, input.context, false);
+  }
 
-      const prompt = buildValidatePrompt(endpoint, data, input.previouslyCollectedData ?? {});
-      const result = await withTimeout(
-        generateStructured(prompt, outputSchema),
-        DEFAULT_TIMEOUT_MS,
-        `validateStepSubmission("${endpoint.id}")`
-      );
-
-      if (!result.valid) {
-        const errors = Object.fromEntries(result.errors.map((entry) => [entry.name, entry.message]));
-        return { success: false, errors, degraded: false };
-      }
-    } catch (error) {
-      logDegradation('validateStepSubmission', endpoint.id, error);
-      // fall through to execute() -- degraded means "skip the semantic check", not "reject the step"
-      return runExecute(endpoint, data, input.context, true);
-    }
-  } else if (isStaticMode()) {
+  if (isStaticMode()) {
     console.warn(`stepEngine: AGENTINTAKE_STATIC_MODE is on -- skipping semantic validation for "${endpoint.id}".`);
+    return runExecute(endpoint, data, input.context, true);
+  }
+
+  try {
+    const outputSchema = z.object({
+      valid: z.boolean(),
+      errors: z.array(
+        z.object({
+          name: fieldNameEnum(endpoint.fields),
+          message: z.string(),
+        })
+      ),
+    });
+
+    const prompt = buildValidatePrompt(endpoint, data, input.previouslyCollectedData ?? {});
+    const result = await withTimeout(
+      generateStructured(prompt, outputSchema),
+      DEFAULT_TIMEOUT_MS,
+      `validateStepSubmission("${endpoint.id}")`
+    );
+
+    if (!result.valid) {
+      const errors = Object.fromEntries(result.errors.map((entry) => [entry.name, entry.message]));
+      return { success: false, errors, degraded: false };
+    }
+  } catch (error) {
+    logDegradation('validateStepSubmission', endpoint.id, error);
+    // fall through to execute() -- degraded means "skip the semantic check", not "reject the step"
     return runExecute(endpoint, data, input.context, true);
   }
 
