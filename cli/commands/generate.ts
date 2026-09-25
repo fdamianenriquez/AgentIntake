@@ -1,15 +1,9 @@
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Command } from 'commander';
-import { parseOpenApiFile } from '../../server/src/openapiParser.js';
+import { largeSpecWarning, parseOpenApiFile } from '../../server/src/openapiParser.js';
 import { generateFlow } from '../../server/src/flowGenerator.js';
 import { resolveProvider, buildModel } from '../../server/src/llmClient.js';
-
-// The generator is tuned for a handful of related write operations; beyond
-// that, a single enrichment prompt may not group/reason reliably. Chunked
-// generation would lift this -- for now it is a visible warning, not a
-// visible warning, not a block.
-const LARGE_SPEC_ENDPOINT_THRESHOLD = 15;
 
 export interface GenerateOptions {
   spec: string;
@@ -36,11 +30,8 @@ export async function runGenerate(options: GenerateOptions): Promise<void> {
     throw new Error(`No write operations (POST/PUT/PATCH) found in "${options.spec}".`);
   }
 
-  if (endpoints.length > LARGE_SPEC_ENDPOINT_THRESHOLD) {
-    console.warn(
-      `Warning: found ${endpoints.length} write operations, more than AgentIntake v1 is tuned for (~${LARGE_SPEC_ENDPOINT_THRESHOLD}). Generation quality may degrade for large specs --.`
-    );
-  }
+  const warning = largeSpecWarning(endpoints.length);
+  if (warning) console.warn(`Warning: ${warning}`);
 
   const { flow, ambiguousFields } = await generateFlow({ endpoints });
 

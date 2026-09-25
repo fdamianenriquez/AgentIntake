@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { parseOpenApiFile } from '../openapiParser.js';
+import { largeSpecWarning, parseOpenApiFile } from '../openapiParser.js';
 import { generateFlow } from '../flowGenerator.js';
 
 // Only { spec: string } (a path or URL, same as the CLI's --spec) is
@@ -27,8 +27,14 @@ export async function handleGenerateFlow(req: Request, res: Response): Promise<v
       return;
     }
 
+    // Unlike the CLI (which just console.warns), a direct caller of this
+    // route -- Studio, once it exists -- has no terminal to read, so
+    // the large-spec warning has to travel in the response body itself.
+    const warning = largeSpecWarning(endpoints.length);
+    const warnings = warning ? [warning] : [];
+
     const { flow, ambiguousFields } = await generateFlow({ endpoints });
-    res.status(200).json({ flow, ambiguousFields });
+    res.status(200).json({ flow, ambiguousFields, warnings });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
   }

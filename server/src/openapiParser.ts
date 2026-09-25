@@ -9,6 +9,19 @@ type WriteMethod = (typeof WRITE_METHODS)[number];
 
 const MAX_NESTING_DEPTH = 5;
 
+// The generator is tuned for a handful of related write operations; beyond
+// that, a single enrichment prompt may not group/reason reliably. Chunked
+// generation would lift this -- for now it is a visible warning, not a
+// block (README: "Known operational boundaries"). Shared by every caller of
+// parseOpenApiDocument/parseOpenApiFile (the CLI, and the /api/generate-flow
+// route) so the message and threshold can't drift between them.
+export const LARGE_SPEC_ENDPOINT_THRESHOLD = 15;
+
+export function largeSpecWarning(endpointCount: number): string | null {
+  if (endpointCount <= LARGE_SPEC_ENDPOINT_THRESHOLD) return null;
+  return `Found ${endpointCount} write operations, more than AgentIntake v1 is tuned for (~${LARGE_SPEC_ENDPOINT_THRESHOLD}). Generation quality may degrade for large specs --.`;
+}
+
 /**
  * Parses an already-dereferenced OpenAPI 3.x document into a raw, unenriched
  * list of endpoints (one per write operation). No LLM involved -- this is
