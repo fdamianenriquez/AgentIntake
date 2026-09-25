@@ -15,6 +15,14 @@
     "outDir": "dist",
     "rootDir": "."
   },
-  "include": ["cli/**/*.ts", "server/**/*.ts", "packages/**/*.ts", "packages/**/*.tsx", "vitest.setup.ts"],
+  "include": [
+    "cli/**/*.ts",
+    "server/**/*.ts",
+    "packages/**/*.ts",
+    "packages/**/*.tsx",
+    "demo/**/*.ts",
+    "demo/**/*.tsx",
+    "vitest.setup.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

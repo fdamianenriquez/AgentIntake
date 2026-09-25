@@ -1,0 +1,136 @@
+{
+  "id": "job-application-intake",
+  "title": "Candidate Intake Wizard",
+  "description": "A step‑by‑step flow that guides users through registering a new candidate, capturing their work preferences, and defining their availability.",
+  "endpoints": [
+    {
+      "id": "createCandidate",
+      "title": "Create Candidate",
+      "description": "Register a new candidate and collect their basic personal and employment information.",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "label": "Full Name",
+          "description": "The candidate's full name.",
+          "required": true
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "label": "Email Address",
+          "description": "The candidate's email address.",
+          "required": true,
+          "validation": {
+            "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+          }
+        },
+        {
+          "name": "yearsOfExperience",
+          "type": "number",
+          "label": "Years Of Experience",
+          "description": "Total years of professional experience.",
+          "required": true,
+          "validation": {
+            "min": 0
+          }
+        },
+        {
+          "name": "currentLocation",
+          "type": "string",
+          "label": "Current Location",
+          "description": "The city and country where the candidate lives.",
+          "required": true
+        },
+        {
+          "name": "employmentStatus",
+          "type": "enum",
+          "label": "Employment Status",
+          "description": "Whether the candidate is currently employed.",
+          "required": true,
+          "enumValues": [
+            "employed",
+            "unemployed"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "createWorkPreferences",
+      "title": "Create Work Preferences",
+      "description": "Capture the candidate’s preferred role, work arrangement, and salary expectations.",
+      "fields": [
+        {
+          "name": "desiredRole",
+          "type": "string",
+          "label": "Desired Role",
+          "description": "The job title or role the candidate is seeking.",
+          "required": true
+        },
+        {
+          "name": "workArrangement",
+          "type": "enum",
+          "label": "Work Arrangement",
+          "description": "Preferred mode of work (remote, hybrid, or onsite).",
+          "required": true,
+          "enumValues": [
+            "remote",
+            "hybrid",
+            "onsite"
+          ]
+        },
+        {
+          "name": "salaryExpectationMin",
+          "type": "number",
+          "label": "Salary Expectation Minimum",
+          "description": "Minimum acceptable annual salary in US dollars.",
+          "required": true,
+          "validation": {
+            "min": 0
+          }
+        },
+        {
+          "name": "salaryExpectationMax",
+          "type": "number",
+          "label": "Salary Expectation Maximum",
+          "description": "Maximum acceptable annual salary in US dollars.",
+          "required": true,
+          "validation": {
+            "min": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "createAvailability",
+      "title": "Create Availability",
+      "description": "Define when the candidate can start and any notice period for leaving their current job.",
+      "fields": [
+        {
+          "name": "earliestStartDate",
+          "type": "date",
+          "label": "Earliest Start Date",
+          "description": "The earliest date the candidate could begin work.",
+          "required": true
+        },
+        {
+          "name": "noticePeriodDays",
+          "type": "number",
+          "label": "Notice Period Days",
+          "description": "Number of days the candidate must give notice before resigning.",
+          "required": true,
+          "validation": {
+            "min": 0
+          }
+        },
+        {
+          "name": "reasonForLeaving",
+          "type": "string",
+          "label": "Reason For Leaving",
+          "description": "Explanation of why the candidate is leaving their current role (optional).",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

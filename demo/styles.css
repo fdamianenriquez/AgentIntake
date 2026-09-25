@@ -1,0 +1,85 @@
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  max-width: 640px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+  color: #1a1a1a;
+}
+
+.demo-app-note {
+  color: #555;
+  font-size: 0.9rem;
+}
+
+.agent-intake-stepper {
+  display: flex;
+  gap: 1rem;
+  list-style: none;
+  padding: 0;
+  margin: 1.5rem 0;
+  font-size: 0.9rem;
+}
+
+.agent-intake-stepper li[data-status='complete'] {
+  color: #1a7f37;
+}
+
+.agent-intake-stepper li[data-status='current'] {
+  font-weight: 600;
+}
+
+.agent-intake-stepper li[data-status='pending'] {
+  color: #999;
+}
+
+.agent-intake-field {
+  margin-bottom: 1rem;
+}
+
+.agent-intake-field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.agent-intake-field-description {
+  color: #555;
+  font-size: 0.85rem;
+  margin: 0 0 0.25rem;
+}
+
+.agent-intake-field input,
+.agent-intake-field select {
+  width: 100%;
+  max-width: 320px;
+  padding: 0.4rem;
+  font-size: 1rem;
+}
+
+.agent-intake-field-suggested-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  color: #7c3aed;
+}
+
+.agent-intake-field-error {
+  color: #b91c1c;
+  font-size: 0.85rem;
+  margin: 0.25rem 0 0;
+}
+
+.agent-intake-execution-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  padding: 0.75rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+button[type='submit'],
+button[type='button'] {
+  padding: 0.5rem 1.25rem;
+  font-size: 1rem;
+  cursor: pointer;
+}
