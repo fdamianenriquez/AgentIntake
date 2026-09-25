@@ -1,8 +1,9 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022"],
-    "types": ["node"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node", "react", "react-dom"],
+    "jsx": "react-jsx",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "strict": true,
@@ -14,6 +15,6 @@
     "outDir": "dist",
     "rootDir": "."
   },
-  "include": ["cli/**/*.ts", "server/**/*.ts"],
+  "include": ["cli/**/*.ts", "server/**/*.ts", "packages/**/*.ts", "packages/**/*.tsx", "vitest.setup.ts"],
   "exclude": ["node_modules", "dist"]
 }
