@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createSession,
   deleteSession,
+  getOrCreateSession,
   getSession,
   isEndpointCompleted,
   recordStepCompletion,
@@ -54,5 +55,23 @@ describe('sessionStore', () => {
     const session = createSession();
     deleteSession(session.id);
     expect(getSession(session.id)).toBeUndefined();
+  });
+
+  it('getOrCreateSession creates a session under a client-supplied id on first use', () => {
+    const session = getOrCreateSession('client-generated-id-123');
+
+    expect(session.id).toBe('client-generated-id-123');
+    expect(session.collectedData).toEqual({});
+    expect(getSession('client-generated-id-123')).toEqual(session);
+  });
+
+  it('getOrCreateSession returns the existing session on subsequent calls', () => {
+    const first = getOrCreateSession('same-id');
+    recordStepCompletion('same-id', 'createCandidate', { email: 'a@b.com' });
+
+    const second = getOrCreateSession('same-id');
+
+    expect(second).toBe(first);
+    expect(second.collectedData.createCandidate).toEqual({ email: 'a@b.com' });
   });
 });

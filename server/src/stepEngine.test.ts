@@ -119,128 +119,98 @@ describe('selectStepFields', () => {
 });
 
 describe('validateStepSubmission', () => {
-  function makeExecute(result: { success: boolean; message?: string } = { success: true }) {
-    return vi.fn().mockResolvedValue(result);
-  }
-
-  it('skips the LLM call and executes directly when the endpoint has no fields', async () => {
-    const execute = makeExecute();
+  it('skips the LLM call and reports valid when the endpoint has no fields', async () => {
     const result = await validateStepSubmission({
-      endpoint: { ...endpoint, fields: [], execute },
+      endpoint: { ...endpoint, fields: [] },
       data: {},
     });
 
     expect(mockedGenerateStructured).not.toHaveBeenCalled();
-    expect(execute).toHaveBeenCalledWith({}, {});
-    expect(result).toEqual({ success: true, errors: {}, degraded: false });
+    expect(result).toEqual({ valid: true, errors: {}, degraded: false });
   });
 
   it('reports degraded: false for a no-fields endpoint even with AGENTINTAKE_STATIC_MODE on (matches selectStepFields)', async () => {
     process.env.AGENTINTAKE_STATIC_MODE = 'true';
-    const execute = makeExecute();
 
     const result = await validateStepSubmission({
-      endpoint: { ...endpoint, fields: [], execute },
+      endpoint: { ...endpoint, fields: [] },
       data: {},
     });
 
     expect(mockedGenerateStructured).not.toHaveBeenCalled();
-    expect(result).toEqual({ success: true, errors: {}, degraded: false });
+    expect(result).toEqual({ valid: true, errors: {}, degraded: false });
   });
 
-  it('skips the LLM call and executes directly when AGENTINTAKE_STATIC_MODE is on', async () => {
+  it('skips the LLM call and reports valid (degraded) when AGENTINTAKE_STATIC_MODE is on', async () => {
     process.env.AGENTINTAKE_STATIC_MODE = 'true';
-    const execute = makeExecute();
 
     const result = await validateStepSubmission({
-      endpoint: { ...endpoint, execute },
+      endpoint,
       data: { email: 'a@b.com' },
     });
 
     expect(mockedGenerateStructured).not.toHaveBeenCalled();
-    expect(execute).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ success: true, errors: {}, degraded: true });
+    expect(result).toEqual({ valid: true, errors: {}, degraded: true });
   });
 
-  it('calls execute() and succeeds when the semantic check reports valid', async () => {
+  it('reports valid when the semantic check passes', async () => {
     mockedGenerateStructured.mockResolvedValueOnce({ valid: true, errors: [] });
-    const execute = makeExecute({ success: true, message: 'Created.' });
 
     const result = await validateStepSubmission({
-      endpoint: { ...endpoint, execute },
+      endpoint,
       data: { email: 'a@b.com' },
     });
 
-    expect(execute).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ success: true, message: 'Created.', errors: {}, degraded: false });
+    expect(result).toEqual({ valid: true, errors: {}, degraded: false });
   });
 
-  it('does not call execute() and returns inline errors when the semantic check reports invalid', async () => {
+  it('reports invalid with inline errors when the semantic check fails', async () => {
     mockedGenerateStructured.mockResolvedValueOnce({
       valid: false,
       errors: [{ name: 'yearsOfExperience', message: 'Implausibly high for the stated role.' }],
     });
-    const execute = makeExecute();
 
     const result = await validateStepSubmission({
-      endpoint: { ...endpoint, execute },
+      endpoint,
       data: { yearsOfExperience: 999 },
     });
 
-    expect(execute).not.toHaveBeenCalled();
     expect(result).toEqual({
-      success: false,
+      valid: false,
       errors: { yearsOfExperience: 'Implausibly high for the stated role.' },
       degraded: false,
     });
   });
 
-  it('CRITICAL: degrades to execute()-only when the LLM reports an error for a field outside the base list', async () => {
+  it('CRITICAL: degrades to accepting the data when the LLM reports an error for a field outside the base list', async () => {
+    // Same mechanism as selectStepFields's guardrail test: this simulates
+    // generateStructured's real Zod validation rejecting a hallucinated
+    // field name in "errors", which this function must treat as any other
+    // failure -- degrade to "accept the data," never let a fabricated
+    // field name reach the caller.
     mockedGenerateStructured.mockImplementationOnce(async (_prompt, schema) => {
       return schema.parse({
         valid: false,
         errors: [{ name: 'ssn', message: 'looks fake' }], // not a real field
       });
     });
-    const execute = makeExecute({ success: true });
 
     const result = await validateStepSubmission({
-      endpoint: { ...endpoint, execute },
+      endpoint,
       data: { email: 'a@b.com' },
     });
 
-    expect(execute).toHaveBeenCalledTimes(1);
-    expect(result.degraded).toBe(true);
-    expect(result.errors).toEqual({});
+    expect(result).toEqual({ valid: true, errors: {}, degraded: true });
   });
 
-  it('degrades to execute()-only when the LLM call rejects (network error/timeout)', async () => {
+  it('degrades to accepting the data when the LLM call rejects (network error/timeout)', async () => {
     mockedGenerateStructured.mockRejectedValueOnce(new Error('upstream timeout'));
-    const execute = makeExecute({ success: true });
 
     const result = await validateStepSubmission({
-      endpoint: { ...endpoint, execute },
+      endpoint,
       data: { email: 'a@b.com' },
     });
 
-    expect(execute).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ success: true, errors: {}, degraded: true });
-  });
-
-  it("propagates execute()'s own failure after a valid semantic check", async () => {
-    mockedGenerateStructured.mockResolvedValueOnce({ valid: true, errors: [] });
-    const execute = makeExecute({ success: false, message: 'Downstream API rejected the request.' });
-
-    const result = await validateStepSubmission({
-      endpoint: { ...endpoint, execute },
-      data: { email: 'a@b.com' },
-    });
-
-    expect(result).toEqual({
-      success: false,
-      message: 'Downstream API rejected the request.',
-      errors: {},
-      degraded: false,
-    });
+    expect(result).toEqual({ valid: true, errors: {}, degraded: true });
   });
 });

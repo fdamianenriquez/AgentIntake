@@ -30,6 +30,25 @@ export function getSession(sessionId: string): SessionState | undefined {
   return sessions.get(sessionId);
 }
 
+// The client (useAgentForm, which manages sessionId internally) generates
+// its own session id and sends it with every request -- there's no
+// separate "create session" round-trip in the routes. Routes use
+// this to lazily create a session on first reference, keyed by whatever id
+// the client supplied, instead of requiring it to already exist.
+export function getOrCreateSession(sessionId: string): SessionState {
+  const existing = sessions.get(sessionId);
+  if (existing) return existing;
+
+  const session: SessionState = {
+    id: sessionId,
+    collectedData: {},
+    completedEndpointIds: [],
+    createdAt: Date.now(),
+  };
+  sessions.set(session.id, session);
+  return session;
+}
+
 export function recordStepCompletion(
   sessionId: string,
   endpointId: string,

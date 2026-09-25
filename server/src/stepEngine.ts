@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { EndpointDef, ExecuteContext, ExecuteResult, FieldDef, ParsedEndpoint } from './flowSchema.js';
+import type { FieldDef, ParsedEndpoint } from './flowSchema.js';
 import { generateStructured } from './llmClient.js';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -127,17 +127,28 @@ Task:
 // ---------------------------------------------------------------------------
 // LLM call #3: semantic validation
 // ---------------------------------------------------------------------------
+//
+// This returns the semantic verdict only -- it never calls execute().
+// useAgentForm(flow: FlowDef, ...) is handed the full FlowDef (execute
+// included) directly, and getAuthHeaders (a live function flowing into
+// execute()'s context) only makes sense if execute() runs in the same
+// process as the hook -- i.e. the browser. The server can
+// never hold or call a client-defined execute(); it can only tell the
+// client whether the submitted data passed the semantic check. Calling
+// execute() and marking the step complete is the client's job, once
+// it sees a positive verdict from this function (via the /api/step/validate
+// route).
 
 export interface ValidateStepSubmissionInput {
-  endpoint: Pick<EndpointDef, 'id' | 'title' | 'fields' | 'execute'>;
+  endpoint: Pick<ParsedEndpoint, 'id' | 'title' | 'fields'>;
   data: Record<string, unknown>;
-  context?: ExecuteContext;
   previouslyCollectedData?: Record<string, Record<string, unknown>>;
 }
 
-export interface ValidateStepSubmissionResult extends ExecuteResult {
+export interface ValidateStepSubmissionResult {
+  valid: boolean;
   errors: Record<string, string>;
-  /** True when the semantic check was skipped/failed and only execute()'s own result matters. */
+  /** True when the semantic check was skipped/failed and the data was accepted by default. */
   degraded: boolean;
 }
 
@@ -150,12 +161,12 @@ export async function validateStepSubmission(
   // this takes priority over static mode: with zero fields there was never
   // going to be an LLM call, static or not, so this isn't a "degraded" path.
   if (endpoint.fields.length === 0) {
-    return runExecute(endpoint, data, input.context, false);
+    return { valid: true, errors: {}, degraded: false };
   }
 
   if (isStaticMode()) {
     console.warn(`stepEngine: AGENTINTAKE_STATIC_MODE is on -- skipping semantic validation for "${endpoint.id}".`);
-    return runExecute(endpoint, data, input.context, true);
+    return { valid: true, errors: {}, degraded: true };
   }
 
   try {
@@ -178,29 +189,20 @@ export async function validateStepSubmission(
 
     if (!result.valid) {
       const errors = Object.fromEntries(result.errors.map((entry) => [entry.name, entry.message]));
-      return { success: false, errors, degraded: false };
+      return { valid: false, errors, degraded: false };
     }
+
+    return { valid: true, errors: {}, degraded: false };
   } catch (error) {
     logDegradation('validateStepSubmission', endpoint.id, error);
-    // fall through to execute() -- degraded means "skip the semantic check", not "reject the step"
-    return runExecute(endpoint, data, input.context, true);
+    // degraded means "skip the semantic check and accept the data by
+    // default" -- it is not a rejection.
+    return { valid: true, errors: {}, degraded: true };
   }
-
-  return runExecute(endpoint, data, input.context, false);
-}
-
-async function runExecute(
-  endpoint: Pick<EndpointDef, 'execute'>,
-  data: Record<string, unknown>,
-  context: ExecuteContext | undefined,
-  degraded: boolean
-): Promise<ValidateStepSubmissionResult> {
-  const result = await endpoint.execute(data, context ?? {});
-  return { ...result, errors: {}, degraded };
 }
 
 function buildValidatePrompt(
-  endpoint: Pick<EndpointDef, 'id' | 'title' | 'fields'>,
+  endpoint: Pick<ParsedEndpoint, 'id' | 'title' | 'fields'>,
   data: Record<string, unknown>,
   previouslyCollectedData: Record<string, Record<string, unknown>>
 ): string {
