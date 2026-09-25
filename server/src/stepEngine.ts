@@ -1,0 +1,221 @@
+import { z } from 'zod';
+import type { EndpointDef, ExecuteContext, ExecuteResult, FieldDef, ParsedEndpoint } from './flowSchema.js';
+import { generateStructured } from './llmClient.js';
+
+const DEFAULT_TIMEOUT_MS = 15_000;
+
+function isStaticMode(): boolean {
+  const raw = process.env.AGENTINTAKE_STATIC_MODE;
+  return raw !== undefined && raw !== '' && raw !== 'false' && raw !== '0';
+}
+
+class TimeoutError extends Error {}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new TimeoutError(`${label} timed out after ${ms}ms`)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
+// A dynamic enum of a specific endpoint's base field names. Because Zod can
+// only ever validate a returned "name" to one of these literal values, an
+// LLM response naming any field outside this set fails validation inside
+// generateStructured -- this *is* the "no invented fields" guardrail
+// (README: "The 'no invented fields' bound"), enforced structurally rather than by a
+// post-hoc filter. Once a response passes this schema, every field name in
+// it is provably one of the base fields.
+function fieldNameEnum(fields: FieldDef[]) {
+  const names = fields.map((field) => field.name);
+  return z.enum(names as [string, ...string[]]);
+}
+
+// ---------------------------------------------------------------------------
+// LLM call #2: adaptive field selection
+// ---------------------------------------------------------------------------
+
+export interface SelectStepFieldsInput {
+  endpoint: Pick<ParsedEndpoint, 'id' | 'title' | 'description' | 'fields'>;
+  previouslyCollectedData?: Record<string, Record<string, unknown>>;
+}
+
+export interface SelectStepFieldsResult {
+  fields: FieldDef[];
+  suggestedValues: Record<string, unknown>;
+  /** True when the base (unfiltered) field list was used instead of an LLM-adapted one. */
+  degraded: boolean;
+}
+
+export async function selectStepFields(input: SelectStepFieldsInput): Promise<SelectStepFieldsResult> {
+  const baseFields = input.endpoint.fields;
+
+  if (baseFields.length === 0) {
+    return { fields: [], suggestedValues: {}, degraded: false };
+  }
+
+  if (isStaticMode()) {
+    console.warn(`stepEngine: AGENTINTAKE_STATIC_MODE is on -- skipping adaptive field selection for "${input.endpoint.id}".`);
+    return { fields: baseFields, suggestedValues: {}, degraded: true };
+  }
+
+  try {
+    const outputSchema = z.object({
+      fields: z.array(
+        z.object({
+          name: fieldNameEnum(baseFields),
+          descriptionOverride: z.string().optional(),
+        })
+      ),
+      suggestedValues: z.record(z.string(), z.unknown()).default({}),
+    });
+
+    const prompt = buildSelectFieldsPrompt(input.endpoint, baseFields, input.previouslyCollectedData ?? {});
+    const result = await withTimeout(
+      generateStructured(prompt, outputSchema),
+      DEFAULT_TIMEOUT_MS,
+      `selectStepFields("${input.endpoint.id}")`
+    );
+
+    if (result.fields.length === 0) {
+      return { fields: baseFields, suggestedValues: {}, degraded: true };
+    }
+
+    const baseByName = new Map(baseFields.map((field) => [field.name, field]));
+    const adaptedFields = result.fields.map((entry) => {
+      const base = baseByName.get(entry.name)!; // guaranteed to exist: entry.name passed the enum above
+      return entry.descriptionOverride ? { ...base, description: entry.descriptionOverride } : base;
+    });
+
+    return { fields: adaptedFields, suggestedValues: result.suggestedValues, degraded: false };
+  } catch (error) {
+    logDegradation('selectStepFields', input.endpoint.id, error);
+    return { fields: baseFields, suggestedValues: {}, degraded: true };
+  }
+}
+
+function buildSelectFieldsPrompt(
+  endpoint: Pick<ParsedEndpoint, 'id' | 'title' | 'description'>,
+  baseFields: FieldDef[],
+  previouslyCollectedData: Record<string, Record<string, unknown>>
+): string {
+  return `You are choosing which fields to show for one step of a multi-step intake wizard.
+
+Step: "${endpoint.title}" (${endpoint.id})
+${endpoint.description ? `Description: ${endpoint.description}\n` : ''}
+Base fields for this step (JSON) -- you may only reference fields by the exact "name" values below, never invent a new one:
+${JSON.stringify(baseFields, null, 2)}
+
+Data already collected in earlier steps (JSON):
+${JSON.stringify(previouslyCollectedData, null, 2)}
+
+Task:
+1. Decide which of the base fields are relevant to show right now, given what's already been collected. You may omit a field that's clearly irrelevant given an earlier answer (e.g. a field only relevant to one branch of a status field). Include at least one field.
+2. Order "fields" in the most sensible order for the user to fill them out.
+3. Optionally set "descriptionOverride" on a field to add helpful context based on earlier answers (e.g. referencing what was already collected). Omit it to keep the field's original description.
+4. Optionally suggest confident pre-fill values in "suggestedValues", keyed by field name, only for fields you included in "fields" and only when already-collected data makes the value obvious.`;
+}
+
+// ---------------------------------------------------------------------------
+// LLM call #3: semantic validation
+// ---------------------------------------------------------------------------
+
+export interface ValidateStepSubmissionInput {
+  endpoint: Pick<EndpointDef, 'id' | 'title' | 'fields' | 'execute'>;
+  data: Record<string, unknown>;
+  context?: ExecuteContext;
+  previouslyCollectedData?: Record<string, Record<string, unknown>>;
+}
+
+export interface ValidateStepSubmissionResult extends ExecuteResult {
+  errors: Record<string, string>;
+  /** True when the semantic check was skipped/failed and only execute()'s own result matters. */
+  degraded: boolean;
+}
+
+export async function validateStepSubmission(
+  input: ValidateStepSubmissionInput
+): Promise<ValidateStepSubmissionResult> {
+  const { endpoint, data } = input;
+
+  if (endpoint.fields.length > 0 && !isStaticMode()) {
+    try {
+      const outputSchema = z.object({
+        valid: z.boolean(),
+        errors: z.array(
+          z.object({
+            name: fieldNameEnum(endpoint.fields),
+            message: z.string(),
+          })
+        ),
+      });
+
+      const prompt = buildValidatePrompt(endpoint, data, input.previouslyCollectedData ?? {});
+      const result = await withTimeout(
+        generateStructured(prompt, outputSchema),
+        DEFAULT_TIMEOUT_MS,
+        `validateStepSubmission("${endpoint.id}")`
+      );
+
+      if (!result.valid) {
+        const errors = Object.fromEntries(result.errors.map((entry) => [entry.name, entry.message]));
+        return { success: false, errors, degraded: false };
+      }
+    } catch (error) {
+      logDegradation('validateStepSubmission', endpoint.id, error);
+      // fall through to execute() -- degraded means "skip the semantic check", not "reject the step"
+      return runExecute(endpoint, data, input.context, true);
+    }
+  } else if (isStaticMode()) {
+    console.warn(`stepEngine: AGENTINTAKE_STATIC_MODE is on -- skipping semantic validation for "${endpoint.id}".`);
+    return runExecute(endpoint, data, input.context, true);
+  }
+
+  return runExecute(endpoint, data, input.context, false);
+}
+
+async function runExecute(
+  endpoint: Pick<EndpointDef, 'execute'>,
+  data: Record<string, unknown>,
+  context: ExecuteContext | undefined,
+  degraded: boolean
+): Promise<ValidateStepSubmissionResult> {
+  const result = await endpoint.execute(data, context ?? {});
+  return { ...result, errors: {}, degraded };
+}
+
+function buildValidatePrompt(
+  endpoint: Pick<EndpointDef, 'id' | 'title' | 'fields'>,
+  data: Record<string, unknown>,
+  previouslyCollectedData: Record<string, Record<string, unknown>>
+): string {
+  return `You are validating one step's submitted data in a multi-step intake wizard, beyond basic client-side checks (format/range) that already passed before this was submitted.
+
+Step: "${endpoint.title}" (${endpoint.id})
+
+Fields (JSON):
+${JSON.stringify(endpoint.fields, null, 2)}
+
+Submitted data (JSON):
+${JSON.stringify(data, null, 2)}
+
+Data already collected in earlier steps (JSON):
+${JSON.stringify(previouslyCollectedData, null, 2)}
+
+Task: look for implausible values or inconsistencies a simple regex/range check can't catch (e.g. a start date far in the past for a new hire, a value inconsistent with an earlier answer). Only flag genuine problems -- do not invent stricter rules than the field descriptions imply.
+
+Return "valid: true" with an empty "errors" array if nothing looks wrong. Otherwise return "valid: false" and one entry per problem in "errors", each with the exact field "name" (from the fields list above) and a short, user-facing "message".`;
+}
+
+function logDegradation(fn: string, endpointId: string, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  console.warn(`stepEngine: ${fn}("${endpointId}") degraded to the fallback path -- ${message}`);
+}
