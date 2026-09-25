@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { ParsedEndpointSchema } from '../flowSchema.js';
 import { validateStepSubmission } from '../stepEngine.js';
-import { getOrCreateSession, recordStepCompletion } from '../sessionStore.js';
+import { getOrCreateSession, recordValidatedStep } from '../sessionStore.js';
 
 const RequestBodySchema = z.object({
   sessionId: z.string().min(1),
@@ -10,10 +10,13 @@ const RequestBodySchema = z.object({
   data: z.record(z.string(), z.unknown()),
 });
 
-// Note: this route only reports the semantic-validation verdict. Calling the
-// endpoint's real execute() and marking the step complete happens
-// client-side once it sees `valid: true` here --
-// see the comment on validateStepSubmission in stepEngine.ts for why.
+// Note: this route only reports the semantic-validation verdict -- it only
+// ever means "this data is trustworthy enough for the AI to use as context
+// later", never "the user finished this step." Calling the endpoint's real
+// execute() and reaching a true 'complete' StepStatus happens client-side
+// (useAgentForm) once it sees `valid: true`
+// here -- see the comment on validateStepSubmission in stepEngine.ts, and
+// the naming note on sessionStore.ts, for why.
 export async function handleStepValidate(req: Request, res: Response): Promise<void> {
   const parsed = RequestBodySchema.safeParse(req.body);
   if (!parsed.success) {
@@ -29,7 +32,7 @@ export async function handleStepValidate(req: Request, res: Response): Promise<v
   try {
     const result = await validateStepSubmission({ endpoint, data, previouslyCollectedData: session.collectedData });
     if (result.valid) {
-      recordStepCompletion(sessionId, endpoint.id, data);
+      recordValidatedStep(sessionId, endpoint.id, data);
     }
     res.status(200).json(result);
   } catch (error) {

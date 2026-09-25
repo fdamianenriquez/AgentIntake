@@ -5,11 +5,19 @@ import { randomUUID } from 'node:crypto';
 // it has no notion of a flow's full endpoint list or "is the wizard done" --
 // that's for whoever wires sessions into routes/the hook to
 // decide, since it requires knowing the flow definition this store doesn't.
+//
+// Naming note: this store only ever knows whether a step's data passed
+// semantic validation -- it has no way to know whether the client's
+// execute() (which runs client-side) ever ran or succeeded.
+// "validatedEndpointIds" reflects that limitation on purpose; it must never
+// be called "completedEndpointIds" or similar, since "completed" is the
+// client's StepStatus === 'complete', a strictly stronger claim this store
+// cannot make.
 
 export interface SessionState {
   id: string;
   collectedData: Record<string, Record<string, unknown>>;
-  completedEndpointIds: string[];
+  validatedEndpointIds: string[];
   createdAt: number;
 }
 
@@ -19,7 +27,7 @@ export function createSession(): SessionState {
   const session: SessionState = {
     id: randomUUID(),
     collectedData: {},
-    completedEndpointIds: [],
+    validatedEndpointIds: [],
     createdAt: Date.now(),
   };
   sessions.set(session.id, session);
@@ -42,14 +50,14 @@ export function getOrCreateSession(sessionId: string): SessionState {
   const session: SessionState = {
     id: sessionId,
     collectedData: {},
-    completedEndpointIds: [],
+    validatedEndpointIds: [],
     createdAt: Date.now(),
   };
   sessions.set(session.id, session);
   return session;
 }
 
-export function recordStepCompletion(
+export function recordValidatedStep(
   sessionId: string,
   endpointId: string,
   data: Record<string, unknown>
@@ -59,14 +67,14 @@ export function recordStepCompletion(
     throw new Error(`sessionStore: no session found for id "${sessionId}"`);
   }
   session.collectedData[endpointId] = data;
-  if (!session.completedEndpointIds.includes(endpointId)) {
-    session.completedEndpointIds.push(endpointId);
+  if (!session.validatedEndpointIds.includes(endpointId)) {
+    session.validatedEndpointIds.push(endpointId);
   }
   return session;
 }
 
-export function isEndpointCompleted(sessionId: string, endpointId: string): boolean {
-  return getSession(sessionId)?.completedEndpointIds.includes(endpointId) ?? false;
+export function isEndpointValidated(sessionId: string, endpointId: string): boolean {
+  return getSession(sessionId)?.validatedEndpointIds.includes(endpointId) ?? false;
 }
 
 export function deleteSession(sessionId: string): void {

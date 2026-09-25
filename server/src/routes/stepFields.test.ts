@@ -8,7 +8,7 @@ vi.mock('../llmClient.js', () => ({
 
 import { generateStructured } from '../llmClient.js';
 import { createApp } from '../app.js';
-import { getOrCreateSession, getSession, recordStepCompletion } from '../sessionStore.js';
+import { getOrCreateSession, getSession, recordValidatedStep } from '../sessionStore.js';
 
 const mockedGenerateStructured = vi.mocked(generateStructured);
 
@@ -52,7 +52,7 @@ describe('POST /api/step/fields', () => {
 
     const sessionId = 'route-test-session-2';
     getOrCreateSession(sessionId);
-    recordStepCompletion(sessionId, 'priorStep', { employmentStatus: 'employed' });
+    recordValidatedStep(sessionId, 'priorStep', { employmentStatus: 'employed' });
 
     await request(createApp()).post('/api/step/fields').send({ sessionId, endpoint });
 

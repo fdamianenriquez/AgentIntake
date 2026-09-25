@@ -4,8 +4,8 @@ import {
   deleteSession,
   getOrCreateSession,
   getSession,
-  isEndpointCompleted,
-  recordStepCompletion,
+  isEndpointValidated,
+  recordValidatedStep,
 } from './sessionStore.js';
 
 describe('sessionStore', () => {
@@ -15,7 +15,7 @@ describe('sessionStore', () => {
 
     expect(a.id).not.toBe(b.id);
     expect(a.collectedData).toEqual({});
-    expect(a.completedEndpointIds).toEqual([]);
+    expect(a.validatedEndpointIds).toEqual([]);
   });
 
   it('retrieves a session by id, and returns undefined for an unknown one', () => {
@@ -24,29 +24,29 @@ describe('sessionStore', () => {
     expect(getSession('does-not-exist')).toBeUndefined();
   });
 
-  it('records step completion, storing data and marking the endpoint completed', () => {
+  it('records a validated step, storing data and marking the endpoint validated', () => {
     const session = createSession();
-    recordStepCompletion(session.id, 'createCandidate', { email: 'a@b.com' });
+    recordValidatedStep(session.id, 'createCandidate', { email: 'a@b.com' });
 
     const updated = getSession(session.id)!;
     expect(updated.collectedData.createCandidate).toEqual({ email: 'a@b.com' });
-    expect(updated.completedEndpointIds).toEqual(['createCandidate']);
-    expect(isEndpointCompleted(session.id, 'createCandidate')).toBe(true);
-    expect(isEndpointCompleted(session.id, 'otherEndpoint')).toBe(false);
+    expect(updated.validatedEndpointIds).toEqual(['createCandidate']);
+    expect(isEndpointValidated(session.id, 'createCandidate')).toBe(true);
+    expect(isEndpointValidated(session.id, 'otherEndpoint')).toBe(false);
   });
 
   it('does not duplicate an endpoint id when the same step is recorded twice', () => {
     const session = createSession();
-    recordStepCompletion(session.id, 'createCandidate', { email: 'a@b.com' });
-    recordStepCompletion(session.id, 'createCandidate', { email: 'updated@b.com' });
+    recordValidatedStep(session.id, 'createCandidate', { email: 'a@b.com' });
+    recordValidatedStep(session.id, 'createCandidate', { email: 'updated@b.com' });
 
     const updated = getSession(session.id)!;
-    expect(updated.completedEndpointIds).toEqual(['createCandidate']);
+    expect(updated.validatedEndpointIds).toEqual(['createCandidate']);
     expect(updated.collectedData.createCandidate).toEqual({ email: 'updated@b.com' });
   });
 
-  it('throws a clear error when recording completion for an unknown session', () => {
-    expect(() => recordStepCompletion('does-not-exist', 'createCandidate', {})).toThrow(
+  it('throws a clear error when recording a validated step for an unknown session', () => {
+    expect(() => recordValidatedStep('does-not-exist', 'createCandidate', {})).toThrow(
       /no session found/
     );
   });
@@ -67,7 +67,7 @@ describe('sessionStore', () => {
 
   it('getOrCreateSession returns the existing session on subsequent calls', () => {
     const first = getOrCreateSession('same-id');
-    recordStepCompletion('same-id', 'createCandidate', { email: 'a@b.com' });
+    recordValidatedStep('same-id', 'createCandidate', { email: 'a@b.com' });
 
     const second = getOrCreateSession('same-id');
 

@@ -24,7 +24,7 @@ beforeEach(() => {
 });
 
 describe('POST /api/step/validate', () => {
-  it('returns valid:true and records the step in the session when the semantic check passes', async () => {
+  it('returns valid:true and records the step as validated in the session when the semantic check passes', async () => {
     mockedGenerateStructured.mockResolvedValueOnce({ valid: true, errors: [] });
 
     const sessionId = 'route-validate-session-1';
@@ -36,7 +36,7 @@ describe('POST /api/step/validate', () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ valid: true, errors: {}, degraded: false });
     expect(getSession(sessionId)?.collectedData.createCandidate).toEqual(data);
-    expect(getSession(sessionId)?.completedEndpointIds).toEqual(['createCandidate']);
+    expect(getSession(sessionId)?.validatedEndpointIds).toEqual(['createCandidate']);
   });
 
   it('returns valid:false with inline errors and does not record the step', async () => {
@@ -52,7 +52,7 @@ describe('POST /api/step/validate', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ valid: false, errors: { email: 'Looks fake.' }, degraded: false });
-    expect(getSession(sessionId)?.completedEndpointIds).toEqual([]);
+    expect(getSession(sessionId)?.validatedEndpointIds).toEqual([]);
   });
 
   it('returns 400 when the request body is invalid', async () => {
