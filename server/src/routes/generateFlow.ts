@@ -1,29 +1,34 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { largeSpecWarning, parseOpenApiFile } from '../openapiParser.js';
+import { largeSpecWarning, parseOpenApiContent } from '../openapiParser.js';
 import { generateFlow } from '../flowGenerator.js';
 
-// Only { spec: string } (a path or URL, same as the CLI's --spec) is
-// supported for now -- pasting raw spec text is Studio's job, which
-// needs its own input validation/friendly errors and
-// isn't built yet. This route already covers what Studio's "Generate"
-// button needs once that text gets parsed into the same shape.
+// { specContent: string } -- the raw spec text (JSON or YAML), never a path
+// or URL. This route is reachable over a network, so it must never be the
+// one fetching a caller-supplied location (that's a real SSRF /
+// local-file-disclosure vector, not just a style choice). Studio's
+// frontend resolves a pasted URL or uploaded
+// file to content in the browser first and sends that content here -- the
+// server itself never resolves a location on a caller's behalf.
 const RequestBodySchema = z.object({
-  spec: z.string().min(1),
+  specContent: z.string().min(1),
 });
 
 export async function handleGenerateFlow(req: Request, res: Response): Promise<void> {
   const parsed = RequestBodySchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: 'Request body must be { spec: string } (a path or URL to an OpenAPI 3.x spec).' });
+    res.status(400).json({
+      error:
+        'Request body must be { specContent: string } -- the raw OpenAPI spec text (JSON or YAML), never a path or URL.',
+    });
     return;
   }
 
   try {
-    const endpoints = await parseOpenApiFile(parsed.data.spec);
+    const endpoints = await parseOpenApiContent(parsed.data.specContent);
 
     if (endpoints.length === 0) {
-      res.status(400).json({ error: `No write operations (POST/PUT/PATCH) found in "${parsed.data.spec}".` });
+      res.status(400).json({ error: 'No write operations (POST/PUT/PATCH) found in the given spec.' });
       return;
     }
 

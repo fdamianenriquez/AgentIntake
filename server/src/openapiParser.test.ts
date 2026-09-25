@@ -1,7 +1,8 @@
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import type { OpenAPIV3 } from 'openapi-types';
-import { parseOpenApiDocument, parseOpenApiFile, ParsedEndpointSchema } from './openapiParser.js';
+import { parseOpenApiContent, parseOpenApiDocument, parseOpenApiFile, ParsedEndpointSchema } from './openapiParser.js';
 
 function baseDoc(paths: OpenAPIV3.PathsObject, extra: Partial<OpenAPIV3.Document> = {}): OpenAPIV3.Document {
   return {
@@ -424,4 +425,72 @@ describe('parseOpenApiFile', () => {
     expect(byName.name).toMatchObject({ type: 'string', required: true });
     expect(byName.quantity).toMatchObject({ type: 'number', validation: { min: 1 } });
   });
+});
+
+describe('parseOpenApiContent', () => {
+  it('parses raw JSON/YAML text (untrusted network input), resolving only internal $refs', async () => {
+    const fixturePath = fileURLToPath(new URL('./__fixtures__/ref-example.openapi.yaml', import.meta.url));
+    const content = await readFile(fixturePath, 'utf-8');
+
+    const endpoints = await parseOpenApiContent(content);
+
+    expect(endpoints).toHaveLength(1);
+    expect(endpoints[0].id).toBe('createWidget');
+    expect(endpoints[0].fields.map((f) => f.name).sort()).toEqual(['name', 'quantity']);
+  });
+
+  it(
+    'SECURITY: never fetches an external URL $ref, and never reads a local file $ref',
+    async () => {
+      const localSecretPath = fileURLToPath(new URL('./__fixtures__/local-secret.json', import.meta.url));
+
+      const content = JSON.stringify({
+        openapi: '3.0.3',
+        info: { title: 'SSRF Fixture API', version: '1.0.0' },
+        paths: {
+          '/widgets': {
+            post: {
+              operationId: 'createWidget',
+              requestBody: {
+                content: {
+                  'application/json': {
+                    schema: {
+                      type: 'object',
+                      properties: {
+                        name: { type: 'string' },
+                        // 192.0.2.1 is a reserved, non-routable TEST-NET-1
+                        // address (RFC 5737) -- if this were ever actually
+                        // fetched, the request would hang until the test's
+                        // own timeout below fails it, rather than silently
+                        // succeeding.
+                        external: { $ref: 'http://192.0.2.1/evil-schema.json#/definitions/Evil' },
+                        // A real, readable local file -- proving the file
+                        // is never opened, not just that a fake path fails.
+                        local: { $ref: `${localSecretPath}#/definitions/Secret` },
+                      },
+                    },
+                  },
+                },
+              },
+              responses: { '201': { description: 'Created' } },
+            },
+          },
+        },
+      });
+
+      const endpoints = await parseOpenApiContent(content);
+      const [endpoint] = endpoints;
+      const fieldNames = endpoint.fields.map((f) => f.name);
+
+      // Neither ref is followed -- both are left unresolved and therefore
+      // dropped by schemaToFieldDef's "unsupported schema" fallback, never
+      // surfacing as a usable field. The base "name" field still comes
+      // through untouched.
+      expect(fieldNames).toContain('name');
+      expect(fieldNames).not.toContain('external');
+      expect(fieldNames).not.toContain('local');
+      expect(JSON.stringify(endpoints)).not.toContain('THIS_SHOULD_NEVER_APPEAR_IN_OUTPUT');
+    },
+    10_000
+  );
 });

@@ -1,4 +1,5 @@
 import SwaggerParser from '@apidevtools/swagger-parser';
+import { load as loadYaml } from 'js-yaml';
 import type { OpenAPIV3 } from 'openapi-types';
 import { type AuthRequirement, type FieldDef, type ParsedEndpoint } from './flowSchema.js';
 
@@ -83,10 +84,50 @@ export function parseOpenApiDocument(doc: OpenAPIV3.Document): ParsedEndpoint[] 
   return endpoints;
 }
 
+// Two entry points, trusted differently:
+//
+// - parseOpenApiFile is for the CLI only, where the developer running it
+//   already chose and controls the path/URL -- fully dereferences $refs,
+//   including external file/HTTP ones.
+// - parseOpenApiContent is for /api/generate-flow and Studio, where the
+//   input arrives from a network caller and can't be trusted the same way.
+//   Passing a caller-supplied path/URL to a resolver that fetches it is a
+//   real SSRF / local-file-disclosure vector (reading arbitrary local
+//   files, or reaching internal-only addresses on the deployer's behalf,
+//   including cloud metadata endpoints) -- so this NEVER takes a path or
+//   URL, only the spec's own text, and resolves it with external $ref
+//   resolution disabled. Internal `#/components/...` refs still resolve
+//   normally (that's just pointer lookup within the same document, no
+//   resolver plugin -- and therefore no fetch -- involved).
+
 /** Loads and $ref-dereferences a spec from a file path or URL, then parses it. */
 export async function parseOpenApiFile(pathOrUrl: string): Promise<ParsedEndpoint[]> {
   const dereferenced = await SwaggerParser.dereference(pathOrUrl);
   return parseOpenApiDocument(dereferenced as OpenAPIV3.Document);
+}
+
+/**
+ * Parses raw spec text (JSON or YAML) from an untrusted network caller.
+ * External (file/HTTP) `$ref`s are never resolved -- `resolve.external:
+ * false` is json-schema-ref-parser's own documented option for this
+ * ("external $ref pointers will simply be ignored"), not a guessed name.
+ */
+export async function parseOpenApiContent(content: string): Promise<ParsedEndpoint[]> {
+  const rawDoc = parseSpecText(content);
+  const dereferenced = await SwaggerParser.dereference(rawDoc as OpenAPIV3.Document, {
+    resolve: { external: false },
+  });
+  return parseOpenApiDocument(dereferenced as OpenAPIV3.Document);
+}
+
+function parseSpecText(content: string): unknown {
+  try {
+    return JSON.parse(content);
+  } catch {
+    // load (not loadAll) uses js-yaml's default-safe schema -- no
+    // arbitrary JS object instantiation via custom tags.
+    return loadYaml(content);
+  }
 }
 
 function deriveEndpointId(method: WriteMethod, path: string): string {

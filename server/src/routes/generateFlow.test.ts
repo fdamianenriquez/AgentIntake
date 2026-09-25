@@ -1,8 +1,6 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import type { FlowGenerationResult } from '../flowGenerator.js';
 
@@ -15,7 +13,7 @@ import { createApp } from '../app.js';
 
 const mockedGenerateStructured = vi.mocked(generateStructured);
 
-const fixtureSpec = fileURLToPath(new URL('../__fixtures__/ref-example.openapi.yaml', import.meta.url));
+const fixtureSpecPath = fileURLToPath(new URL('../__fixtures__/ref-example.openapi.yaml', import.meta.url));
 
 const generatedResult: FlowGenerationResult = {
   flow: {
@@ -37,22 +35,16 @@ const generatedResult: FlowGenerationResult = {
   ambiguousFields: [],
 };
 
-let tmpDir: string;
-
-beforeEach(async () => {
-  tmpDir = await mkdtemp(path.join(tmpdir(), 'agent-intake-route-test-'));
+beforeEach(() => {
   mockedGenerateStructured.mockReset();
 });
 
-afterEach(async () => {
-  await rm(tmpDir, { recursive: true, force: true });
-});
-
 describe('POST /api/generate-flow', () => {
-  it('parses a real spec fixture, generates a flow (LLM mocked), and returns it', async () => {
+  it('parses real spec content (LLM mocked) and returns the generated flow', async () => {
     mockedGenerateStructured.mockResolvedValueOnce(generatedResult);
+    const specContent = await readFile(fixtureSpecPath, 'utf-8');
 
-    const response = await request(createApp()).post('/api/generate-flow').send({ spec: fixtureSpec });
+    const response = await request(createApp()).post('/api/generate-flow').send({ specContent });
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ ...generatedResult, warnings: [] });
@@ -66,11 +58,11 @@ describe('POST /api/generate-flow', () => {
         post: { operationId: `createWidget${i}`, responses: { '201': { description: 'Created' } } },
       };
     }
-    const largeSpecPath = path.join(tmpDir, 'large.openapi.json');
-    await writeFile(
-      largeSpecPath,
-      JSON.stringify({ openapi: '3.0.3', info: { title: 'Large Fixture API', version: '1.0.0' }, paths })
-    );
+    const specContent = JSON.stringify({
+      openapi: '3.0.3',
+      info: { title: 'Large Fixture API', version: '1.0.0' },
+      paths,
+    });
 
     mockedGenerateStructured.mockResolvedValueOnce({
       flow: {
@@ -87,42 +79,47 @@ describe('POST /api/generate-flow', () => {
       ambiguousFields: [],
     });
 
-    const response = await request(createApp()).post('/api/generate-flow').send({ spec: largeSpecPath });
+    const response = await request(createApp()).post('/api/generate-flow').send({ specContent });
 
     expect(response.status).toBe(200);
     expect(response.body.warnings).toHaveLength(1);
     expect(response.body.warnings[0]).toMatch(/16 write operations/);
   });
 
-  it('returns 400 when the body is missing "spec"', async () => {
+  it('returns 400 when the body is missing "specContent"', async () => {
     const response = await request(createApp()).post('/api/generate-flow').send({});
 
     expect(response.status).toBe(400);
-    expect(response.body.error).toMatch(/spec/);
+    expect(response.body.error).toMatch(/specContent/);
     expect(mockedGenerateStructured).not.toHaveBeenCalled();
   });
 
-  it('returns 400 when the spec has no write operations', async () => {
-    const noWriteSpecPath = path.join(tmpDir, 'no-writes.openapi.json');
-    await writeFile(
-      noWriteSpecPath,
-      JSON.stringify({
-        openapi: '3.0.3',
-        info: { title: 'Read-only Fixture API', version: '1.0.0' },
-        paths: { '/widgets': { get: { responses: { '200': { description: 'OK' } } } } },
-      })
-    );
+  it('returns 400 when a path/URL is sent instead of spec content (the old, now-removed contract)', async () => {
+    const response = await request(createApp())
+      .post('/api/generate-flow')
+      .send({ spec: fixtureSpecPath });
 
-    const response = await request(createApp()).post('/api/generate-flow').send({ spec: noWriteSpecPath });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/specContent/);
+  });
+
+  it('returns 400 when the spec has no write operations', async () => {
+    const specContent = JSON.stringify({
+      openapi: '3.0.3',
+      info: { title: 'Read-only Fixture API', version: '1.0.0' },
+      paths: { '/widgets': { get: { responses: { '200': { description: 'OK' } } } } },
+    });
+
+    const response = await request(createApp()).post('/api/generate-flow').send({ specContent });
 
     expect(response.status).toBe(400);
     expect(response.body.error).toMatch(/No write operations/);
   });
 
-  it('returns 500 when the spec cannot be found', async () => {
+  it('returns 500 when specContent is neither valid JSON nor YAML', async () => {
     const response = await request(createApp())
       .post('/api/generate-flow')
-      .send({ spec: './definitely-does-not-exist.yaml' });
+      .send({ specContent: '{{{ not json or yaml : : :' });
 
     expect(response.status).toBe(500);
     expect(response.body.error).toBeDefined();
