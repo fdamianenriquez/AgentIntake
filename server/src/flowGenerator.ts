@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { GeneratedFlowSchema, type GeneratedFlow, type ParsedEndpoint } from './flowSchema.js';
+import { GeneratedFlowSchema, type FieldDef, type ParsedEndpoint } from './flowSchema.js';
 import { generateStructured } from './llmClient.js';
 
 export const AmbiguousFieldNoteSchema = z.object({
@@ -21,22 +21,84 @@ export interface GenerateFlowInput {
   specDescription?: string;
 }
 
+// Mirrors stepEngine.ts's fieldNameEnum: a dynamic enum of one endpoint's own
+// field names, so Zod itself rejects any name outside that specific
+// endpoint's fields -- not just "some field name somewhere in the flow."
+function fieldNameEnum(fields: FieldDef[]) {
+  const names = fields.map((field) => field.name);
+  return z.enum(names as [string, ...string[]]);
+}
+
+// Structural guardrail, not a prompted promise (README: "The 'no invented
+// fields' bound"): the LLM's output schema for each field accepts only
+// "name" and optional "labelOverride"/"descriptionOverride" -- never "type", "required",
+// "enumValues", or "validation". Those four are always reconstructed from
+// the raw parsed field by looking it up by name (see expandLlmOutput below),
+// exactly mirroring stepEngine.ts's fieldNameEnum + rehydration pattern.
+//
+// An earlier version of this guardrail asked the LLM for the whole FieldDef
+// and only told it, in the prompt, not to change `validation` -- checking
+// just the field *name* sets afterward. In real use (generating the demo's
+// flow.json), that let a generation run silently corrupt a field's
+// validation.pattern (dropped \s exclusions, an unescaped '.'), caught only
+// because the non-negotiable human review step happened to catch it. This
+// makes that failure mode structurally impossible instead of merely
+// detectable after the fact.
+function endpointOutputSchema(endpoint: ParsedEndpoint) {
+  return z.object({
+    id: z.literal(endpoint.id),
+    title: z.string(),
+    description: z.string().optional(),
+    fields: z.array(
+      z.object({
+        name: fieldNameEnum(endpoint.fields),
+        labelOverride: z.string().optional(),
+        descriptionOverride: z.string().optional(),
+      })
+    ),
+  });
+}
+
+function buildLlmOutputSchema(endpoints: ParsedEndpoint[]) {
+  const perEndpointSchemas = endpoints.map((endpoint) => endpointOutputSchema(endpoint));
+
+  // z.discriminatedUnion picks the right per-endpoint schema variant by its
+  // literal "id", so an entry's "fields" are validated against THAT
+  // endpoint's own field names -- a field name valid on one endpoint is
+  // structurally rejected if it shows up under a different endpoint's id.
+  const endpointsSchema = z.array(
+    z.discriminatedUnion(
+      'id',
+      perEndpointSchemas as [(typeof perEndpointSchemas)[number], ...(typeof perEndpointSchemas)[number][]]
+    )
+  );
+
+  return z.object({
+    flow: z.object({
+      id: z.string(),
+      title: z.string(),
+      description: z.string(),
+      endpoints: endpointsSchema,
+    }),
+    ambiguousFields: z.array(AmbiguousFieldNoteSchema),
+  });
+}
+
+type LlmOutput = z.infer<ReturnType<typeof buildLlmOutputSchema>>;
+
 /**
  * LLM call #1: groups the mechanically-parsed endpoints into
- * one flow, orders them, and writes clear title/label/description text.
- * The LLM may only reword and reorder -- it must return exactly the same set
- * of endpoint ids and field names it was given (validateGeneratedFlowIntegrity
- * enforces this the same way the stepEngine's "no invented fields" guardrail
- * does at runtime, since a hallucinated field here would otherwise silently
- * survive until the human review step).
+ * one flow, orders them, and writes clear title/label/description text. The
+ * LLM may only reword and reorder -- every other property is rehydrated
+ * from the raw input, never trusted from the model (see above).
  */
 export async function generateFlow(input: GenerateFlowInput): Promise<FlowGenerationResult> {
   const prompt = buildPrompt(input);
+  const outputSchema = buildLlmOutputSchema(input.endpoints);
 
   const attempt = async (): Promise<FlowGenerationResult> => {
-    const result = await generateStructured(prompt, FlowGenerationResultSchema);
-    validateGeneratedFlowIntegrity(result.flow, input.endpoints);
-    return result;
+    const raw = await generateStructured(prompt, outputSchema);
+    return expandLlmOutput(raw, input.endpoints);
   };
 
   try {
@@ -67,23 +129,21 @@ function buildPrompt(input: GenerateFlowInput): string {
 Below is a raw, mechanically-extracted list of write-operation endpoints, as JSON. There are exactly ${endpointCount} endpoint(s), with these ids: ${endpointIds}. Each endpoint already has its final set of fields.
 
 Rules:
-1. The output "flow.endpoints" array must contain exactly these ${endpointCount} endpoint(s) -- one object per input endpoint, each appearing exactly once. Never split one input endpoint into several output endpoints, never duplicate one, and never add one that wasn't in the input.
-2. Keep every endpoint "id" exactly as given -- do not rename, reuse, or repeat an id.
-3. Do not add, remove, or rename any field within an endpoint. Keep every field "name", "type", "required", "enumValues", and "validation" exactly as given.
-4. You may reorder the endpoints array into the most sensible sequence for a user filling out a multi-step wizard.
-5. You may reorder each endpoint's fields array.
-6. Write a clear, human-friendly "title" and "description" for the overall flow, and for each endpoint.
-7. Rewrite each field's "label" and "description" to be clear, user-facing text.
-8. List any field whose purpose or expected value is genuinely ambiguous from the spec alone in "ambiguousFields", with a short "note" explaining why -- do not change the field itself to address the ambiguity, just flag it for human review.
+1. The output "flow.endpoints" array must contain exactly these ${endpointCount} endpoint(s) -- one object per input endpoint, each appearing exactly once, identified by its exact "id". Never split, duplicate, merge, or add an endpoint.
+2. For each endpoint, "fields" must reference exactly that endpoint's own field names below (in any order you like) -- one entry per field, never a name from a different endpoint, never an invented one, never a missing one.
+3. You may reorder the endpoints array into the most sensible sequence for a user filling out a multi-step wizard.
+4. Write a clear, human-friendly "title" and "description" for the overall flow, and for each endpoint.
+5. For each field, optionally set "labelOverride" and/or "descriptionOverride" to rewrite its label/description into clear, user-facing text -- this is most of the value you add, so do it for every field where the raw text could be clearer. Omit either to keep the field's original label/description. (Field "type", "required", "enumValues", and "validation" aren't part of this output -- they're taken directly from the raw data below, so don't repeat them.)
+6. List any field whose purpose or expected value is genuinely ambiguous from the spec alone in "ambiguousFields", with a short "note" explaining why -- do not change the field itself to address the ambiguity, just flag it for human review.
 
 ${context ? context + '\n\n' : ''}Raw endpoints (JSON):
 ${JSON.stringify(input.endpoints, null, 2)}`;
 }
 
-function validateGeneratedFlowIntegrity(generated: GeneratedFlow, rawEndpoints: ParsedEndpoint[]): void {
+function expandLlmOutput(raw: LlmOutput, rawEndpoints: ParsedEndpoint[]): FlowGenerationResult {
   const rawById = new Map(rawEndpoints.map((endpoint) => [endpoint.id, endpoint]));
   const rawIds = [...rawById.keys()];
-  const generatedIds = generated.endpoints.map((endpoint) => endpoint.id);
+  const generatedIds = raw.flow.endpoints.map((endpoint) => endpoint.id);
 
   if (!sameSet(rawIds, generatedIds)) {
     throw new Error(
@@ -91,18 +151,45 @@ function validateGeneratedFlowIntegrity(generated: GeneratedFlow, rawEndpoints: 
     );
   }
 
-  for (const endpoint of generated.endpoints) {
-    const raw = rawById.get(endpoint.id);
-    if (!raw) continue; // already reported by the id-set check above
+  const endpoints = raw.flow.endpoints.map((endpoint) => {
+    const rawEndpoint = rawById.get(endpoint.id)!; // guaranteed to exist: endpoint.id passed the id-set check above
 
-    const rawFieldNames = raw.fields.map((field) => field.name);
+    const rawFieldNames = rawEndpoint.fields.map((field) => field.name);
     const generatedFieldNames = endpoint.fields.map((field) => field.name);
     if (!sameSet(rawFieldNames, generatedFieldNames)) {
       throw new Error(
         `flowGenerator: endpoint "${endpoint.id}" fields don't match the input (expected: ${rawFieldNames.join(', ')}; got: ${generatedFieldNames.join(', ')})`
       );
     }
-  }
+
+    const baseFieldsByName = new Map(rawEndpoint.fields.map((field) => [field.name, field]));
+    const fields: FieldDef[] = endpoint.fields.map((entry) => {
+      const base = baseFieldsByName.get(entry.name)!; // guaranteed: entry.name passed this endpoint's own field enum
+      return {
+        ...base,
+        label: entry.labelOverride ?? base.label,
+        description: entry.descriptionOverride ?? base.description,
+      };
+    });
+
+    return {
+      id: endpoint.id,
+      title: endpoint.title,
+      description: endpoint.description,
+      fields,
+      auth: rawEndpoint.auth, // rehydrated, never LLM-controlled -- same principle as type/required/etc.
+    };
+  });
+
+  return {
+    flow: {
+      id: raw.flow.id,
+      title: raw.flow.title,
+      description: raw.flow.description,
+      endpoints,
+    },
+    ambiguousFields: raw.ambiguousFields,
+  };
 }
 
 function sameSet(a: string[], b: string[]): boolean {

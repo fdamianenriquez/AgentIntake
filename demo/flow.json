@@ -1,18 +1,18 @@
 {
-  "id": "accountSetupWizard",
-  "title": "Payment Account Setup",
-  "description": "Create your payment account, verify your identity, and add a bank account to receive payouts — all in three simple steps.",
+  "id": "paymentAccountSetup",
+  "title": "Set Up Your Payment Account",
+  "description": "Create a new payment account, verify your identity, and add a payout method so you can receive funds.",
   "endpoints": [
     {
       "id": "createAccount",
-      "title": "Create Your Account",
-      "description": "Enter your basic information and choose whether you're signing up as an individual or a business.",
+      "title": "Create Account",
+      "description": "Register your account and choose whether it is for an individual or a business.",
       "fields": [
         {
           "name": "email",
           "type": "string",
           "label": "Email Address",
-          "description": "We'll use this to contact you and for account login.",
+          "description": "We'll use this to contact you and verify your account.",
           "required": true,
           "validation": {
             "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
@@ -22,14 +22,14 @@
           "name": "fullName",
           "type": "string",
           "label": "Full Name",
-          "description": "Your legal name as it appears on government-issued ID.",
+          "description": "As it appears on your government ID.",
           "required": true
         },
         {
           "name": "accountType",
           "type": "enum",
           "label": "Account Type",
-          "description": "Select the type that matches how you'll use this account.",
+          "description": "Select whether you're signing up as an individual or a business.",
           "required": true,
           "enumValues": [
             "individual",
@@ -43,63 +43,63 @@
     },
     {
       "id": "createVerification",
-      "title": "Verify Your Identity",
-      "description": "Provide the details we need to verify your identity. The fields shown depend on whether you chose an individual or business account in the previous step.",
+      "title": "Verify Identity",
+      "description": "Provide the verification details that apply to the account type you selected. Fields that do not apply to your account type will be hidden automatically.",
       "fields": [
         {
           "name": "dateOfBirth",
           "type": "date",
           "label": "Date of Birth",
-          "description": "Required for individual accounts. Enter your date of birth.",
+          "description": "Required for individual accounts. Format: YYYY-MM-DD.",
           "required": false
         },
         {
           "name": "governmentIdNumber",
           "type": "string",
           "label": "Government ID Number",
-          "description": "Required for individual accounts. Enter your government-issued identification number (e.g., SSN, passport number).",
+          "description": "Required for individual accounts. Enter your passport, driver’s license, or national ID number.",
           "required": false
         },
         {
           "name": "residentialAddress",
           "type": "string",
           "label": "Residential Address",
-          "description": "Required for individual accounts. Enter your current home address.",
+          "description": "Required for individual accounts. Your home address (street, city, state, ZIP/postal code).",
           "required": false
         },
         {
           "name": "legalBusinessName",
           "type": "string",
           "label": "Legal Business Name",
-          "description": "Required for business accounts. Enter the registered legal name of your business.",
+          "description": "Required for business accounts. The exact legal name registered with the government.",
           "required": false
         },
         {
           "name": "taxIdNumber",
           "type": "string",
           "label": "Tax ID Number",
-          "description": "Required for business accounts. Enter your business's tax identification number (e.g., EIN).",
+          "description": "Required for business accounts. Enter your EIN (US) or equivalent tax identifier.",
           "required": false
         },
         {
           "name": "businessRegistrationNumber",
           "type": "string",
           "label": "Business Registration Number",
-          "description": "Required for business accounts. Enter your business's official registration number.",
+          "description": "Required for business accounts. The identifier issued when your business was registered (e.g., company number).",
           "required": false
         },
         {
           "name": "businessAddress",
           "type": "string",
           "label": "Business Address",
-          "description": "Required for business accounts. Enter your business's registered address.",
+          "description": "Required for business accounts. The registered office address of your business.",
           "required": false
         },
         {
           "name": "industryCategory",
           "type": "enum",
           "label": "Industry Category",
-          "description": "Required for business accounts. Select the industry that best describes your business.",
+          "description": "Required for business accounts. Choose the sector that best describes your business.",
           "required": false,
           "enumValues": [
             "retail",
@@ -116,28 +116,28 @@
     },
     {
       "id": "createPayoutMethod",
-      "title": "Add Payout Bank Account",
-      "description": "Enter your bank account details so we can send payouts to you. The account holder name should match the name you provided earlier.",
+      "title": "Add Payout Method",
+      "description": "Enter the bank account details where you want to receive payouts.",
       "fields": [
         {
           "name": "bankName",
           "type": "string",
           "label": "Bank Name",
-          "description": "The name of your bank (e.g., Chase, Bank of America).",
+          "description": "The name of the bank where you hold the account.",
           "required": true
         },
         {
           "name": "accountHolderName",
           "type": "string",
           "label": "Account Holder Name",
-          "description": "The name on the bank account. This should match your full name (individual) or legal business name (business) from step 1.",
+          "description": "Name exactly as it appears on the bank account. Should match the name you provided earlier (individual full name or business legal name).",
           "required": true
         },
         {
           "name": "accountNumber",
           "type": "string",
           "label": "Account Number",
-          "description": "Your bank account number (4–17 digits).",
+          "description": "Your bank account number (4‑17 digits).",
           "required": true,
           "validation": {
             "pattern": "^[0-9]{4,17}$"
@@ -147,7 +147,7 @@
           "name": "routingNumber",
           "type": "string",
           "label": "Routing Number",
-          "description": "Your bank's 9-digit routing number (ABA number in the US).",
+          "description": "The 9‑digit routing number for your bank.",
           "required": true,
           "validation": {
             "pattern": "^[0-9]{9}$"
@@ -157,7 +157,7 @@
           "name": "payoutAccountType",
           "type": "enum",
           "label": "Account Type",
-          "description": "Select whether this is a checking or savings account.",
+          "description": "Select whether payouts should go to a checking or savings account.",
           "required": true,
           "enumValues": [
             "checking",
