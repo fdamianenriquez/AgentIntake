@@ -1,0 +1,143 @@
+openapi: 3.0.3
+info:
+  title: Payment Account Onboarding API
+  description: >-
+    A small example API modeled on the common shape of payment-processor
+    account onboarding (KYC/KYB-style verification), used to demonstrate
+    AgentIntake's generated multi-step wizard. Field names are deliberately
+    generic and fictional -- this demonstrates the mechanism, not real
+    compliance requirements for any jurisdiction.
+  version: 1.0.0
+paths:
+  /accounts:
+    post:
+      operationId: createAccount
+      summary: Create account
+      description: Register a new payment account and choose its type.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - fullName
+                - accountType
+              properties:
+                email:
+                  type: string
+                  pattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+                  description: The account owner's email address.
+                fullName:
+                  type: string
+                  description: The account owner's full name.
+                accountType:
+                  type: string
+                  enum:
+                    - individual
+                    - business
+                  description: Whether this account belongs to an individual or a business.
+      responses:
+        '201':
+          description: Account created.
+  /verification:
+    post:
+      operationId: createVerification
+      summary: Create verification
+      description: >-
+        Submit identity verification details. Only the fields relevant to
+        the account type chosen in the previous step apply -- OpenAPI has no
+        clean way to express "required only if accountType is X," so every
+        field here is optional at the schema level; the adaptive step
+        engine narrows this down to the right subset at runtime.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dateOfBirth:
+                  type: string
+                  format: date
+                  description: Individual accounts only. The account owner's date of birth.
+                governmentIdNumber:
+                  type: string
+                  description: Individual accounts only. A government-issued identification number.
+                residentialAddress:
+                  type: string
+                  description: Individual accounts only. The account owner's residential address.
+                legalBusinessName:
+                  type: string
+                  description: Business accounts only. The registered legal name of the business.
+                taxIdNumber:
+                  type: string
+                  description: Business accounts only. The business's tax identification number.
+                businessRegistrationNumber:
+                  type: string
+                  description: Business accounts only. The business's registration number.
+                businessAddress:
+                  type: string
+                  description: Business accounts only. The business's registered address.
+                industryCategory:
+                  type: string
+                  enum:
+                    - retail
+                    - technology
+                    - healthcare
+                    - finance
+                    - other
+                  description: Business accounts only. The industry the business operates in.
+      responses:
+        '201':
+          description: Verification details recorded.
+  /payout-methods:
+    post:
+      operationId: createPayoutMethod
+      summary: Create payout method
+      description: Add a bank account to receive payouts.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - bankName
+                - accountHolderName
+                - accountNumber
+                - routingNumber
+                - payoutAccountType
+              properties:
+                bankName:
+                  type: string
+                  description: The name of the bank.
+                accountHolderName:
+                  type: string
+                  description: >-
+                    The name on the bank account. Should plausibly match the
+                    account owner's full name (for an individual account) or
+                    legal business name (for a business account) already
+                    collected earlier in this flow -- flag it if it looks
+                    inconsistent.
+                accountNumber:
+                  type: string
+                  pattern: '^[0-9]{4,17}$'
+                  description: The bank account number.
+                routingNumber:
+                  type: string
+                  pattern: '^[0-9]{9}$'
+                  description: The bank's 9-digit routing number.
+                payoutAccountType:
+                  type: string
+                  enum:
+                    - checking
+                    - savings
+                  description: The type of bank account payouts will be sent to.
+      responses:
+        '201':
+          description: Payout method added.

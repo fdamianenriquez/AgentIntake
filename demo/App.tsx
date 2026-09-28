@@ -39,7 +39,8 @@ export function App() {
       <p className="demo-app-note">
         This demo calls a real, locally-running AgentIntake server for adaptive fields and semantic
         validation, but each step's "execute" just logs to the browser console instead of hitting a real
-        API.
+        API. Field names here are deliberately generic and fictional -- this demonstrates the mechanism,
+        not real KYC/KYB compliance requirements for any jurisdiction.
       </p>
       <AgentIntakeForm flow={flow} apiUrl={API_URL} />
     </main>
