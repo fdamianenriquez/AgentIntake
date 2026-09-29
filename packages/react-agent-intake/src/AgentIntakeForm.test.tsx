@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FieldDef, FlowDef } from '../../../server/src/flowSchema.js';
@@ -156,5 +156,68 @@ describe('AgentIntakeForm', () => {
     await user.click(screen.getByRole('button', { name: /Continue/i }));
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('That name looks fake.'));
+  });
+
+  it("propagates every control type's input through to the submitted data", async () => {
+    const execute = vi.fn().mockResolvedValue({ success: true });
+    const flow: FlowDef = {
+      id: 'test-flow',
+      title: 'Test Flow',
+      description: 'A test flow.',
+      endpoints: [{ id: 'step1', title: 'Step One', fields: oneOfEachField, execute }],
+    };
+    const user = userEvent.setup();
+    render(<AgentIntakeForm flow={flow} apiUrl="http://test.local" />);
+
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+
+    await user.type(screen.getByLabelText(/Name/), 'Jane Doe');
+    await user.type(screen.getByLabelText(/Age/), '30');
+    await user.click(screen.getByLabelText(/Subscribe/));
+    fireEvent.change(screen.getByLabelText(/Start Date/), { target: { value: '2024-06-15' } });
+    await user.selectOptions(screen.getByLabelText(/Plan/), 'pro');
+
+    await user.click(screen.getByRole('button', { name: /Continue/i }));
+
+    await waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
+    expect(execute).toHaveBeenCalledWith(
+      { name: 'Jane Doe', age: 30, subscribe: true, startDate: '2024-06-15', plan: 'pro' },
+      expect.anything()
+    );
+  });
+
+  it('renders a fatal error message when the flow has no endpoints', async () => {
+    const emptyFlow: FlowDef = { id: 'empty', title: 'Empty', description: 'No endpoints.', endpoints: [] };
+    render(<AgentIntakeForm flow={emptyFlow} apiUrl="http://test.local" />);
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/no endpoints/i));
+  });
+
+  it('shows the execution-failed banner and a Retry button that succeeds', async () => {
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce({ success: false, message: 'Downstream failed.' })
+      .mockResolvedValueOnce({ success: true });
+    const flow: FlowDef = {
+      id: 'test-flow',
+      title: 'Test Flow',
+      description: 'A test flow.',
+      endpoints: [
+        { id: 'step1', title: 'Step One', fields: [{ name: 'name', type: 'string', label: 'Name', required: true }], execute },
+      ],
+    };
+    const user = userEvent.setup();
+    render(<AgentIntakeForm flow={flow} apiUrl="http://test.local" />);
+
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+    await user.type(screen.getByLabelText(/Name/), 'Jane');
+    await user.click(screen.getByRole('button', { name: /Continue/i }));
+
+    await waitFor(() => expect(screen.getByText('Downstream failed.')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /Retry/i }));
+
+    await waitFor(() => expect(screen.getByText('All steps complete.')).toBeInTheDocument());
+    expect(execute).toHaveBeenCalledTimes(2);
   });
 });

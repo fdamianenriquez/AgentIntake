@@ -6,11 +6,18 @@ vi.mock('../llmClient.js', () => ({
   generateStructured: vi.fn(),
 }));
 
+vi.mock('../stepEngine.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../stepEngine.js')>();
+  return { ...actual, validateStepSubmission: vi.fn(actual.validateStepSubmission) };
+});
+
 import { generateStructured } from '../llmClient.js';
+import { validateStepSubmission } from '../stepEngine.js';
 import { createApp } from '../app.js';
 import { getSession } from '../sessionStore.js';
 
 const mockedGenerateStructured = vi.mocked(generateStructured);
+const mockedValidateStepSubmission = vi.mocked(validateStepSubmission);
 
 const endpoint: ParsedEndpoint = {
   id: 'createCandidate',
@@ -62,5 +69,16 @@ describe('POST /api/step/validate', () => {
 
     expect(response.status).toBe(400);
     expect(mockedGenerateStructured).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 with the error message when something genuinely unexpected breaks', async () => {
+    mockedValidateStepSubmission.mockRejectedValueOnce(new Error('unexpected failure'));
+
+    const response = await request(createApp())
+      .post('/api/step/validate')
+      .send({ sessionId: 'route-validate-session-500', endpoint, data: { email: 'a@b.com' } });
+
+    expect(response.status).toBe(500);
+    expect(response.body.error).toBe('unexpected failure');
   });
 });

@@ -180,6 +180,43 @@ describe('parseOpenApiDocument', () => {
     expect(zip).toMatchObject({ label: 'Zip', required: false });
   });
 
+  it('stops flattening beyond the max nesting depth, with a warning instead of a crash', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    // Build a schema nested one level deeper than MAX_NESTING_DEPTH (5).
+    let innermost: OpenAPIV3.SchemaObject = {
+      type: 'object',
+      properties: { tooDeep: { type: 'string' } },
+    };
+    for (let i = 0; i < 6; i++) {
+      innermost = { type: 'object', properties: { level: innermost } };
+    }
+
+    const doc = baseDoc({
+      '/candidates': {
+        post: {
+          operationId: 'createCandidate',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: { type: 'object', properties: { name: { type: 'string' }, nested: innermost } },
+              },
+            },
+          },
+          responses: {},
+        },
+      },
+    });
+
+    const [endpoint] = parseOpenApiDocument(doc);
+
+    expect(endpoint.fields.map((f) => f.name)).toContain('name');
+    expect(endpoint.fields.some((f) => f.name.endsWith('tooDeep'))).toBe(false);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('max nesting depth exceeded'));
+
+    warn.mockRestore();
+  });
+
   it('skips array-typed fields with a warning instead of crashing', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const doc = baseDoc({
@@ -322,6 +359,57 @@ describe('parseOpenApiDocument', () => {
 
       const [endpoint] = parseOpenApiDocument(doc);
       expect(endpoint.auth).toEqual({ type: 'http', scheme: 'bearer' });
+    });
+
+    it('maps an oauth2 scheme', () => {
+      const doc = baseDoc(
+        {
+          '/candidates': {
+            post: {
+              operationId: 'createCandidate',
+              security: [{ oauth2Auth: [] }],
+              responses: {},
+            },
+          },
+        },
+        {
+          components: {
+            securitySchemes: {
+              oauth2Auth: {
+                type: 'oauth2',
+                flows: { clientCredentials: { tokenUrl: 'https://example.com/token', scopes: {} } },
+              },
+            },
+          },
+        }
+      );
+
+      const [endpoint] = parseOpenApiDocument(doc);
+      expect(endpoint.auth).toEqual({ type: 'oauth2' });
+    });
+
+    it('maps an openIdConnect scheme', () => {
+      const doc = baseDoc(
+        {
+          '/candidates': {
+            post: {
+              operationId: 'createCandidate',
+              security: [{ oidcAuth: [] }],
+              responses: {},
+            },
+          },
+        },
+        {
+          components: {
+            securitySchemes: {
+              oidcAuth: { type: 'openIdConnect', openIdConnectUrl: 'https://example.com/.well-known/openid-configuration' },
+            },
+          },
+        }
+      );
+
+      const [endpoint] = parseOpenApiDocument(doc);
+      expect(endpoint.auth).toEqual({ type: 'openIdConnect' });
     });
 
     it('falls back to document-level security when the operation declares none', () => {

@@ -6,11 +6,18 @@ vi.mock('../llmClient.js', () => ({
   generateStructured: vi.fn(),
 }));
 
+vi.mock('../stepEngine.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../stepEngine.js')>();
+  return { ...actual, selectStepFields: vi.fn(actual.selectStepFields) };
+});
+
 import { generateStructured } from '../llmClient.js';
+import { selectStepFields } from '../stepEngine.js';
 import { createApp } from '../app.js';
 import { getOrCreateSession, getSession, recordValidatedStep } from '../sessionStore.js';
 
 const mockedGenerateStructured = vi.mocked(generateStructured);
+const mockedSelectStepFields = vi.mocked(selectStepFields);
 
 const endpoint: ParsedEndpoint = {
   id: 'createCandidate',
@@ -68,5 +75,20 @@ describe('POST /api/step/fields', () => {
 
     expect(response.status).toBe(400);
     expect(mockedGenerateStructured).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 with the error message when something genuinely unexpected breaks', async () => {
+    // selectStepFields degrades gracefully on its own and structurally never
+    // throws -- this simulates the "something genuinely unexpected broke"
+    // case the route's catch block exists for, proving that safety net
+    // itself works even though it's never expected to trigger normally.
+    mockedSelectStepFields.mockRejectedValueOnce(new Error('unexpected failure'));
+
+    const response = await request(createApp())
+      .post('/api/step/fields')
+      .send({ sessionId: 'route-test-session-500', endpoint });
+
+    expect(response.status).toBe(500);
+    expect(response.body.error).toBe('unexpected failure');
   });
 });

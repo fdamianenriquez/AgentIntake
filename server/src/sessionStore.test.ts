@@ -35,6 +35,10 @@ describe('sessionStore', () => {
     expect(isEndpointValidated(session.id, 'otherEndpoint')).toBe(false);
   });
 
+  it('isEndpointValidated returns false (not a throw) for a session that does not exist at all', () => {
+    expect(isEndpointValidated('does-not-exist', 'createCandidate')).toBe(false);
+  });
+
   it('does not duplicate an endpoint id when the same step is recorded twice', () => {
     const session = createSession();
     recordValidatedStep(session.id, 'createCandidate', { email: 'a@b.com' });

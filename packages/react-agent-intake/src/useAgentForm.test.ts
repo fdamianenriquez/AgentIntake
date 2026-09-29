@@ -184,6 +184,31 @@ describe('useAgentForm', () => {
     expect(validateCallsAfterRetry).toBe(validateCallsBeforeRetry); // no extra validation call
   });
 
+  it('executionFailed when execute() throws (not just returns {success:false})', async () => {
+    const execute1 = vi.fn().mockRejectedValueOnce(new Error('Network down.'));
+    const flow = makeFlow(execute1);
+    vi.stubGlobal('fetch', mockFetch({}));
+
+    const { result } = renderHook(() => useAgentForm(flow, { apiUrl: 'http://test.local' }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => result.current.updateField('email', 'a@b.com'));
+    await act(() => result.current.submitStep());
+
+    expect(result.current.currentStepStatus).toBe('executionFailed');
+    expect(result.current.executionError).toBe('Network down.');
+  });
+
+  it('sets a fatal error (not a throw) when the flow has no endpoints at all', async () => {
+    const emptyFlow: FlowDef = { id: 'empty', title: 'Empty', description: 'No endpoints.', endpoints: [] };
+    vi.stubGlobal('fetch', mockFetch({}));
+
+    const { result } = renderHook(() => useAgentForm(emptyFlow, { apiUrl: 'http://test.local' }));
+
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.error?.message).toMatch(/no endpoints/);
+  });
+
   it('updateField resets an invalid/executionFailed status back to idle', async () => {
     vi.stubGlobal(
       'fetch',
