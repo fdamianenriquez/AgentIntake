@@ -2,6 +2,7 @@
 import path from 'node:path';
 import { Command } from 'commander';
 import { registerGenerateCommand } from './commands/generate.js';
+import { registerStudioCommand } from './commands/studio.js';
 
 // .env at the project root (wherever the CLI is invoked from) is the single
 // source of truth for provider settings. Already-set environment variables (e.g.
@@ -21,6 +22,7 @@ program
   .version('0.1.0');
 
 registerGenerateCommand(program);
+registerStudioCommand(program);
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));

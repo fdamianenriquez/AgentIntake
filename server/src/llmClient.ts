@@ -28,6 +28,16 @@ const DEFAULT_MODELS: Record<LlmProvider, string> = {
   openrouter: 'openrouter/free',
 };
 
+// Exported so anything that needs to know "which .env variable holds this
+// provider's key" (e.g. Studio's setup screen) has one source of
+// truth instead of a second hardcoded copy of this mapping.
+export const API_KEY_ENV_VARS: Record<LlmProvider, string> = {
+  anthropic: 'ANTHROPIC_API_KEY',
+  openai: 'OPENAI_API_KEY',
+  google: 'GOOGLE_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY',
+};
+
 function isSupportedProvider(value: string): value is LlmProvider {
   return (SUPPORTED_PROVIDERS as readonly string[]).includes(value);
 }
@@ -58,17 +68,17 @@ export function buildModel(provider: LlmProvider) {
 
   switch (provider) {
     case 'anthropic':
-      return createAnthropic({ apiKey: requireApiKey('ANTHROPIC_API_KEY', provider) })(modelId);
+      return createAnthropic({ apiKey: requireApiKey(API_KEY_ENV_VARS.anthropic, provider) })(modelId);
     case 'openai':
       // .chat() explicitly, not the default callable: as of this SDK
       // version the bare call uses OpenAI's Responses API, which
       // OpenRouter (below) does not implement.
-      return createOpenAI({ apiKey: requireApiKey('OPENAI_API_KEY', provider) }).chat(modelId);
+      return createOpenAI({ apiKey: requireApiKey(API_KEY_ENV_VARS.openai, provider) }).chat(modelId);
     case 'google':
-      return createGoogleGenerativeAI({ apiKey: requireApiKey('GOOGLE_API_KEY', provider) })(modelId);
+      return createGoogleGenerativeAI({ apiKey: requireApiKey(API_KEY_ENV_VARS.google, provider) })(modelId);
     case 'openrouter':
       return createOpenAI({
-        apiKey: requireApiKey('OPENROUTER_API_KEY', provider),
+        apiKey: requireApiKey(API_KEY_ENV_VARS.openrouter, provider),
         baseURL: 'https://openrouter.ai/api/v1',
       }).chat(modelId);
   }
