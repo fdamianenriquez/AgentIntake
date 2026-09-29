@@ -52,7 +52,14 @@ export function SpecInput({ onGenerated }: SpecInputProps) {
       try {
         response = await fetch(url);
       } catch {
-        throw new Error("Couldn't reach that URL.");
+        // Browsers deliberately don't expose *why* a fetch failed here --
+        // a DNS/network failure and a CORS block both throw the same
+        // generic TypeError, with no way to tell them apart from JS. Name
+        // both possibilities rather than guessing, and point at the
+        // workaround (paste/upload) that sidesteps CORS entirely.
+        throw new Error(
+          "Couldn't reach that URL. It may be unreachable, or the server may not allow this page to fetch it directly (CORS) -- try pasting the spec as text or uploading it as a file instead."
+        );
       }
       if (!response.ok) throw new Error(`Couldn't reach that URL (HTTP ${response.status}).`);
       return response.text();
