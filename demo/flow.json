@@ -78,7 +78,7 @@
           "name": "taxIdNumber",
           "type": "string",
           "label": "Tax ID Number",
-          "description": "Required for business accounts. Enter your EIN (US) or equivalent tax identifier.",
+          "description": "Required for business accounts. Enter your business's tax identification number.",
           "required": false
         },
         {

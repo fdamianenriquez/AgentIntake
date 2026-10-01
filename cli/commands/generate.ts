@@ -40,7 +40,7 @@ export async function runGenerate(options: GenerateOptions): Promise<void> {
   console.log(`Wrote ${flow.endpoints.length} endpoint(s) to ${path.resolve(options.output)}`);
   console.log(
     'Review the generated flow, then add each endpoint\'s "execute" function by hand -- ' +
-      "AgentIntake never generates that part."
+      'AgentIntake never generates that part.'
   );
 
   if (ambiguousFields.length > 0) {

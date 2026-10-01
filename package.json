@@ -3,6 +3,23 @@
   "version": "0.1.0",
   "description": "Turns an OpenAPI spec into a single, AI-orchestrated, multi-step form wizard.",
   "license": "MIT",
+  "keywords": [
+    "openapi",
+    "form",
+    "wizard",
+    "multi-step",
+    "react",
+    "llm",
+    "structured-output",
+    "schema-driven"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fdamianenriquez/AgentIntake.git"
+  },
+  "engines": {
+    "node": ">=20.12"
+  },
   "private": true,
   "type": "module",
   "bin": {

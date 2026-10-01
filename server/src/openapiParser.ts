@@ -20,7 +20,7 @@ export const LARGE_SPEC_ENDPOINT_THRESHOLD = 15;
 
 export function largeSpecWarning(endpointCount: number): string | null {
   if (endpointCount <= LARGE_SPEC_ENDPOINT_THRESHOLD) return null;
-  return `Found ${endpointCount} write operations, more than AgentIntake v1 is tuned for (~${LARGE_SPEC_ENDPOINT_THRESHOLD}). Generation quality may degrade for large specs --.`;
+  return `Found ${endpointCount} write operations, more than AgentIntake v1 is tuned for (~${LARGE_SPEC_ENDPOINT_THRESHOLD}). Generation quality may degrade for large specs.`;
 }
 
 /**
