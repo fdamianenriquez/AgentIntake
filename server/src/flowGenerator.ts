@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { GeneratedFlowSchema, type FieldDef, type ParsedEndpoint } from './flowSchema.js';
-import { generateStructured } from './llmClient.js';
+import { generateStructured, LlmTimeoutError } from './llmClient.js';
+
+// Generation sends the whole spec in one prompt and returns the whole flow, so
+// it gets a much longer budget than the per-step calls in stepEngine.ts. Unlike
+// those, there is no fallback to degrade to, so a stalled model has to surface
+// as an error rather than leave the CLI or Studio waiting forever.
+export const GENERATION_TIMEOUT_MS = 120_000;
 
 export const AmbiguousFieldNoteSchema = z.object({
   endpointId: z.string(),
@@ -97,13 +103,18 @@ export async function generateFlow(input: GenerateFlowInput): Promise<FlowGenera
   const outputSchema = buildLlmOutputSchema(input.endpoints);
 
   const attempt = async (): Promise<FlowGenerationResult> => {
-    const raw = await generateStructured(prompt, outputSchema);
+    const raw = await generateStructured(prompt, outputSchema, { timeoutMs: GENERATION_TIMEOUT_MS });
     return expandLlmOutput(raw, input.endpoints);
   };
 
   try {
     return await attempt();
   } catch (firstError) {
+    // The retry exists for invalid output. A timeout isn't that, and retrying
+    // would just double the wait for a model that's already not responding.
+    if (firstError instanceof LlmTimeoutError) {
+      throw new Error(`flowGenerator: ${firstError.message} Try again, or switch to a different model or provider.`);
+    }
     try {
       return await attempt();
     } catch (secondError) {

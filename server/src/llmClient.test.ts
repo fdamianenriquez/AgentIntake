@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildModel, resolveProvider, SUPPORTED_PROVIDERS } from './llmClient.js';
+import { z } from 'zod';
+
+vi.mock('ai', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('ai')>()),
+  generateObject: vi.fn(),
+}));
+
+import { generateObject } from 'ai';
+import { buildModel, generateStructured, LlmTimeoutError, resolveProvider, SUPPORTED_PROVIDERS } from './llmClient.js';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -64,5 +72,38 @@ describe('buildModel', () => {
     ['openrouter', 'OPENROUTER_API_KEY'],
   ] as const)('fails fast with a clear error when %s has no API key configured', (provider, envVar) => {
     expect(() => buildModel(provider)).toThrow(new RegExp(`Set ${envVar}`));
+  });
+});
+
+describe('generateStructured timeout', () => {
+  it('aborts the underlying request and throws LlmTimeoutError when the model stalls', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+    let received: AbortSignal | undefined;
+    vi.mocked(generateObject).mockImplementationOnce(((options: { abortSignal?: AbortSignal }) => {
+      received = options.abortSignal;
+      return new Promise((_, reject) => {
+        options.abortSignal?.addEventListener('abort', () => reject(options.abortSignal?.reason));
+      });
+    }) as never);
+
+    await expect(generateStructured('p', z.object({}), { timeoutMs: 20 })).rejects.toBeInstanceOf(LlmTimeoutError);
+    expect(received?.aborted).toBe(true);
+  });
+
+  it('passes no abort signal when no timeout is requested', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+    vi.mocked(generateObject).mockResolvedValueOnce({ object: { ok: true } } as never);
+
+    await generateStructured('p', z.object({ ok: z.boolean() }));
+
+    expect(vi.mocked(generateObject).mock.calls.at(-1)?.[0]).toMatchObject({ abortSignal: undefined });
+  });
+
+  it('rethrows non-timeout errors unchanged', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+    const boom = new Error('boom');
+    vi.mocked(generateObject).mockRejectedValueOnce(boom);
+
+    await expect(generateStructured('p', z.object({}), { timeoutMs: 60_000 })).rejects.toBe(boom);
   });
 });

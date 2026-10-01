@@ -84,15 +84,39 @@ export function buildModel(provider: LlmProvider) {
   }
 }
 
+export interface GenerateStructuredOptions {
+  /** Aborts the underlying request (not just the wait for it) after this many ms. */
+  timeoutMs?: number;
+}
+
+export class LlmTimeoutError extends Error {
+  override name = 'LlmTimeoutError';
+}
+
 /**
  * The single entry point every LLM touchpoint (flowGenerator, stepEngine)
  * calls. Reads LLM_PROVIDER/LLM_MODEL + the resolved provider's API key from
  * the environment, requests structured output, and returns it already
  * Zod-validated -- callers never see a raw/untrusted response.
  */
-export async function generateStructured<T>(prompt: string, schema: z.ZodType<T>): Promise<T> {
+export async function generateStructured<T>(
+  prompt: string,
+  schema: z.ZodType<T>,
+  options: GenerateStructuredOptions = {}
+): Promise<T> {
   const provider = resolveProvider();
   const model = buildModel(provider);
-  const { object } = await generateObject({ model, schema, prompt });
-  return object;
+  const abortSignal = options.timeoutMs ? AbortSignal.timeout(options.timeoutMs) : undefined;
+
+  try {
+    const { object } = await generateObject({ model, schema, prompt, abortSignal });
+    return object;
+  } catch (error) {
+    // Checked via the signal itself, not the error's shape: the SDK may wrap
+    // the abort reason differently across providers and versions.
+    if (abortSignal?.aborted) {
+      throw new LlmTimeoutError(`The model did not respond within ${Math.round(options.timeoutMs! / 1000)} seconds.`);
+    }
+    throw error;
+  }
 }

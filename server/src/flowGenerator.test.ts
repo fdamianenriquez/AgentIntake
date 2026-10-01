@@ -2,12 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ParsedEndpoint } from './flowSchema.js';
 import type { FlowGenerationResult } from './flowGenerator.js';
 
-vi.mock('./llmClient.js', () => ({
+vi.mock('./llmClient.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./llmClient.js')>()),
   generateStructured: vi.fn(),
 }));
 
-import { generateStructured } from './llmClient.js';
-import { generateFlow } from './flowGenerator.js';
+import { generateStructured, LlmTimeoutError } from './llmClient.js';
+import { generateFlow, GENERATION_TIMEOUT_MS } from './flowGenerator.js';
 
 const mockedGenerateStructured = vi.mocked(generateStructured);
 
@@ -206,6 +207,25 @@ describe('generateFlow', () => {
       /failed to generate a valid flow after 2 attempts/
     );
     expect(mockedGenerateStructured).toHaveBeenCalledTimes(2);
+  });
+
+  it('passes a timeout to every generation attempt', async () => {
+    mockedGenerateStructured.mockResolvedValueOnce(narrowLlmResult());
+
+    await generateFlow({ endpoints: rawEndpoints });
+
+    expect(mockedGenerateStructured).toHaveBeenCalledWith(expect.any(String), expect.anything(), {
+      timeoutMs: GENERATION_TIMEOUT_MS,
+    });
+  });
+
+  it('fails with a clear message and does NOT retry when the model times out', async () => {
+    mockedGenerateStructured.mockRejectedValueOnce(new LlmTimeoutError('The model did not respond within 120 seconds.'));
+
+    await expect(generateFlow({ endpoints: rawEndpoints })).rejects.toThrow(
+      /did not respond within 120 seconds.*different model or provider/
+    );
+    expect(mockedGenerateStructured).toHaveBeenCalledTimes(1);
   });
 
   it('includes spec title/description context in the prompt when provided', async () => {
