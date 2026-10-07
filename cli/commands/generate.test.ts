@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { FlowGenerationResult } from '../../server/src/flowGenerator.js';
+import type { FlowGenerationResult } from '../../packages/react-agent-intake/src/contracts.js';
 
 vi.mock('../../server/src/llmClient.js', () => ({
   resolveProvider: vi.fn(() => 'anthropic'),

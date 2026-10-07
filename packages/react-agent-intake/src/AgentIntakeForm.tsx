@@ -1,4 +1,4 @@
-import type { FlowDef } from '../../../server/src/flowSchema.js';
+import type { FlowDef } from './contracts.js';
 import { useAgentForm, type UseAgentFormOptions } from './useAgentForm.js';
 import { FieldControl } from './fieldControls/index.js';
 

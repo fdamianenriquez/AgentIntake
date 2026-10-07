@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { SUPPORTED_PROVIDERS, type LlmProvider } from '../server/src/llmClient.js';
+import { SUPPORTED_PROVIDERS, type LlmProvider } from '../server/src/providers.js';
 
 export interface ProviderSetupProps {
   onDone: () => void;

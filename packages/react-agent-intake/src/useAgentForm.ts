@@ -1,19 +1,28 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { EndpointDef, FieldDef, FlowDef } from '../../../server/src/flowSchema.js';
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
+import type { EndpointDef, ExecContext, FieldDef, FlowDef, OperationResult } from './contracts.js';
+import { implementedCapabilities, normalizeResult, operationsOf, resultFromError } from './operations.js';
 
 // StepStatus (README: "The `StepStatus` lifecycle") is the single source of truth for a step's
 // lifecycle -- never inferred from separate booleans. 'complete' is
-// reserved exclusively for a successful execute(); a step that only passed
+// reserved exclusively for a successful create; a step that only passed
 // semantic validation is 'executing' or 'executionFailed', never 'complete'.
 export type StepStatus = 'idle' | 'validating' | 'invalid' | 'executing' | 'complete' | 'executionFailed';
 
+/** What the hook remembers about each step, kept after the user moves on. */
+export interface StepRecord {
+  endpointId: string;
+  /** The last values submitted for this step. */
+  values: Record<string, unknown>;
+  /** The last create result, including `resourceId` when the author returned one. */
+  result?: OperationResult;
+  status: StepStatus;
+}
+
 export interface UseAgentFormOptions {
   apiUrl: string;
-  // Not shown type snippet, but required direct-from-
-  // browser auth pattern: "useAgentForm accepts an optional getAuthHeaders
-  // ... that flows into execute()'s context argument." Included here to
-  // actually satisfy that.
-  getAuthHeaders?: () => Record<string, string>;
+  // The direct-from-browser auth pattern (README: "Authentication model"):
+  // flows into each operation's context. May be async (e.g. refreshing a token).
+  getAuthHeaders?: () => Promise<Record<string, string>> | Record<string, string>;
 }
 
 export interface UseAgentFormResult {
@@ -25,15 +34,15 @@ export interface UseAgentFormResult {
   errors: Record<string, string>;
   currentStepStatus: StepStatus;
   executionError: string | null;
-  // Not type snippet either, but requires a distinct signal for
-  // "fetching this step's adapted fields," which currentStepStatus (about
-  // submitStep(), not step entry) doesn't cover.
+  // A distinct signal for "fetching this step's adapted fields,"
+  // which currentStepStatus (about submitStep(), not step entry) doesn't cover.
   loading: boolean;
   updateField: (fieldName: string, value: unknown) => void;
   submitStep: () => Promise<void>;
   retryExecution: () => Promise<void>;
   completedEndpoints: string[];
   isComplete: boolean;
+  stepRecords: Record<string, StepRecord>;
   error: Error | null;
 }
 
@@ -49,9 +58,18 @@ interface StepValidateResponse {
   degraded: boolean;
 }
 
-function toWireEndpoint(endpoint: EndpointDef): Omit<EndpointDef, 'execute'> {
-  const { execute: _execute, ...rest } = endpoint;
-  return rest;
+// Functions never go over the wire; the server only learns which operations
+// exist, as booleans.
+function toWireEndpoint(endpoint: EndpointDef) {
+  const { execute: _execute, operations: _operations, ...rest } = endpoint;
+  return { ...rest, capabilities: implementedCapabilities(endpoint) };
+}
+
+// crypto.randomUUID only exists in secure contexts (HTTPS or localhost);
+// getRandomValues is available everywhere, so a plain-HTTP deployment still works.
+function randomId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 // Fast, local checks per FieldDef, before any network call -- not a
@@ -130,28 +148,148 @@ async function postStepValidate(
   return response.json();
 }
 
-// crypto.randomUUID only exists in secure contexts (HTTPS or localhost);
-// getRandomValues is available everywhere, so a plain-HTTP deployment still works.
-function newSessionId(): string {
-  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
-  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
+// ---------------------------------------------------------------------------
+// State: one reducer, so combinations the StepStatus machine forbids can't be
+// represented by separately-updated pieces of state.
+// ---------------------------------------------------------------------------
+
+interface FormState {
+  currentStepIndex: number;
+  currentStepFields: FieldDef[];
+  suggestedValues: Record<string, unknown>;
+  values: Record<string, unknown>;
+  errors: Record<string, string>;
+  executionError: string | null;
+  loading: boolean;
+  error: Error | null;
+  records: Record<string, StepRecord>;
+  /** Per endpoint: the key for the create currently being attempted. */
+  idempotencyKeys: Record<string, string>;
+}
+
+type FormAction =
+  | { type: 'fatal'; error: Error }
+  | { type: 'stepEntered'; fields: FieldDef[] }
+  | { type: 'fieldsLoaded'; fields: FieldDef[]; suggestedValues: Record<string, unknown> }
+  | { type: 'fieldsFellBack'; fields: FieldDef[] }
+  | { type: 'fieldUpdated'; endpointId: string; name: string; value: unknown }
+  | { type: 'clientInvalid'; endpointId: string; errors: Record<string, string> }
+  | { type: 'validating'; endpointId: string }
+  | { type: 'serverInvalid'; endpointId: string; errors: Record<string, string> }
+  | { type: 'executing'; endpointId: string; idempotencyKey: string }
+  | { type: 'createSucceeded'; endpointId: string; values: Record<string, unknown>; result: OperationResult; endpointIds: string[] }
+  | { type: 'createFailed'; endpointId: string; values: Record<string, unknown>; result: OperationResult };
+
+const initialState: FormState = {
+  currentStepIndex: 0,
+  currentStepFields: [],
+  suggestedValues: {},
+  values: {},
+  errors: {},
+  executionError: null,
+  loading: false,
+  error: null,
+  records: {},
+  idempotencyKeys: {},
+};
+
+function withStatus(state: FormState, endpointId: string, status: StepStatus, patch: Partial<StepRecord> = {}) {
+  const previous = state.records[endpointId] ?? { endpointId, values: {}, status: 'idle' as StepStatus };
+  return { ...state.records, [endpointId]: { ...previous, ...patch, status } };
+}
+
+function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
+  const { [key]: _removed, ...rest } = record;
+  return rest;
+}
+
+// After a successful step, go to the first step in flow order
+// that isn't complete -- not simply index + 1, which stops being right once
+// steps can be revisited. With every step complete, stay where we are.
+function nextStepIndex(records: Record<string, StepRecord>, endpointIds: string[], current: number): number {
+  const next = endpointIds.findIndex((id) => records[id]?.status !== 'complete');
+  return next === -1 ? current : next;
+}
+
+function reducer(state: FormState, action: FormAction): FormState {
+  switch (action.type) {
+    case 'fatal':
+      return { ...state, error: action.error };
+    case 'stepEntered':
+      return {
+        ...state,
+        loading: true,
+        errors: {},
+        executionError: null,
+        suggestedValues: {},
+        values: {},
+        currentStepFields: action.fields,
+      };
+    case 'fieldsLoaded':
+      return {
+        ...state,
+        loading: false,
+        currentStepFields: action.fields,
+        suggestedValues: action.suggestedValues,
+        values: { ...action.suggestedValues, ...state.values },
+      };
+    case 'fieldsFellBack':
+      return { ...state, loading: false, currentStepFields: action.fields, suggestedValues: {} };
+    case 'fieldUpdated': {
+      const status = state.records[action.endpointId]?.status ?? 'idle';
+      const reopen = status === 'invalid' || status === 'executionFailed';
+      return {
+        ...state,
+        values: { ...state.values, [action.name]: action.value },
+        errors: reopen ? {} : state.errors,
+        executionError: reopen ? null : state.executionError,
+        records: reopen ? withStatus(state, action.endpointId, 'idle') : state.records,
+        // New values make it a different logical operation.
+        idempotencyKeys: withoutKey(state.idempotencyKeys, action.endpointId),
+      };
+    }
+    case 'clientInvalid':
+      return { ...state, errors: action.errors, records: withStatus(state, action.endpointId, 'invalid') };
+    case 'validating':
+      return { ...state, errors: {}, records: withStatus(state, action.endpointId, 'validating') };
+    case 'serverInvalid':
+      return { ...state, errors: action.errors, records: withStatus(state, action.endpointId, 'invalid') };
+    case 'executing':
+      return {
+        ...state,
+        executionError: null,
+        records: withStatus(state, action.endpointId, 'executing'),
+        idempotencyKeys: { ...state.idempotencyKeys, [action.endpointId]: action.idempotencyKey },
+      };
+    case 'createSucceeded': {
+      const records = withStatus(state, action.endpointId, 'complete', { values: action.values, result: action.result });
+      return {
+        ...state,
+        records,
+        idempotencyKeys: withoutKey(state.idempotencyKeys, action.endpointId),
+        currentStepIndex: nextStepIndex(records, action.endpointIds, state.currentStepIndex),
+      };
+    }
+    case 'createFailed':
+      return {
+        ...state,
+        executionError: action.result.message ?? 'execute() reported failure.',
+        records: withStatus(state, action.endpointId, 'executionFailed', { values: action.values, result: action.result }),
+      };
+  }
 }
 
 export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAgentFormResult {
   const sessionIdRef = useRef<string | undefined>(undefined);
   if (!sessionIdRef.current) {
-    sessionIdRef.current = newSessionId();
+    sessionIdRef.current = randomId();
   }
 
-  const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [currentStepFields, setCurrentStepFields] = useState<FieldDef[]>([]);
-  const [suggestedValues, setSuggestedValues] = useState<Record<string, unknown>>({});
-  const [values, setValues] = useState<Record<string, unknown>>({});
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [executionError, setExecutionError] = useState<string | null>(null);
-  const [stepStatuses, setStepStatuses] = useState<Record<string, StepStatus>>({});
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const [state, dispatch] = useReducer(reducer, initialState);
+  // Callbacks read the latest state through this ref, so they don't need to be
+  // recreated (and re-subscribed by the host) on every keystroke.
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const isMountedRef = useRef(true);
   useEffect(() => {
@@ -161,11 +299,9 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
     };
   }, []);
 
-  const currentEndpoint = flow.endpoints[currentStepIndex];
+  const warnedMissingIdRef = useRef(new Set<string>());
 
-  const setStepStatus = useCallback((endpointId: string, status: StepStatus) => {
-    setStepStatuses((prev) => ({ ...prev, [endpointId]: status }));
-  }, []);
+  const currentEndpoint = flow.endpoints[state.currentStepIndex];
 
   // On entering a step, fetch its AI-adapted fields. If the
   // request itself fails (not the server's own graceful degradation, which
@@ -174,23 +310,17 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
   // already has from `flow`. Aborts on step change/unmount.
   useEffect(() => {
     if (!currentEndpoint) {
-      setError(new Error('useAgentForm: flow has no endpoints.'));
+      dispatch({ type: 'fatal', error: new Error('useAgentForm: flow has no endpoints.') });
       return;
     }
 
     const controller = new AbortController();
-    setLoading(true);
-    setErrors({});
-    setExecutionError(null);
-    setSuggestedValues({});
-    setValues({});
-    setCurrentStepFields(currentEndpoint.fields);
+    dispatch({ type: 'stepEntered', fields: currentEndpoint.fields });
 
     fetchStepFields(options.apiUrl, sessionIdRef.current!, currentEndpoint, controller.signal)
       .then((result) => {
-        setCurrentStepFields(result.fields);
-        setSuggestedValues(result.suggestedValues);
-        setValues((prev) => ({ ...result.suggestedValues, ...prev }));
+        if (controller.signal.aborted) return;
+        dispatch({ type: 'fieldsLoaded', fields: result.fields, suggestedValues: result.suggestedValues });
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
@@ -198,57 +328,70 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
           `useAgentForm: /api/step/fields failed for "${currentEndpoint.id}", falling back to the full base field list.`,
           err
         );
-        setCurrentStepFields(currentEndpoint.fields);
-        setSuggestedValues({});
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        dispatch({ type: 'fieldsFellBack', fields: currentEndpoint.fields });
       });
 
     return () => controller.abort();
     // Keyed on ids, not on the flow object: a host that rebuilds an equal flow
-    // on every render (e.g. to attach execute functions) must not wipe what
-    // the user has typed or trigger another LLM call.
+    // on every render (e.g. to attach operations) must not wipe what the user
+    // has typed or trigger another LLM call.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStepIndex, flow.id, currentEndpoint?.id, options.apiUrl]);
+  }, [state.currentStepIndex, flow.id, currentEndpoint?.id, options.apiUrl]);
 
-  const runExecute = useCallback(
+  const runCreate = useCallback(
     async (endpoint: EndpointDef, data: Record<string, unknown>) => {
-      setStepStatus(endpoint.id, 'executing');
-      setExecutionError(null);
+      const current = stateRef.current;
+      const idempotencyKey = current.idempotencyKeys[endpoint.id] ?? randomId();
+      dispatch({ type: 'executing', endpointId: endpoint.id, idempotencyKey });
 
+      const results: Record<string, OperationResult> = {};
+      for (const record of Object.values(current.records)) {
+        if (record.status === 'complete' && record.result) results[record.endpointId] = record.result;
+      }
+      const context: ExecContext = { getAuthHeaders: options.getAuthHeaders, results, idempotencyKey };
+
+      let result: OperationResult;
       try {
-        const result = await endpoint.execute(data, { getAuthHeaders: options.getAuthHeaders });
-        if (!isMountedRef.current) return;
-
-        if (result.success) {
-          setStepStatus(endpoint.id, 'complete');
-          setCurrentStepIndex((index) => Math.min(index + 1, flow.endpoints.length - 1));
-        } else {
-          setStepStatus(endpoint.id, 'executionFailed');
-          setExecutionError(result.message ?? 'execute() reported failure.');
-        }
+        result = normalizeResult(await operationsOf(endpoint).create(data, context));
       } catch (err) {
-        if (!isMountedRef.current) return;
-        setStepStatus(endpoint.id, 'executionFailed');
-        setExecutionError(err instanceof Error ? err.message : String(err));
+        result = resultFromError(err);
+      }
+      if (!isMountedRef.current) return;
+
+      if (result.success) {
+        const declared = implementedCapabilities(endpoint);
+        const declaresItemOps = declared.read || declared.update || declared.undo;
+        if (declaresItemOps && !result.resourceId && !warnedMissingIdRef.current.has(endpoint.id)) {
+          warnedMissingIdRef.current.add(endpoint.id);
+          console.warn(
+            `useAgentForm: "${endpoint.id}" implements read/update/undo, but create() returned no resourceId, so those operations can't be used for this step.`
+          );
+        }
+        dispatch({
+          type: 'createSucceeded',
+          endpointId: endpoint.id,
+          values: data,
+          result,
+          endpointIds: flow.endpoints.map((e) => e.id),
+        });
+      } else {
+        dispatch({ type: 'createFailed', endpointId: endpoint.id, values: data, result });
       }
     },
-    [flow.endpoints.length, options.getAuthHeaders, setStepStatus]
+    [flow.endpoints, options.getAuthHeaders]
   );
 
   const submitStep = useCallback(async () => {
     if (!currentEndpoint) return;
+    const { currentStepFields, values } = stateRef.current;
 
     const clientErrors = validateClientSide(currentStepFields, values);
     if (Object.keys(clientErrors).length > 0) {
-      setErrors(clientErrors);
-      setStepStatus(currentEndpoint.id, 'invalid');
+      dispatch({ type: 'clientInvalid', endpointId: currentEndpoint.id, errors: clientErrors });
       return;
     }
 
-    setStepStatus(currentEndpoint.id, 'validating');
-    setErrors({});
+    dispatch({ type: 'validating', endpointId: currentEndpoint.id });
 
     let valid = true;
     let serverErrors: Record<string, string> = {};
@@ -270,58 +413,53 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
     if (!isMountedRef.current) return;
 
     if (!valid) {
-      setErrors(serverErrors);
-      setStepStatus(currentEndpoint.id, 'invalid');
+      dispatch({ type: 'serverInvalid', endpointId: currentEndpoint.id, errors: serverErrors });
       return;
     }
 
-    await runExecute(currentEndpoint, values);
-  }, [currentEndpoint, currentStepFields, values, options.apiUrl, runExecute, setStepStatus]);
+    await runCreate(currentEndpoint, values);
+  }, [currentEndpoint, options.apiUrl, runCreate]);
 
+  // Re-runs create with the same, already-validated data and the same
+  // idempotency key -- no new semantic check.
   const retryExecution = useCallback(async () => {
     if (!currentEndpoint) return;
-    if (stepStatuses[currentEndpoint.id] !== 'executionFailed') return;
-    await runExecute(currentEndpoint, values);
-  }, [currentEndpoint, stepStatuses, values, runExecute]);
+    if (stateRef.current.records[currentEndpoint.id]?.status !== 'executionFailed') return;
+    await runCreate(currentEndpoint, stateRef.current.values);
+  }, [currentEndpoint, runCreate]);
 
   const updateField = useCallback(
     (fieldName: string, value: unknown) => {
-      setValues((prev) => ({ ...prev, [fieldName]: value }));
-
       if (!currentEndpoint) return;
-      const status = stepStatuses[currentEndpoint.id];
-      if (status === 'invalid' || status === 'executionFailed') {
-        setStepStatus(currentEndpoint.id, 'idle');
-        setErrors({});
-        setExecutionError(null);
-      }
+      dispatch({ type: 'fieldUpdated', endpointId: currentEndpoint.id, name: fieldName, value });
     },
-    [currentEndpoint, stepStatuses, setStepStatus]
+    [currentEndpoint]
   );
 
   const completedEndpoints = useMemo(
-    () => flow.endpoints.filter((endpoint) => stepStatuses[endpoint.id] === 'complete').map((endpoint) => endpoint.id),
-    [flow.endpoints, stepStatuses]
+    () => flow.endpoints.filter((endpoint) => state.records[endpoint.id]?.status === 'complete').map((endpoint) => endpoint.id),
+    [flow.endpoints, state.records]
   );
 
-  const isComplete = completedEndpoints.length === flow.endpoints.length;
-  const currentStepStatus: StepStatus = currentEndpoint ? stepStatuses[currentEndpoint.id] ?? 'idle' : 'idle';
+  const isComplete = flow.endpoints.length > 0 && completedEndpoints.length === flow.endpoints.length;
+  const currentStepStatus: StepStatus = currentEndpoint ? state.records[currentEndpoint.id]?.status ?? 'idle' : 'idle';
 
   return {
-    currentStepIndex,
+    currentStepIndex: state.currentStepIndex,
     totalSteps: flow.endpoints.length,
-    currentStepFields,
-    suggestedValues,
-    values,
-    errors,
+    currentStepFields: state.currentStepFields,
+    suggestedValues: state.suggestedValues,
+    values: state.values,
+    errors: state.errors,
     currentStepStatus,
-    executionError,
-    loading,
+    executionError: state.executionError,
+    loading: state.loading,
     updateField,
     submitStep,
     retryExecution,
     completedEndpoints,
     isComplete,
-    error,
+    stepRecords: state.records,
+    error: state.error,
   };
 }

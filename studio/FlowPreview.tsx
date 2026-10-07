@@ -1,5 +1,5 @@
 import { AgentIntakeForm } from '../packages/react-agent-intake/src/index.js';
-import type { FlowDef } from '../server/src/flowSchema.js';
+import type { FlowDef } from '../packages/react-agent-intake/src/contracts.js';
 import type { GenerateResponse } from './SpecInput.js';
 
 export interface FlowPreviewProps {

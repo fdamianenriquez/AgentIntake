@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { FieldDef } from './flowSchema.js';
+import type { FieldDef } from '../../packages/react-agent-intake/src/contracts.js';
 
 vi.mock('./llmClient.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./llmClient.js')>()),

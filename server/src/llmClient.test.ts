@@ -7,7 +7,8 @@ vi.mock('ai', async (importOriginal) => ({
 }));
 
 import { generateObject } from 'ai';
-import { buildModel, generateStructured, LlmTimeoutError, resolveProvider, SUPPORTED_PROVIDERS } from './llmClient.js';
+import { buildModel, generateStructured, LlmTimeoutError, resolveProvider } from './llmClient.js';
+import { SUPPORTED_PROVIDERS } from './providers.js';
 
 afterEach(() => {
   vi.unstubAllEnvs();

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ParsedEndpoint } from './flowSchema.js';
-import type { FlowGenerationResult } from './flowGenerator.js';
+import type { ParsedEndpoint } from '../../packages/react-agent-intake/src/contracts.js';
+import type { FlowGenerationResult } from '../../packages/react-agent-intake/src/contracts.js';
 
 vi.mock('./llmClient.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./llmClient.js')>()),

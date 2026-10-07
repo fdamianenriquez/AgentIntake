@@ -1,4 +1,4 @@
-import type { FieldDef } from '../../../../server/src/flowSchema.js';
+import type { FieldDef } from '../contracts.js';
 
 export interface FieldControlProps {
   field: FieldDef;

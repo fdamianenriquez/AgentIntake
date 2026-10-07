@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { GeneratedFlowSchema, type FieldDef, type ParsedEndpoint } from './flowSchema.js';
+import {
+  AmbiguousFieldNoteSchema,
+  type FieldDef,
+  type FlowGenerationResult,
+  type ParsedEndpoint,
+} from '../../packages/react-agent-intake/src/contracts.js';
 import { generateStructured, LlmTimeoutError } from './llmClient.js';
 
 // Generation sends the whole spec in one prompt and returns the whole flow, so
@@ -7,19 +12,6 @@ import { generateStructured, LlmTimeoutError } from './llmClient.js';
 // those, there is no fallback to degrade to, so a stalled model has to surface
 // as an error rather than leave the CLI or Studio waiting forever.
 export const GENERATION_TIMEOUT_MS = 120_000;
-
-export const AmbiguousFieldNoteSchema = z.object({
-  endpointId: z.string(),
-  fieldName: z.string(),
-  note: z.string(),
-});
-export type AmbiguousFieldNote = z.infer<typeof AmbiguousFieldNoteSchema>;
-
-export const FlowGenerationResultSchema = z.object({
-  flow: GeneratedFlowSchema,
-  ambiguousFields: z.array(AmbiguousFieldNoteSchema),
-});
-export type FlowGenerationResult = z.infer<typeof FlowGenerationResultSchema>;
 
 export interface GenerateFlowInput {
   endpoints: ParsedEndpoint[];

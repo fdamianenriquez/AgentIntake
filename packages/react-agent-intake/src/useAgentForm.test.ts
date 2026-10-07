@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { EndpointDef, FieldDef, FlowDef } from '../../../server/src/flowSchema.js';
+import type { ExecuteFn, FieldDef, FlowDef } from './contracts.js';
 import { useAgentForm } from './useAgentForm.js';
 
 const step1Fields: FieldDef[] = [{ name: 'email', type: 'string', label: 'Email', required: true }];
 const step2Fields: FieldDef[] = [{ name: 'role', type: 'string', label: 'Role', required: true }];
 
-function makeFlow(execute1: EndpointDef['execute'], execute2: EndpointDef['execute'] = vi.fn()): FlowDef {
+function makeFlow(execute1: ExecuteFn, execute2: ExecuteFn = vi.fn()): FlowDef {
   return {
     id: 'test-flow',
     title: 'Test Flow',
@@ -84,7 +84,10 @@ describe('useAgentForm', () => {
     act(() => result.current.updateField('email', 'a@b.com'));
     await act(() => result.current.submitStep());
 
-    expect(execute1).toHaveBeenCalledWith({ email: 'a@b.com' }, { getAuthHeaders: undefined });
+    expect(execute1).toHaveBeenCalledWith(
+      { email: 'a@b.com' },
+      { getAuthHeaders: undefined, results: {}, idempotencyKey: expect.any(String) }
+    );
     expect(result.current.completedEndpoints).toEqual(['step1']);
     expect(result.current.currentStepIndex).toBe(1);
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -303,5 +306,169 @@ describe('useAgentForm stability', () => {
     } finally {
       Object.defineProperty(crypto, 'randomUUID', { value: original, configurable: true });
     }
+  });
+});
+
+describe('useAgentForm operations', () => {
+  async function completeStep1(result: ReturnType<typeof renderHook<ReturnType<typeof useAgentForm>, unknown>>['result']) {
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.updateField('email', 'a@b.com'));
+    await act(() => result.current.submitStep());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+  }
+
+  it('passes earlier steps results (e.g. a created id) to later steps via ctx.results', async () => {
+    const create1 = vi.fn().mockResolvedValue({ success: true, resourceId: 'acct_1', output: { tier: 'gold' } });
+    const create2 = vi.fn().mockResolvedValue({ success: true });
+    const { result } = renderHook(() => useAgentForm(makeFlow(create1, create2), { apiUrl: 'http://test.local' }));
+
+    await completeStep1(result);
+    act(() => result.current.updateField('role', 'engineer'));
+    await act(() => result.current.submitStep());
+
+    expect(create2).toHaveBeenCalledWith(
+      { role: 'engineer' },
+      expect.objectContaining({ results: { step1: { success: true, resourceId: 'acct_1', output: { tier: 'gold' } } } })
+    );
+  });
+
+  it('records values and the create result per step in stepRecords', async () => {
+    const create1 = vi.fn().mockResolvedValue({ success: true, resourceId: 'acct_1' });
+    const { result } = renderHook(() => useAgentForm(makeFlow(create1), { apiUrl: 'http://test.local' }));
+
+    await completeStep1(result);
+
+    expect(result.current.stepRecords.step1).toEqual({
+      endpointId: 'step1',
+      status: 'complete',
+      values: { email: 'a@b.com' },
+      result: { success: true, resourceId: 'acct_1' },
+    });
+  });
+
+  it('accepts operations.create in place of execute', async () => {
+    const create = vi.fn().mockResolvedValue({ success: true, resourceId: 'x' });
+    const flow: FlowDef = {
+      id: 'ops',
+      title: 'Ops',
+      description: 'd',
+      endpoints: [{ id: 'step1', title: 'Step 1', fields: step1Fields, operations: { create } }],
+    };
+    const { result } = renderHook(() => useAgentForm(flow, { apiUrl: 'http://test.local' }));
+
+    await completeStep1(result);
+
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(result.current.isComplete).toBe(true);
+  });
+
+  it('keeps the same idempotency key across a retry, and uses a new one after the user edits', async () => {
+    const execute1 = vi
+      .fn()
+      .mockResolvedValueOnce({ success: false, message: 'timeout' })
+      .mockResolvedValueOnce({ success: false, message: 'timeout' })
+      .mockResolvedValueOnce({ success: true });
+    const { result } = renderHook(() => useAgentForm(makeFlow(execute1), { apiUrl: 'http://test.local' }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => result.current.updateField('email', 'a@b.com'));
+    await act(() => result.current.submitStep());
+    await act(() => result.current.retryExecution());
+    act(() => result.current.updateField('email', 'c@d.com'));
+    await act(() => result.current.submitStep());
+
+    const keys = execute1.mock.calls.map((call) => call[1].idempotencyKey);
+    expect(keys[0]).toBe(keys[1]);
+    expect(keys[2]).not.toBe(keys[1]);
+  });
+
+  it('normalizes a failure without a cause, and a thrown error, into failure.kind "other"', async () => {
+    const execute1 = vi
+      .fn()
+      .mockResolvedValueOnce({ success: false, message: 'Nope.' })
+      .mockRejectedValueOnce(new Error('Boom.'));
+    const { result } = renderHook(() => useAgentForm(makeFlow(execute1), { apiUrl: 'http://test.local' }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => result.current.updateField('email', 'a@b.com'));
+    await act(() => result.current.submitStep());
+    expect(result.current.stepRecords.step1.result?.failure).toEqual({ kind: 'other', message: 'Nope.' });
+
+    await act(() => result.current.retryExecution());
+    expect(result.current.stepRecords.step1.result).toEqual({
+      success: false,
+      message: 'Boom.',
+      failure: { kind: 'other', message: 'Boom.' },
+    });
+    expect(result.current.executionError).toBe('Boom.');
+  });
+
+  it('warns once when read/update/undo are implemented but create returned no resourceId', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const flow: FlowDef = {
+      id: 'ops',
+      title: 'Ops',
+      description: 'd',
+      endpoints: [
+        {
+          id: 'step1',
+          title: 'Step 1',
+          fields: step1Fields,
+          operations: { create: vi.fn().mockResolvedValue({ success: true }), undo: vi.fn() },
+        },
+      ],
+    };
+    const { result } = renderHook(() => useAgentForm(flow, { apiUrl: 'http://test.local' }));
+
+    await completeStep1(result);
+
+    expect(warn.mock.calls.filter(([message]) => String(message).includes('returned no resourceId'))).toHaveLength(1);
+    warn.mockRestore();
+  });
+
+  it('sends the implemented capabilities (never the functions) to the server', async () => {
+    const fetchMock = mockFetch({});
+    vi.stubGlobal('fetch', fetchMock);
+    const flow: FlowDef = {
+      id: 'ops',
+      title: 'Ops',
+      description: 'd',
+      endpoints: [
+        { id: 'step1', title: 'Step 1', fields: step1Fields, operations: { create: vi.fn(), read: vi.fn(), undo: vi.fn() } },
+      ],
+    };
+    const { result } = renderHook(() => useAgentForm(flow, { apiUrl: 'http://test.local' }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const sent = JSON.parse(fetchMock.mock.calls[0][1].body as string).endpoint;
+    expect(sent.capabilities).toEqual({ read: true, update: false, undo: true });
+    expect(sent).not.toHaveProperty('operations');
+    expect(sent).not.toHaveProperty('execute');
+  });
+
+  it('after a step completes, moves to the first step in flow order that is not complete', async () => {
+    const flow: FlowDef = {
+      id: 'three',
+      title: 'Three',
+      description: 'd',
+      endpoints: [
+        { id: 'step1', title: 'Step 1', fields: step1Fields, execute: vi.fn().mockResolvedValue({ success: true }) },
+        { id: 'step2', title: 'Step 2', fields: step2Fields, execute: vi.fn().mockResolvedValue({ success: true }) },
+        { id: 'step3', title: 'Step 3', fields: [], execute: vi.fn().mockResolvedValue({ success: true }) },
+      ],
+    };
+    const { result } = renderHook(() => useAgentForm(flow, { apiUrl: 'http://test.local' }));
+
+    await completeStep1(result);
+    expect(result.current.currentStepIndex).toBe(1);
+
+    act(() => result.current.updateField('role', 'engineer'));
+    await act(() => result.current.submitStep());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.currentStepIndex).toBe(2);
+
+    await act(() => result.current.submitStep());
+    expect(result.current.isComplete).toBe(true);
+    expect(result.current.currentStepIndex).toBe(2);
   });
 });

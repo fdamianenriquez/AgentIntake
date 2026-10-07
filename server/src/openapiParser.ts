@@ -1,9 +1,9 @@
 import SwaggerParser from '@apidevtools/swagger-parser';
 import { load as loadYaml } from 'js-yaml';
 import type { OpenAPIV3 } from 'openapi-types';
-import { type AuthRequirement, type FieldDef, type ParsedEndpoint } from './flowSchema.js';
+import { type AuthRequirement, type FieldDef, type ParsedEndpoint } from '../../packages/react-agent-intake/src/contracts.js';
 
-export { ParsedEndpointSchema, type ParsedEndpoint } from './flowSchema.js';
+export { ParsedEndpointSchema, type ParsedEndpoint } from '../../packages/react-agent-intake/src/contracts.js';
 
 const WRITE_METHODS = ['post', 'put', 'patch'] as const;
 type WriteMethod = (typeof WRITE_METHODS)[number];

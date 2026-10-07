@@ -4,8 +4,8 @@ import {
   EndpointDefSchema,
   FieldDefSchema,
   FlowDefSchema,
-} from './flowSchema.js';
-import { exampleFlow } from './exampleFlow.js';
+} from './contracts.js';
+import { exampleFlow } from '../../../server/src/exampleFlow.js';
 
 describe('FlowDefSchema', () => {
   it('accepts the hand-written example flow', () => {
@@ -121,5 +121,33 @@ describe('AuthRequirementSchema', () => {
       name: 'X-API-Key',
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('EndpointDefSchema: execute XOR operations', () => {
+  const base = { id: 'e', title: 'E', fields: [] };
+  const fn = async () => ({ success: true });
+
+  it('accepts execute alone', () => {
+    expect(EndpointDefSchema.safeParse({ ...base, execute: fn }).success).toBe(true);
+  });
+
+  it('accepts operations with create (and optional read/update/undo)', () => {
+    expect(EndpointDefSchema.safeParse({ ...base, operations: { create: fn } }).success).toBe(true);
+    expect(EndpointDefSchema.safeParse({ ...base, operations: { create: fn, read: fn, update: fn, undo: fn } }).success).toBe(
+      true
+    );
+  });
+
+  it('rejects both, and neither', () => {
+    expect(EndpointDefSchema.safeParse({ ...base, execute: fn, operations: { create: fn } }).success).toBe(false);
+    const neither = EndpointDefSchema.safeParse(base);
+    expect(neither.success).toBe(false);
+    expect(neither.error?.issues[0]?.message).toMatch(/exactly one of `execute`/);
+  });
+
+  it('rejects operations without create, or with a non-function operation', () => {
+    expect(EndpointDefSchema.safeParse({ ...base, operations: { read: fn } }).success).toBe(false);
+    expect(EndpointDefSchema.safeParse({ ...base, operations: { create: fn, undo: 'DELETE /x' } }).success).toBe(false);
   });
 });

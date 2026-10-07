@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
-import type { ParsedEndpoint } from '../flowSchema.js';
+import type { ParsedEndpoint } from '../../../packages/react-agent-intake/src/contracts.js';
 
 vi.mock('../llmClient.js', () => ({
   generateStructured: vi.fn(),

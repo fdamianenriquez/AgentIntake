@@ -144,7 +144,10 @@ import { AgentIntakeForm } from 'react-agent-intake';
 ```ts
 function useAgentForm(
   flow: FlowDef,
-  options: { apiUrl: string; getAuthHeaders?: () => Record<string, string> }
+  options: {
+    apiUrl: string;
+    getAuthHeaders?: () => Record<string, string> | Promise<Record<string, string>>;
+  }
 ): {
   currentStepIndex: number;
   totalSteps: number;
@@ -160,11 +163,14 @@ function useAgentForm(
   retryExecution: () => Promise<void>;
   completedEndpoints: string[];        // endpoint ids that reached 'complete'
   isComplete: boolean;
+  stepRecords: Record<string, StepRecord>; // per step: last submitted values, result, status
   error: Error | null;                 // fatal, e.g. a flow with no endpoints
 };
 ```
 
 The hook manages its own `sessionId`, fetches the current step's adapted fields whenever the step changes, and aborts any in-flight request on unmount.
+
+Each endpoint gets either `execute` or `operations` (exactly one):
 
 ```ts
 interface EndpointDef {
@@ -173,14 +179,46 @@ interface EndpointDef {
   description?: string;
   fields: FieldDef[];
   auth?: AuthRequirement;
-  execute: (
-    data: Record<string, unknown>,
-    context: { getAuthHeaders?: () => Record<string, string> }
-  ) => Promise<{ success: boolean; message?: string }>;
+  execute?: (data: Record<string, unknown>, context: ExecContext) => Promise<OperationResult>;
+  operations?: { create: /* same signature as execute */ };
+}
+
+interface ExecContext {
+  getAuthHeaders?: () => Record<string, string> | Promise<Record<string, string>>;
+  results: Record<string, OperationResult>; // results of completed steps, by endpoint id
+  idempotencyKey: string;                   // same across retries, new after the user edits
+}
+
+interface OperationResult {
+  success: boolean;
+  message?: string;
+  resourceId?: string;                      // e.g. the id your API created
+  output?: Record<string, unknown>;         // anything a later step needs
+  failure?: { kind: 'network' | 'timeout' | 'http' | 'other'; status?: number; message?: string };
 }
 ```
 
-AgentIntake never inspects the target API's real HTTP response. Mapping status codes and error bodies into `{ success, message }` is your job inside `execute()`.
+`execute` is the original form and is exactly `operations.create`. Later steps often need what an earlier one created; it arrives as `context.results`:
+
+```ts
+import { failureFromResponse } from 'react-agent-intake';
+
+operations: {
+  create: async (data, { results, idempotencyKey }) => {
+    const accountId = results.createAccount.resourceId;
+    const res = await fetch(`/api/accounts/${accountId}/payout-methods`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) return { success: false, failure: await failureFromResponse(res) };
+    const created = await res.json();
+    return { success: true, resourceId: created.id };
+  },
+}
+```
+
+AgentIntake never calls your API and never inspects its responses itself; mapping a response into an `OperationResult` is your job. `failureFromResponse` does that for errors (status plus the first 500 characters of the body). A thrown error, or a failed result without a `failure`, is recorded as `kind: 'other'`. Return `resourceId` from `create` whenever your API gives you one: the planned back-navigation and undo (see [Roadmap](#roadmap)) depend on it. Pass `idempotencyKey` along if your API supports idempotency keys, so a retry after a timeout can't create a duplicate.
 
 ### The `StepStatus` lifecycle
 

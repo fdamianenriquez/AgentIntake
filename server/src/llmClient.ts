@@ -3,6 +3,7 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import type { z } from 'zod';
+import { API_KEY_ENV_VAR, SUPPORTED_PROVIDERS, type LlmProvider } from './providers.js';
 
 // The only file in this project allowed to import a provider SDK directly
 // -- every LLM touchpoint calls generateStructured() below.
@@ -14,9 +15,6 @@ import type { z } from 'zod';
 // development against OpenRouter's free-tier models without an Anthropic/
 // OpenAI/Google key. This is
 // exactly that kind of choice, called out in the pull request.
-export const SUPPORTED_PROVIDERS = ['anthropic', 'openai', 'google', 'openrouter'] as const;
-export type LlmProvider = (typeof SUPPORTED_PROVIDERS)[number];
-
 const DEFAULT_MODELS: Record<LlmProvider, string> = {
   anthropic: 'claude-sonnet-4-6',
   openai: 'gpt-4o-mini',
@@ -27,11 +25,6 @@ const DEFAULT_MODELS: Record<LlmProvider, string> = {
   // Overridable via LLM_MODEL.
   openrouter: 'openrouter/free',
 };
-
-// One variable for every provider: LLM_API_KEY is the key for whichever
-// LLM_PROVIDER is selected. Exported so Studio's setup screen shares
-// this single source of truth instead of a second hardcoded name.
-export const API_KEY_ENV_VAR = 'LLM_API_KEY';
 
 function isSupportedProvider(value: string): value is LlmProvider {
   return (SUPPORTED_PROVIDERS as readonly string[]).includes(value);

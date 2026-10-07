@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
-import type { FlowGenerationResult } from '../flowGenerator.js';
+import type { FlowGenerationResult } from '../../../packages/react-agent-intake/src/contracts.js';
 
 vi.mock('../llmClient.js', () => ({
   generateStructured: vi.fn(),

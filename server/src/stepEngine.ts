@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { FieldDef, ParsedEndpoint } from './flowSchema.js';
+import type { FieldDef, ParsedEndpoint } from '../../packages/react-agent-intake/src/contracts.js';
 import { generateStructured } from './llmClient.js';
 
 // Passed to generateStructured, which aborts the underlying request when it

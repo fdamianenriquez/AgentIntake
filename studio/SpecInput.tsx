@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { load as loadYaml } from 'js-yaml';
 import { z } from 'zod';
-import { FlowGenerationResultSchema } from '../server/src/flowGenerator.js';
+import { FlowGenerationResultSchema } from '../packages/react-agent-intake/src/contracts.js';
 
 const GenerateResponseSchema = FlowGenerationResultSchema.extend({
   warnings: z.array(z.string()),

@@ -1,4 +1,4 @@
-import type { FlowDef } from './flowSchema.js';
+import type { FlowDef } from '../../packages/react-agent-intake/src/contracts.js';
 
 // Hand-written, not LLM-generated: a minimal single-endpoint flow used to
 // sanity-check that the FlowDef/EndpointDef/FieldDef shapes are usable before

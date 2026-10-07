@@ -1,5 +1,5 @@
 import { AgentIntakeForm } from '../packages/react-agent-intake/src/index.js';
-import { GeneratedFlowSchema, type FlowDef } from '../server/src/flowSchema.js';
+import { GeneratedFlowSchema, type FlowDef } from '../packages/react-agent-intake/src/contracts.js';
 import rawFlow from './flow.json' with { type: 'json' };
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';

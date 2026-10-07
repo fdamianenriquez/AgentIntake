@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { ParsedEndpointSchema } from '../flowSchema.js';
+import { ParsedEndpointSchema } from '../../../packages/react-agent-intake/src/contracts.js';
 import { selectStepFields } from '../stepEngine.js';
 import { getOrCreateSession } from '../sessionStore.js';
 

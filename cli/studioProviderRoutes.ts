@@ -2,12 +2,8 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import express, { type Express } from 'express';
 import { z } from 'zod';
-import {
-  API_KEY_ENV_VAR,
-  resolveProvider,
-  SUPPORTED_PROVIDERS,
-  type LlmProvider,
-} from '../server/src/llmClient.js';
+import { resolveProvider } from '../server/src/llmClient.js';
+import { API_KEY_ENV_VAR, SUPPORTED_PROVIDERS, type LlmProvider } from '../server/src/providers.js';
 
 // Studio-only routes: a non-technical user picks a
 // provider and pastes an API key in-browser instead of hand-editing .env.
