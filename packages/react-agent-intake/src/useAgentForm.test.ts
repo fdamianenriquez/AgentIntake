@@ -269,3 +269,39 @@ describe('useAgentForm', () => {
     expect(capturedSignal?.aborted).toBe(true);
   });
 });
+
+describe('useAgentForm stability', () => {
+  it('keeps typed values and does not refetch when the host passes an equal but new flow object', async () => {
+    const fetchMock = mockFetch({});
+    vi.stubGlobal('fetch', fetchMock);
+    const execute1 = vi.fn().mockResolvedValue({ success: true });
+
+    const { result, rerender } = renderHook(({ flow }) => useAgentForm(flow, { apiUrl: 'http://test.local' }), {
+      initialProps: { flow: makeFlow(execute1) },
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.updateField('email', 'typed@b.com'));
+
+    rerender({ flow: makeFlow(execute1) });
+
+    expect(result.current.values.email).toBe('typed@b.com');
+    expect(fetchMock.mock.calls.filter(([url]) => (url as string).endsWith('/api/step/fields'))).toHaveLength(1);
+  });
+
+  it('still works where crypto.randomUUID is unavailable (plain HTTP, non-localhost)', async () => {
+    const fetchMock = mockFetch({});
+    vi.stubGlobal('fetch', fetchMock);
+    const original = crypto.randomUUID;
+    Object.defineProperty(crypto, 'randomUUID', { value: undefined, configurable: true });
+
+    try {
+      const { result } = renderHook(() => useAgentForm(makeFlow(vi.fn()), { apiUrl: 'http://test.local' }));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+      expect(body.sessionId).toMatch(/^[0-9a-f]{32}$/);
+    } finally {
+      Object.defineProperty(crypto, 'randomUUID', { value: original, configurable: true });
+    }
+  });
+});

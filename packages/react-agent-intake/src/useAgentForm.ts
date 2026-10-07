@@ -130,10 +130,17 @@ async function postStepValidate(
   return response.json();
 }
 
+// crypto.randomUUID only exists in secure contexts (HTTPS or localhost);
+// getRandomValues is available everywhere, so a plain-HTTP deployment still works.
+function newSessionId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAgentFormResult {
   const sessionIdRef = useRef<string | undefined>(undefined);
   if (!sessionIdRef.current) {
-    sessionIdRef.current = crypto.randomUUID();
+    sessionIdRef.current = newSessionId();
   }
 
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -199,8 +206,11 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
       });
 
     return () => controller.abort();
+    // Keyed on ids, not on the flow object: a host that rebuilds an equal flow
+    // on every render (e.g. to attach execute functions) must not wipe what
+    // the user has typed or trigger another LLM call.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStepIndex, flow, options.apiUrl]);
+  }, [currentStepIndex, flow.id, currentEndpoint?.id, options.apiUrl]);
 
   const runExecute = useCallback(
     async (endpoint: EndpointDef, data: Record<string, unknown>) => {
