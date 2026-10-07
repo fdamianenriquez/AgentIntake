@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Command } from 'commander';
-import { largeSpecWarning, parseOpenApiFile } from '../../server/src/openapiParser.js';
+import { parseOpenApiFile } from '../../server/src/openapiParser.js';
 import { generateFlow } from '../../server/src/flowGenerator.js';
 import { resolveProvider, buildModel } from '../../server/src/llmClient.js';
 
@@ -24,14 +24,13 @@ export async function runGenerate(options: GenerateOptions): Promise<void> {
   const provider = resolveProvider();
   buildModel(provider);
 
-  const endpoints = await parseOpenApiFile(options.spec);
+  const { endpoints, warnings } = await parseOpenApiFile(options.spec);
 
   if (endpoints.length === 0) {
     throw new Error(`No write operations (POST/PUT/PATCH) found in "${options.spec}".`);
   }
 
-  const warning = largeSpecWarning(endpoints.length);
-  if (warning) console.warn(`Warning: ${warning}`);
+  for (const warning of warnings) console.warn(`Warning: ${warning}`);
 
   const { flow, ambiguousFields } = await generateFlow({ endpoints });
 
@@ -39,9 +38,25 @@ export async function runGenerate(options: GenerateOptions): Promise<void> {
 
   console.log(`Wrote ${flow.endpoints.length} endpoint(s) to ${path.resolve(options.output)}`);
   console.log(
-    'Review the generated flow, then add each endpoint\'s "execute" function by hand -- ' +
-      'AgentIntake never generates that part.'
+    'Review the generated flow, then give each endpoint an "execute" function, or "operations" ' +
+      '(create, plus read/update/undo where the API offers them) -- AgentIntake never generates that part.'
   );
+
+  const hints = flow.endpoints.flatMap((endpoint) => {
+    const lines: string[] = [];
+    if (endpoint.capabilities) {
+      const offered = (['read', 'update', 'undo'] as const).filter((op) => endpoint.capabilities![op]);
+      lines.push(`  - ${endpoint.id}: the API also offers ${offered.join(', ')} on ${endpoint.resourcePath}/{${endpoint.idParam}}`);
+    }
+    if (endpoint.pathParams?.length) {
+      lines.push(`  - ${endpoint.id}: fill path parameter(s) ${endpoint.pathParams.join(', ')} from ctx.results`);
+    }
+    return lines;
+  });
+  if (hints.length > 0) {
+    console.log('\nWhat the spec says each endpoint needs:');
+    for (const line of hints) console.log(line);
+  }
 
   if (ambiguousFields.length > 0) {
     console.warn(`\n${ambiguousFields.length} field(s) flagged for review:`);

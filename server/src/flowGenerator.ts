@@ -180,7 +180,11 @@ function expandLlmOutput(raw: LlmOutput, rawEndpoints: ParsedEndpoint[]): FlowGe
       title: endpoint.title,
       description: endpoint.description,
       fields,
-      auth: rawEndpoint.auth, // rehydrated, never LLM-controlled -- same principle as type/required/etc.
+      // Rehydrated, never LLM-controlled -- same principle as type/required/etc.
+      // (the no-invented-fields rule). The LLM output schema has no slot for
+      // any of these, so a model can't add, drop or alter them.
+      auth: rawEndpoint.auth,
+      ...pickDefined(rawEndpoint, ['capabilities', 'resourcePath', 'idParam', 'pathParams']),
     };
   });
 
@@ -199,4 +203,12 @@ function sameSet(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
   const setB = new Set(b);
   return a.every((value) => setB.has(value));
+}
+
+function pickDefined<T extends object, K extends keyof T>(source: T, keys: K[]): Partial<Pick<T, K>> {
+  const picked: Partial<Pick<T, K>> = {};
+  for (const key of keys) {
+    if (source[key] !== undefined) picked[key] = source[key];
+  }
+  return picked;
 }

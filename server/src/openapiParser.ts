@@ -1,7 +1,12 @@
 import SwaggerParser from '@apidevtools/swagger-parser';
 import { load as loadYaml } from 'js-yaml';
 import type { OpenAPIV3 } from 'openapi-types';
-import { type AuthRequirement, type FieldDef, type ParsedEndpoint } from '../../packages/react-agent-intake/src/contracts.js';
+import {
+  type AuthRequirement,
+  type EndpointCapabilities,
+  type FieldDef,
+  type ParsedEndpoint,
+} from '../../packages/react-agent-intake/src/contracts.js';
 
 export { ParsedEndpointSchema, type ParsedEndpoint } from '../../packages/react-agent-intake/src/contracts.js';
 
@@ -23,14 +28,95 @@ export function largeSpecWarning(endpointCount: number): string | null {
   return `Found ${endpointCount} write operations, more than AgentIntake v1 is tuned for (~${LARGE_SPEC_ENDPOINT_THRESHOLD}). Generation quality may degrade for large specs.`;
 }
 
+export interface ParseResult {
+  endpoints: ParsedEndpoint[];
+  /** Things the author should know about, e.g. operations that couldn't be grouped. */
+  warnings: string[];
+}
+
+interface ResourceFamily {
+  itemPath: string;
+  idParam: string;
+  capabilities: EndpointCapabilities;
+}
+
+// An item path is exactly the collection path plus one segment
+// that is a single path parameter -- `/accounts/{accountId}` for
+// `/accounts`. Returns that parameter's name, or null.
+function itemParamOf(itemPath: string, collectionPath: string): string | null {
+  const match = itemPath.match(/^(.*)\/\{([^{}/]+)\}$/);
+  return match && match[1] === collectionPath ? match[2] : null;
+}
+
+function findResourceFamilies(paths: OpenAPIV3.PathsObject, warnings: string[]): Map<string, ResourceFamily> {
+  const families = new Map<string, ResourceFamily>();
+
+  for (const [collectionPath, pathItem] of Object.entries(paths)) {
+    if (!pathItem?.post) continue;
+
+    const candidates = Object.keys(paths).filter((path) => itemParamOf(path, collectionPath) !== null);
+    if (candidates.length > 1) {
+      warnings.push(
+        `POST ${collectionPath} matches several item paths (${candidates.join(', ')}); read/update/undo were not attached to it.`
+      );
+      continue;
+    }
+    if (candidates.length === 0) continue;
+
+    const itemPath = candidates[0];
+    const item = paths[itemPath];
+    const capabilities = {
+      read: Boolean(item?.get),
+      update: Boolean(item?.put || item?.patch),
+      undo: Boolean(item?.delete),
+    };
+    if (!capabilities.read && !capabilities.update && !capabilities.undo) continue;
+
+    families.set(collectionPath, { itemPath, idParam: itemParamOf(itemPath, collectionPath)!, capabilities });
+  }
+
+  return families;
+}
+
+// OpenAPI allows parameters on the path item, shared by every operation on it;
+// an operation-level parameter with the same name and location overrides one.
+function mergeParameters(
+  pathLevel: OpenAPIV3.ParameterObject[],
+  operationLevel: OpenAPIV3.ParameterObject[]
+): OpenAPIV3.ParameterObject[] {
+  const merged = new Map<string, OpenAPIV3.ParameterObject>();
+  for (const param of [...pathLevel, ...operationLevel]) merged.set(`${param.in}:${param.name}`, param);
+  return [...merged.values()];
+}
+
+function pathTemplateParams(path: string): string[] {
+  return [...path.matchAll(/\{([^{}/]+)\}/g)].map((match) => match[1]);
+}
+
+function headerCoveredByAuth(name: string, auth: AuthRequirement): boolean {
+  const lower = name.toLowerCase();
+  if (auth.type === 'apiKey') return auth.in === 'header' && auth.name?.toLowerCase() === lower;
+  if (auth.type === 'http' || auth.type === 'oauth2' || auth.type === 'openIdConnect') return lower === 'authorization';
+  return false;
+}
+
 /**
  * Parses an already-dereferenced OpenAPI 3.x document into a raw, unenriched
- * list of endpoints (one per write operation). No LLM involved -- this is
- * pure mechanical extraction. Base schema enrichment
- * (grouping, labels, descriptions, ambiguous-field flags) happens later in
- * flowGenerator.ts.
+ * list of endpoints (one per write operation that isn't part of a resource
+ * family's item path). No LLM involved -- this is pure mechanical extraction.
+ * Base schema enrichment (grouping, labels, descriptions, ambiguous-field
+ * flags) happens later in flowGenerator.ts.
+ *
+ * Resource families (README: "How the spec becomes steps"): `POST /things` plus the operations on
+ * `/things/{id}` form one step. GET/PUT/PATCH/DELETE on the item path become
+ * that step's `capabilities` (read/update/undo) instead of steps of their own.
+ *
+ * Parameters: only query parameters become form fields. Path
+ * parameters are ids the flow author fills in from earlier results (listed in
+ * `pathParams`), and header/cookie parameters are transport concerns -- neither
+ * is something to ask the person filling out the form.
  */
-export function parseOpenApiDocument(doc: OpenAPIV3.Document): ParsedEndpoint[] {
+export function parseOpenApiDocument(doc: OpenAPIV3.Document): ParseResult {
   if (!doc.openapi || !doc.openapi.startsWith('3.')) {
     throw new Error(
       `AgentIntake only supports OpenAPI 3.x specs (got openapi: "${doc.openapi ?? 'unknown'}")`
@@ -41,19 +127,45 @@ export function parseOpenApiDocument(doc: OpenAPIV3.Document): ParsedEndpoint[] 
     | Record<string, OpenAPIV3.SecuritySchemeObject>
     | undefined;
 
+  const paths = doc.paths ?? {};
+  const warnings: string[] = [];
+  const families = findResourceFamilies(paths, warnings);
+  const absorbedItemPaths = new Set([...families.values()].map((family) => family.itemPath));
+
   const endpoints: ParsedEndpoint[] = [];
 
-  for (const [path, pathItem] of Object.entries(doc.paths ?? {})) {
+  for (const [path, pathItem] of Object.entries(paths)) {
     if (!pathItem) continue;
 
     for (const method of WRITE_METHODS) {
       const operation = pathItem[method];
       if (!operation) continue;
 
-      const fields: FieldDef[] = [];
+      const label = `${method.toUpperCase()} ${path}`;
+      if (method !== 'post' && absorbedItemPaths.has(path)) continue;
+      if (method !== 'post') {
+        warnings.push(
+          `${label} isn't the update operation of a resource family (no POST on the matching collection path), so it stays a separate step.`
+        );
+      }
 
-      for (const param of (operation.parameters ?? []) as OpenAPIV3.ParameterObject[]) {
-        if (!param.schema) continue;
+      const auth = extractAuthRequirement(operation.security ?? doc.security, securitySchemes);
+      const parameters = mergeParameters(
+        (pathItem.parameters ?? []) as OpenAPIV3.ParameterObject[],
+        (operation.parameters ?? []) as OpenAPIV3.ParameterObject[]
+      );
+
+      const fields: FieldDef[] = [];
+      for (const param of parameters) {
+        if (param.in === 'header' || param.in === 'cookie') {
+          if (param.required && !(param.in === 'header' && headerCoveredByAuth(param.name, auth))) {
+            warnings.push(
+              `${label} requires the ${param.in} "${param.name}". It isn't asked for in the form; send it from your operations.`
+            );
+          }
+          continue;
+        }
+        if (param.in !== 'query' || !param.schema) continue;
         const field = schemaToFieldDef(
           param.name,
           param.schema as OpenAPIV3.SchemaObject,
@@ -71,17 +183,27 @@ export function parseOpenApiDocument(doc: OpenAPIV3.Document): ParsedEndpoint[] 
         flattenSchemaToFields(bodySchema, '', 0, fields);
       }
 
+      const pathParams = pathTemplateParams(path);
+      const family = method === 'post' ? families.get(path) : undefined;
+
       endpoints.push({
         id: operation.operationId ?? deriveEndpointId(method, path),
-        title: operation.summary ?? `${method.toUpperCase()} ${path}`,
+        title: operation.summary ?? label,
         description: operation.description,
         fields,
-        auth: extractAuthRequirement(operation.security ?? doc.security, securitySchemes),
+        auth,
+        ...(pathParams.length > 0 ? { pathParams } : {}),
+        ...(family
+          ? { resourcePath: path, idParam: family.idParam, capabilities: family.capabilities }
+          : {}),
       });
     }
   }
 
-  return endpoints;
+  const largeSpec = largeSpecWarning(endpoints.length);
+  if (largeSpec) warnings.push(largeSpec);
+
+  return { endpoints, warnings };
 }
 
 // Two entry points, trusted differently:
@@ -101,7 +223,7 @@ export function parseOpenApiDocument(doc: OpenAPIV3.Document): ParsedEndpoint[] 
 //   resolver plugin -- and therefore no fetch -- involved).
 
 /** Loads and $ref-dereferences a spec from a file path or URL, then parses it. */
-export async function parseOpenApiFile(pathOrUrl: string): Promise<ParsedEndpoint[]> {
+export async function parseOpenApiFile(pathOrUrl: string): Promise<ParseResult> {
   const dereferenced = await SwaggerParser.dereference(pathOrUrl);
   return parseOpenApiDocument(dereferenced as OpenAPIV3.Document);
 }
@@ -112,7 +234,7 @@ export async function parseOpenApiFile(pathOrUrl: string): Promise<ParsedEndpoin
  * false` is json-schema-ref-parser's own documented option for this
  * ("external $ref pointers will simply be ignored"), not a guessed name.
  */
-export async function parseOpenApiContent(content: string): Promise<ParsedEndpoint[]> {
+export async function parseOpenApiContent(content: string): Promise<ParseResult> {
   const rawDoc = parseSpecText(content);
   const dereferenced = await SwaggerParser.dereference(rawDoc as OpenAPIV3.Document, {
     resolve: { external: false },

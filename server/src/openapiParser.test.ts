@@ -42,7 +42,7 @@ describe('parseOpenApiDocument', () => {
       },
     });
 
-    const endpoints = parseOpenApiDocument(doc);
+    const endpoints = parseOpenApiDocument(doc).endpoints;
     expect(endpoints).toHaveLength(1);
     expect(endpoints[0].id).toBe('createWidget');
   });
@@ -54,7 +54,7 @@ describe('parseOpenApiDocument', () => {
       },
     });
 
-    const [endpoint] = parseOpenApiDocument(doc);
+    const [endpoint] = parseOpenApiDocument(doc).endpoints;
     expect(endpoint.id).toBe('put-candidates-id-notes');
     expect(endpoint.title).toBe('PUT /candidates/{id}/notes');
   });
@@ -85,7 +85,7 @@ describe('parseOpenApiDocument', () => {
       },
     });
 
-    const [endpoint] = parseOpenApiDocument(doc);
+    const [endpoint] = parseOpenApiDocument(doc).endpoints;
     const byName = Object.fromEntries(endpoint.fields.map((f) => [f.name, f]));
 
     expect(byName.email).toMatchObject({
@@ -130,7 +130,7 @@ describe('parseOpenApiDocument', () => {
       },
     });
 
-    const [endpoint] = parseOpenApiDocument(doc);
+    const [endpoint] = parseOpenApiDocument(doc).endpoints;
     expect(endpoint.fields[0]).toMatchObject({
       name: 'employmentStatus',
       type: 'enum',
@@ -170,7 +170,7 @@ describe('parseOpenApiDocument', () => {
       },
     });
 
-    const [endpoint] = parseOpenApiDocument(doc);
+    const [endpoint] = parseOpenApiDocument(doc).endpoints;
     const names = endpoint.fields.map((f) => f.name).sort();
     expect(names).toEqual(['address.city', 'address.zip', 'name']);
 
@@ -208,7 +208,7 @@ describe('parseOpenApiDocument', () => {
       },
     });
 
-    const [endpoint] = parseOpenApiDocument(doc);
+    const [endpoint] = parseOpenApiDocument(doc).endpoints;
 
     expect(endpoint.fields.map((f) => f.name)).toContain('name');
     expect(endpoint.fields.some((f) => f.name.endsWith('tooDeep'))).toBe(false);
@@ -241,7 +241,7 @@ describe('parseOpenApiDocument', () => {
       },
     });
 
-    const [endpoint] = parseOpenApiDocument(doc);
+    const [endpoint] = parseOpenApiDocument(doc).endpoints;
     expect(endpoint.fields.map((f) => f.name)).toEqual(['name']);
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
@@ -267,12 +267,12 @@ describe('parseOpenApiDocument', () => {
       },
     });
 
-    const [endpoint] = parseOpenApiDocument(doc);
+    const [endpoint] = parseOpenApiDocument(doc).endpoints;
     expect(endpoint.description).toBeUndefined();
     expect(endpoint.fields[0].description).toBeUndefined();
   });
 
-  it('extracts query/path parameters as fields alongside the body', () => {
+  it('makes query parameters fields, but lists path parameters in pathParams instead of asking for them', () => {
     const doc = baseDoc({
       '/candidates/{id}/notes': {
         post: {
@@ -306,10 +306,9 @@ describe('parseOpenApiDocument', () => {
       },
     });
 
-    const [endpoint] = parseOpenApiDocument(doc);
-    const names = endpoint.fields.map((f) => f.name).sort();
-    expect(names).toEqual(['id', 'notify', 'text']);
-    expect(endpoint.fields.find((f) => f.name === 'id')).toMatchObject({ required: true });
+    const [endpoint] = parseOpenApiDocument(doc).endpoints;
+    expect(endpoint.fields.map((f) => f.name).sort()).toEqual(['notify', 'text']);
+    expect(endpoint.pathParams).toEqual(['id']);
   });
 
   describe('security scheme extraction', () => {
@@ -333,7 +332,7 @@ describe('parseOpenApiDocument', () => {
         }
       );
 
-      const [endpoint] = parseOpenApiDocument(doc);
+      const [endpoint] = parseOpenApiDocument(doc).endpoints;
       expect(endpoint.auth).toEqual({ type: 'apiKey', in: 'header', name: 'X-API-Key' });
     });
 
@@ -357,7 +356,7 @@ describe('parseOpenApiDocument', () => {
         }
       );
 
-      const [endpoint] = parseOpenApiDocument(doc);
+      const [endpoint] = parseOpenApiDocument(doc).endpoints;
       expect(endpoint.auth).toEqual({ type: 'http', scheme: 'bearer' });
     });
 
@@ -384,7 +383,7 @@ describe('parseOpenApiDocument', () => {
         }
       );
 
-      const [endpoint] = parseOpenApiDocument(doc);
+      const [endpoint] = parseOpenApiDocument(doc).endpoints;
       expect(endpoint.auth).toEqual({ type: 'oauth2' });
     });
 
@@ -408,7 +407,7 @@ describe('parseOpenApiDocument', () => {
         }
       );
 
-      const [endpoint] = parseOpenApiDocument(doc);
+      const [endpoint] = parseOpenApiDocument(doc).endpoints;
       expect(endpoint.auth).toEqual({ type: 'openIdConnect' });
     });
 
@@ -429,7 +428,7 @@ describe('parseOpenApiDocument', () => {
         }
       );
 
-      const [endpoint] = parseOpenApiDocument(doc);
+      const [endpoint] = parseOpenApiDocument(doc).endpoints;
       expect(endpoint.auth).toEqual({ type: 'apiKey', in: 'header', name: 'X-API-Key' });
     });
 
@@ -440,7 +439,7 @@ describe('parseOpenApiDocument', () => {
         },
       });
 
-      const [endpoint] = parseOpenApiDocument(doc);
+      const [endpoint] = parseOpenApiDocument(doc).endpoints;
       expect(endpoint.auth).toEqual({ type: 'none' });
     });
 
@@ -465,7 +464,7 @@ describe('parseOpenApiDocument', () => {
         }
       );
 
-      const [endpoint] = parseOpenApiDocument(doc);
+      const [endpoint] = parseOpenApiDocument(doc).endpoints;
       expect(endpoint.auth).toEqual({ type: 'none' });
     });
   });
@@ -491,7 +490,7 @@ describe('parseOpenApiDocument', () => {
       },
     });
 
-    const endpoints = parseOpenApiDocument(doc);
+    const endpoints = parseOpenApiDocument(doc).endpoints;
     for (const endpoint of endpoints) {
       expect(ParsedEndpointSchema.safeParse(endpoint).success).toBe(true);
     }
@@ -504,7 +503,7 @@ describe('parseOpenApiFile', () => {
       new URL('./__fixtures__/ref-example.openapi.yaml', import.meta.url)
     );
 
-    const endpoints = await parseOpenApiFile(fixturePath);
+    const endpoints = (await parseOpenApiFile(fixturePath)).endpoints;
 
     expect(endpoints).toHaveLength(1);
     const [endpoint] = endpoints;
@@ -520,7 +519,7 @@ describe('parseOpenApiContent', () => {
     const fixturePath = fileURLToPath(new URL('./__fixtures__/ref-example.openapi.yaml', import.meta.url));
     const content = await readFile(fixturePath, 'utf-8');
 
-    const endpoints = await parseOpenApiContent(content);
+    const endpoints = (await parseOpenApiContent(content)).endpoints;
 
     expect(endpoints).toHaveLength(1);
     expect(endpoints[0].id).toBe('createWidget');
@@ -566,7 +565,7 @@ describe('parseOpenApiContent', () => {
         },
       });
 
-      const endpoints = await parseOpenApiContent(content);
+      const endpoints = (await parseOpenApiContent(content)).endpoints;
       const [endpoint] = endpoints;
       const fieldNames = endpoint.fields.map((f) => f.name);
 
@@ -581,4 +580,211 @@ describe('parseOpenApiContent', () => {
     },
     10_000
   );
+});
+
+describe('resource families', () => {
+  const body = (properties: Record<string, OpenAPIV3.SchemaObject>) => ({
+    content: { 'application/json': { schema: { type: 'object' as const, properties } } },
+  });
+  const idParam = (name: string): OpenAPIV3.ParameterObject => ({ name, in: 'path', required: true, schema: { type: 'string' } });
+
+  it('groups POST /accounts with the operations on /accounts/{accountId} into one step', () => {
+    const doc = baseDoc({
+      '/accounts': { post: { operationId: 'createAccount', requestBody: body({ email: { type: 'string' } }), responses: {} } },
+      '/accounts/{accountId}': {
+        parameters: [idParam('accountId')],
+        get: { responses: {} },
+        patch: { operationId: 'updateAccount', requestBody: body({ email: { type: 'string' } }), responses: {} },
+        delete: { responses: {} },
+      },
+    });
+
+    const { endpoints, warnings } = parseOpenApiDocument(doc);
+
+    expect(endpoints.map((e) => e.id)).toEqual(['createAccount']);
+    expect(endpoints[0]).toMatchObject({
+      resourcePath: '/accounts',
+      idParam: 'accountId',
+      capabilities: { read: true, update: true, undo: true },
+    });
+    expect(endpoints[0].pathParams).toBeUndefined();
+    expect(warnings).toEqual([]);
+  });
+
+  it('detects nested collections, with the parent id as a path parameter', () => {
+    const doc = baseDoc({
+      '/accounts/{accountId}/verifications': {
+        parameters: [idParam('accountId')],
+        post: { operationId: 'createVerification', requestBody: body({ dateOfBirth: { type: 'string' } }), responses: {} },
+      },
+      '/accounts/{accountId}/verifications/{verificationId}': {
+        parameters: [idParam('accountId'), idParam('verificationId')],
+        get: { responses: {} },
+        put: { requestBody: body({ dateOfBirth: { type: 'string' } }), responses: {} },
+      },
+    });
+
+    const [endpoint, ...rest] = parseOpenApiDocument(doc).endpoints;
+
+    expect(rest).toEqual([]);
+    expect(endpoint).toMatchObject({
+      id: 'createVerification',
+      pathParams: ['accountId'],
+      resourcePath: '/accounts/{accountId}/verifications',
+      idParam: 'verificationId',
+      capabilities: { read: true, update: true, undo: false },
+    });
+    expect(endpoint.fields.map((f) => f.name)).toEqual(['dateOfBirth']);
+  });
+
+  it('records a partial family (undo only)', () => {
+    const doc = baseDoc({
+      '/payout-methods': { post: { operationId: 'createPayoutMethod', requestBody: body({ bank: { type: 'string' } }), responses: {} } },
+      '/payout-methods/{payoutMethodId}': { delete: { responses: {} } },
+    });
+
+    expect(parseOpenApiDocument(doc).endpoints[0].capabilities).toEqual({ read: false, update: false, undo: true });
+  });
+
+  it('ignores an item path that has no read/update/undo operations', () => {
+    const doc = baseDoc({
+      '/things': { post: { operationId: 'createThing', requestBody: body({ a: { type: 'string' } }), responses: {} } },
+      '/things/{id}': { post: { operationId: 'actOnThing', requestBody: body({ b: { type: 'string' } }), responses: {} } },
+    });
+
+    const { endpoints } = parseOpenApiDocument(doc);
+    expect(endpoints.map((e) => e.id)).toEqual(['createThing', 'actOnThing']);
+    expect(endpoints[0].capabilities).toBeUndefined();
+  });
+
+  it('keeps a PUT/PATCH outside a family as its own step, with a warning (singletons, orphan updates)', () => {
+    const doc = baseDoc({
+      '/me/settings': { put: { operationId: 'updateSettings', requestBody: body({ theme: { type: 'string' } }), responses: {} } },
+      '/widgets/{widgetId}': {
+        patch: { operationId: 'updateWidget', requestBody: body({ name: { type: 'string' } }), responses: {} },
+      },
+    });
+
+    const { endpoints, warnings } = parseOpenApiDocument(doc);
+
+    expect(endpoints.map((e) => e.id)).toEqual(['updateSettings', 'updateWidget']);
+    expect(warnings).toEqual([
+      expect.stringContaining('PUT /me/settings'),
+      expect.stringContaining('PATCH /widgets/{widgetId}'),
+    ]);
+  });
+
+  it('keeps an RPC-style action as its own step', () => {
+    const doc = baseDoc({
+      '/orders/{orderId}/cancel': {
+        post: { operationId: 'cancelOrder', parameters: [idParam('orderId')], requestBody: body({ reason: { type: 'string' } }), responses: {} },
+      },
+    });
+
+    const [endpoint] = parseOpenApiDocument(doc).endpoints;
+    expect(endpoint).toMatchObject({ id: 'cancelOrder', pathParams: ['orderId'] });
+    expect(endpoint.capabilities).toBeUndefined();
+  });
+
+  it('refuses to guess when several item paths match the same collection', () => {
+    const doc = baseDoc({
+      '/things': { post: { operationId: 'createThing', requestBody: body({ a: { type: 'string' } }), responses: {} } },
+      '/things/{id}': { get: { responses: {} } },
+      '/things/{slug}': { delete: { responses: {} } },
+    });
+
+    const { endpoints, warnings } = parseOpenApiDocument(doc);
+    expect(endpoints[0].capabilities).toBeUndefined();
+    expect(warnings).toEqual([expect.stringContaining('matches several item paths')]);
+  });
+
+  it('reports the large-spec warning through the same warnings channel', () => {
+    const paths: OpenAPIV3.PathsObject = {};
+    for (let i = 0; i < 16; i++) {
+      paths[`/things${i}`] = { post: { operationId: `create${i}`, requestBody: body({ a: { type: 'string' } }), responses: {} } };
+    }
+    expect(parseOpenApiDocument(baseDoc(paths)).warnings).toEqual([expect.stringContaining('Found 16 write operations')]);
+  });
+});
+
+describe('parameters', () => {
+  const op = (parameters: OpenAPIV3.ParameterObject[], security?: OpenAPIV3.SecurityRequirementObject[]) => ({
+    operationId: 'createThing',
+    parameters,
+    ...(security ? { security } : {}),
+    requestBody: { content: { 'application/json': { schema: { type: 'object' as const, properties: { a: { type: 'string' as const } } } } } },
+    responses: {},
+  });
+
+  it('never turns header or cookie parameters into fields', () => {
+    const doc = baseDoc({
+      '/things': {
+        post: op([
+          { name: 'X-Trace', in: 'header', schema: { type: 'string' } },
+          { name: 'session', in: 'cookie', schema: { type: 'string' } },
+        ]),
+      },
+    });
+
+    const { endpoints, warnings } = parseOpenApiDocument(doc);
+    expect(endpoints[0].fields.map((f) => f.name)).toEqual(['a']);
+    expect(warnings).toEqual([]);
+  });
+
+  it('warns about a required header the security scheme does not cover', () => {
+    const doc = baseDoc({
+      '/things': { post: op([{ name: 'Idempotency-Key', in: 'header', required: true, schema: { type: 'string' } }]) },
+    });
+
+    expect(parseOpenApiDocument(doc).warnings).toEqual([
+      'POST /things requires the header "Idempotency-Key". It isn\'t asked for in the form; send it from your operations.',
+    ]);
+  });
+
+  it('does not warn about a required header that is the auth credential itself', () => {
+    const doc = baseDoc(
+      {
+        '/things': {
+          post: op(
+            [
+              { name: 'X-API-Key', in: 'header', required: true, schema: { type: 'string' } },
+            ],
+            [{ apiKeyAuth: [] }]
+          ),
+        },
+        '/others': {
+          post: {
+            ...op([{ name: 'Authorization', in: 'header', required: true, schema: { type: 'string' } }], [{ bearer: [] }]),
+            operationId: 'createOther',
+          },
+        },
+      },
+      {
+        components: {
+          securitySchemes: {
+            apiKeyAuth: { type: 'apiKey', in: 'header', name: 'X-API-Key' },
+            bearer: { type: 'http', scheme: 'bearer' },
+          },
+        },
+      }
+    );
+
+    expect(parseOpenApiDocument(doc).warnings).toEqual([]);
+  });
+
+  it('merges path-item parameters, with operation-level ones taking precedence', () => {
+    const doc = baseDoc({
+      '/things': {
+        parameters: [
+          { name: 'dryRun', in: 'query', schema: { type: 'boolean' } },
+          { name: 'locale', in: 'query', required: false, schema: { type: 'string' } },
+        ],
+        post: op([{ name: 'locale', in: 'query', required: true, schema: { type: 'string' } }]),
+      },
+    });
+
+    const { fields } = parseOpenApiDocument(doc).endpoints[0];
+    expect(fields.map((f) => f.name).sort()).toEqual(['a', 'dryRun', 'locale']);
+    expect(fields.find((f) => f.name === 'locale')?.required).toBe(true);
+  });
 });

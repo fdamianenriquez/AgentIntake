@@ -104,7 +104,17 @@ const EndpointBaseSchema = z.object({
   description: z.string().optional(),
   fields: z.array(FieldDefSchema),
   auth: AuthRequirementSchema.optional(),
+  // Parser-owned metadata (README: "How the spec becomes steps"), never produced by the LLM: what the
+  // API offers for this step's resource. These are hints for the flow author;
+  // at runtime only the operations the author implemented are used, and those
+  // are what the hook sends to the server as `capabilities`.
   capabilities: EndpointCapabilitiesSchema.optional(),
+  /** The collection path the step creates into, when it is part of a resource family. */
+  resourcePath: z.string().optional(),
+  /** The item path's id parameter, e.g. `accountId` for `/accounts/{accountId}`. */
+  idParam: z.string().optional(),
+  /** Path parameters of the create path, which the author fills from `ctx.results`. */
+  pathParams: z.array(z.string()).optional(),
 });
 type EndpointBase = z.infer<typeof EndpointBaseSchema>;
 

@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { largeSpecWarning, parseOpenApiContent } from '../openapiParser.js';
+import { parseOpenApiContent } from '../openapiParser.js';
 import { generateFlow } from '../flowGenerator.js';
 
 // { specContent: string } -- the raw spec text (JSON or YAML), never a path
@@ -25,7 +25,7 @@ export async function handleGenerateFlow(req: Request, res: Response): Promise<v
   }
 
   try {
-    const endpoints = await parseOpenApiContent(parsed.data.specContent);
+    const { endpoints, warnings } = await parseOpenApiContent(parsed.data.specContent);
 
     if (endpoints.length === 0) {
       res.status(400).json({ error: 'No write operations (POST/PUT/PATCH) found in the given spec.' });
@@ -33,10 +33,9 @@ export async function handleGenerateFlow(req: Request, res: Response): Promise<v
     }
 
     // Unlike the CLI (which just console.warns), a direct caller of this
-    // route -- Studio, once it exists -- has no terminal to read, so
-    // the large-spec warning has to travel in the response body itself.
-    const warning = largeSpecWarning(endpoints.length);
-    const warnings = warning ? [warning] : [];
+    // route -- Studio -- has no terminal to read, so the parser's warnings
+    // (large spec, ungrouped operations, required headers) travel in the
+    // response body itself.
 
     const { flow, ambiguousFields } = await generateFlow({ endpoints });
     res.status(200).json({ flow, ambiguousFields, warnings });

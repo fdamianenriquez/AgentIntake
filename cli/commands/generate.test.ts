@@ -166,3 +166,66 @@ describe('runGenerate', () => {
     warnSpy.mockRestore();
   });
 });
+
+describe('runGenerate with resource families', () => {
+  const familySpec = `openapi: 3.0.3
+info: { title: Payments, version: "1" }
+paths:
+  /accounts:
+    post:
+      operationId: createAccount
+      requestBody: { content: { application/json: { schema: { type: object, properties: { email: { type: string } } } } } }
+      responses: {}
+  /accounts/{accountId}:
+    parameters: [{ name: accountId, in: path, required: true, schema: { type: string } }]
+    get: { responses: {} }
+    delete: { responses: {} }
+  /accounts/{accountId}/payout-methods:
+    post:
+      operationId: createPayoutMethod
+      parameters:
+        - { name: accountId, in: path, required: true, schema: { type: string } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
+      requestBody: { content: { application/json: { schema: { type: object, properties: { bank: { type: string } } } } } }
+      responses: {}
+`;
+
+  it('writes the parser metadata into flow.json and tells the author what each endpoint needs', async () => {
+    const specPath = path.join(outputDir, 'payments.yaml');
+    await writeFile(specPath, familySpec, 'utf-8');
+    mockedGenerateStructured.mockResolvedValueOnce({
+      flow: {
+        id: 'payments',
+        title: 'Payments',
+        description: 'Set up payments.',
+        endpoints: [
+          { id: 'createAccount', title: 'Account', fields: [{ name: 'email' }] },
+          { id: 'createPayoutMethod', title: 'Payout', fields: [{ name: 'bank' }] },
+        ],
+      },
+      ambiguousFields: [],
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await runGenerate({ spec: specPath, output: outputPath });
+
+    const written = JSON.parse(await readFile(outputPath, 'utf-8'));
+    expect(written.endpoints[0]).toMatchObject({
+      id: 'createAccount',
+      resourcePath: '/accounts',
+      idParam: 'accountId',
+      capabilities: { read: true, update: false, undo: true },
+    });
+    expect(written.endpoints[1]).toMatchObject({ id: 'createPayoutMethod', pathParams: ['accountId'] });
+    expect(written.endpoints[1].fields.map((f: { name: string }) => f.name)).toEqual(['bank']);
+
+    const logged = log.mock.calls.map((call) => String(call[0])).join('\n');
+    expect(logged).toContain('createAccount: the API also offers read, undo on /accounts/{accountId}');
+    expect(logged).toContain('createPayoutMethod: fill path parameter(s) accountId from ctx.results');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('requires the header "Idempotency-Key"'));
+
+    log.mockRestore();
+    warn.mockRestore();
+  });
+});

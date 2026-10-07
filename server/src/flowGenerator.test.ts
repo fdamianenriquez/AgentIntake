@@ -242,3 +242,41 @@ describe('generateFlow', () => {
     expect(prompt).toContain('Endpoints for candidate intake.');
   });
 });
+
+describe('parser-owned metadata', () => {
+  it('rehydrates capabilities, resourcePath, idParam and pathParams from the parser, ignoring the model', async () => {
+    const raw: ParsedEndpoint[] = [
+      {
+        ...rawEndpoints[0],
+        capabilities: { read: true, update: true, undo: false },
+        resourcePath: '/orgs/{orgId}/candidates',
+        idParam: 'candidateId',
+        pathParams: ['orgId'],
+      },
+    ];
+    const tampered = narrowLlmResult();
+    Object.assign(tampered.flow.endpoints[0], {
+      capabilities: { read: false, update: false, undo: true },
+      pathParams: ['somethingElse'],
+      idParam: 'injected',
+    });
+    mockedGenerateStructured.mockResolvedValueOnce(tampered);
+
+    const { flow } = await generateFlow({ endpoints: raw });
+
+    expect(flow.endpoints[0]).toMatchObject({
+      capabilities: { read: true, update: true, undo: false },
+      resourcePath: '/orgs/{orgId}/candidates',
+      idParam: 'candidateId',
+      pathParams: ['orgId'],
+    });
+  });
+
+  it('does not add the keys when the parser found no family or path parameters', async () => {
+    mockedGenerateStructured.mockResolvedValueOnce(narrowLlmResult());
+
+    const { flow } = await generateFlow({ endpoints: rawEndpoints });
+
+    expect(Object.keys(flow.endpoints[0]).sort()).toEqual(['auth', 'description', 'fields', 'id', 'title']);
+  });
+});

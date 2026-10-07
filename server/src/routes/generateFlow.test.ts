@@ -124,4 +124,34 @@ describe('POST /api/generate-flow', () => {
     expect(response.status).toBe(500);
     expect(response.body.error).toBeDefined();
   });
+
+  it('returns the parser warnings (e.g. an update outside any resource family) alongside the flow', async () => {
+    mockedGenerateStructured.mockResolvedValueOnce({
+      flow: {
+        id: 'settings',
+        title: 'Settings',
+        description: 'Update settings.',
+        endpoints: [{ id: 'updateSettings', title: 'Settings', fields: [{ name: 'theme' }] }],
+      },
+      ambiguousFields: [],
+    });
+    const specContent = JSON.stringify({
+      openapi: '3.0.3',
+      info: { title: 'Settings', version: '1' },
+      paths: {
+        '/me/settings': {
+          put: {
+            operationId: 'updateSettings',
+            requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { theme: { type: 'string' } } } } } },
+            responses: {},
+          },
+        },
+      },
+    });
+
+    const response = await request(createApp()).post('/api/generate-flow').send({ specContent });
+
+    expect(response.status).toBe(200);
+    expect(response.body.warnings).toEqual([expect.stringContaining('PUT /me/settings')]);
+  });
 });
