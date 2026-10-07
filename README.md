@@ -47,7 +47,7 @@ The model can only **show, hide, reorder, annotate, or pre-fill fields that alre
 
 ## Quickstart
 
-AgentIntake is not published to npm yet; run it from a clone. Requires Node.js 20.12 or newer.
+AgentIntake is not published to npm yet; run it from a clone. Requires Node.js 20.19+ or 22.12+ (running the test suite needs 22.12+).
 
 ```bash
 git clone https://github.com/fdamianenriquez/AgentIntake.git
@@ -74,7 +74,7 @@ The output is a `FlowDef` **without** `execute` functions. Review it, then add e
 ### Path 2 — Studio (no code required)
 
 ```bash
-node dist/cli/index.js studio          # http://localhost:4000, opens your browser
+node dist/cli/index.js studio          # http://127.0.0.1:4000, opens your browser
 node dist/cli/index.js studio --port 4100 --no-open
 ```
 
@@ -214,6 +214,15 @@ The three routes are mounted by `createApp()` in `server/src/app.ts`:
 | `POST /api/step/fields` | `{ sessionId, endpoint }` | `{ fields, suggestedValues, degraded }` |
 | `POST /api/step/validate` | `{ sessionId, endpoint, data }` | `{ valid, errors, degraded }` |
 
+## What is sent to the LLM provider
+
+AgentIntake calls the provider you configure, from your server, with:
+
+- **Generation (CLI or Studio):** the write operations parsed from your spec — their paths, field names, types, descriptions and validation rules.
+- **Each wizard step:** that step's field definitions, **the answers the user has given so far in this session**, and, on submit, the answers for the step being validated.
+
+So end users' form answers leave your infrastructure and reach the LLM provider under that provider's data policy. If your intake collects personal or regulated data, check that policy before deploying, or turn the per-step calls off with `AGENTINTAKE_STATIC_MODE` (below). The API key itself never reaches the browser.
+
 ## Resilience: graceful degradation
 
 A transient failure in an enhancement call never takes the wizard down. If `/api/step/fields` fails or times out, that step shows its **full, unfiltered base field list**. If the semantic check can't complete, the step falls back to accepting client-side validation alone. When the server itself degrades it says so with `degraded: true`; if the request to the server fails outright, the hook falls back on its own. Both paths are covered by tests.
@@ -233,10 +242,11 @@ Stated plainly, because a multi-endpoint, AI-in-the-loop wizard has failure mode
 - **No idempotency handling.** If a connection drops mid-submit and the user retries, the target endpoint may be called twice. If duplicate calls aren't safe, implement idempotency (for example an idempotency-key header) inside your `execute()`.
 - **Static enums only.** `enumValues` come from the spec's own `enum` declarations; options fetched from another endpoint aren't supported.
 - **Sized for a handful of related write operations.** Above 15 write operations, generation and Studio warn that quality may degrade. Chunked generation isn't built.
-- **In-memory sessions.** Session state is a process-local map; there's no persistence across restarts.
+- **In-memory sessions.** Session state is a process-local map; there's no persistence across restarts. A session expires after 2 hours without activity, and at most 10,000 are kept (least recently used are dropped first), so a long-running server's memory stays bounded.
+- **Spec size.** `/api/generate-flow` accepts request bodies up to 10 MB; the per-step routes keep a 100 KB limit, since they only carry one endpoint and its answers.
 - **Small-model quality.** See the provider caveats above.
 
-One thing that is a fix, not a boundary, but worth being visible about: **`/api/generate-flow` never fetches a caller-supplied path or URL itself.** It accepts only spec *content* and parses it with external `$ref` resolution disabled, closing an SSRF / local-file-disclosure vector. Only the CLI resolves paths and URLs, where the caller is the trusted developer running it. Studio's own provider-setup routes (which write an API key to `.env`) are mounted only by the local `studio` command and are never part of `createApp()`.
+One thing that is a fix, not a boundary, but worth being visible about: **`/api/generate-flow` never fetches a caller-supplied path or URL itself.** It accepts only spec *content* and parses it with external `$ref` resolution disabled, closing an SSRF / local-file-disclosure vector. Only the CLI resolves paths and URLs, where the caller is the trusted developer running it. Studio's own provider-setup routes (which write an API key to `.env`) are mounted only by the local `studio` command and are never part of `createApp()`. Studio also listens on 127.0.0.1 only, and rejects requests whose `Host` isn't a loopback name or whose `Origin` isn't Studio itself, so neither other machines nor other websites open in your browser can reach it.
 
 ## Roadmap
 

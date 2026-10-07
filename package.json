@@ -18,7 +18,7 @@
     "url": "git+https://github.com/fdamianenriquez/AgentIntake.git"
   },
   "engines": {
-    "node": ">=20.12"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "private": true,
   "type": "module",
