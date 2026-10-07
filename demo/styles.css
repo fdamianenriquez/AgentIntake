@@ -83,3 +83,48 @@ button[type='button'] {
   font-size: 1rem;
   cursor: pointer;
 }
+
+.demo-scenarios {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  margin: 1rem 0;
+}
+
+.demo-scenarios label {
+  display: block;
+  margin: 0.25rem 0;
+}
+
+.demo-api-log {
+  margin-top: 2rem;
+  font-size: 0.85rem;
+  color: #444;
+}
+
+.agent-intake-stepper-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.agent-intake-stepper li[data-status='stale'] {
+  color: #9a6700;
+}
+
+.agent-intake-edit-notice,
+.agent-intake-recovery-explanation {
+  background: #fff8c5;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+}
+
+.agent-intake-rollback-report {
+  background: #ddf4ff;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+}

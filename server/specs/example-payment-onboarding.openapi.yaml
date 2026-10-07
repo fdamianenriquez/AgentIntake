@@ -42,10 +42,57 @@ paths:
       responses:
         '201':
           description: Account created.
-  /verification:
+  /accounts/{accountId}:
+    parameters:
+      - $ref: '#/components/parameters/AccountId'
+    get:
+      operationId: getAccount
+      summary: Get account
+      security: []
+      responses:
+        '200':
+          description: The account.
+        '404':
+          description: No such account.
+    patch:
+      operationId: updateAccount
+      summary: Update account
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  pattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+                  description: The account owner's email address.
+                fullName:
+                  type: string
+                  description: The account owner's full name.
+                accountType:
+                  type: string
+                  enum:
+                    - individual
+                    - business
+                  description: Whether this account belongs to an individual or a business.
+      responses:
+        '200':
+          description: Account updated.
+    delete:
+      operationId: deleteAccount
+      summary: Close account
+      security: []
+      responses:
+        '204':
+          description: Account closed.
+  /accounts/{accountId}/verifications:
+    parameters:
+      - $ref: '#/components/parameters/AccountId'
     post:
       operationId: createVerification
-      summary: Create verification
+      summary: Verify identity
       description: >-
         Submit identity verification details. Only the fields relevant to
         the account type chosen in the previous step apply -- OpenAPI has no
@@ -94,10 +141,80 @@ paths:
       responses:
         '201':
           description: Verification details recorded.
-  /payout-methods:
+  /accounts/{accountId}/verifications/{verificationId}:
+    parameters:
+      - $ref: '#/components/parameters/AccountId'
+      - name: verificationId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getVerification
+      summary: Get verification
+      security: []
+      responses:
+        '200':
+          description: The verification details.
+        '404':
+          description: No such verification.
+    patch:
+      operationId: updateVerification
+      summary: Update verification
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dateOfBirth:
+                  type: string
+                  format: date
+                  description: Individual accounts only. The account owner's date of birth.
+                governmentIdNumber:
+                  type: string
+                  description: Individual accounts only. A government-issued identification number.
+                residentialAddress:
+                  type: string
+                  description: Individual accounts only. The account owner's residential address.
+                legalBusinessName:
+                  type: string
+                  description: Business accounts only. The registered legal name of the business.
+                taxIdNumber:
+                  type: string
+                  description: Business accounts only. The business's tax identification number.
+                businessRegistrationNumber:
+                  type: string
+                  description: Business accounts only. The business's registration number.
+                businessAddress:
+                  type: string
+                  description: Business accounts only. The business's registered address.
+                industryCategory:
+                  type: string
+                  enum:
+                    - retail
+                    - technology
+                    - healthcare
+                    - finance
+                    - other
+                  description: Business accounts only. The industry the business operates in.
+      responses:
+        '200':
+          description: Verification updated.
+    delete:
+      operationId: deleteVerification
+      summary: Withdraw verification
+      security: []
+      responses:
+        '204':
+          description: Verification withdrawn.
+  /accounts/{accountId}/payout-methods:
+    parameters:
+      - $ref: '#/components/parameters/AccountId'
     post:
       operationId: createPayoutMethod
-      summary: Create payout method
+      summary: Add payout method
       description: Add a bank account to receive payouts.
       security: []
       requestBody:
@@ -141,3 +258,29 @@ paths:
       responses:
         '201':
           description: Payout method added.
+        '403':
+          description: The account can't receive payouts (e.g. it is on hold).
+  /accounts/{accountId}/payout-methods/{payoutMethodId}:
+    parameters:
+      - $ref: '#/components/parameters/AccountId'
+      - name: payoutMethodId
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      operationId: deletePayoutMethod
+      summary: Remove payout method
+      security: []
+      responses:
+        '204':
+          description: Payout method removed.
+components:
+  parameters:
+    AccountId:
+      name: accountId
+      in: path
+      required: true
+      description: The account created in the first step.
+      schema:
+        type: string

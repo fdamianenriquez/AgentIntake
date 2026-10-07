@@ -526,3 +526,36 @@ describe('resolving a stale step', () => {
     ]);
   });
 });
+
+describe('the gap between saving an edit and opening the step to review', () => {
+  it('blocks submitting the edited step again while the next step is being opened', async () => {
+    stubServer({ affected: ['details'] });
+    let finishRead!: () => void;
+    const detailsRead = vi.fn(
+      () => new Promise<{ found: true; data: Record<string, unknown> }>((resolve) => (finishRead = () => resolve({ found: true, data: { detail: 'd1' } })))
+    );
+    const { flow, account } = threeStepFlow({ update: vi.fn().mockResolvedValue({ success: true }) });
+    flow.endpoints[1] = {
+      id: 'details',
+      title: 'Details',
+      fields: detailsFields,
+      operations: { create: vi.fn().mockResolvedValue({ success: true, resourceId: 'det_1' }), read: detailsRead },
+    };
+    const result = render(flow);
+    await completeFirstTwo(result);
+    await act(() => result.current.goToStep('account'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.updateField('type', 'business'));
+    await act(() => result.current.submitStep());
+    await waitFor(() => expect(detailsRead).toHaveBeenCalled());
+
+    // The account step is still on screen, no longer in edit mode -- the trap.
+    expect(result.current.navigating).toBe(true);
+    await act(() => result.current.submitStep());
+    expect(account.create).toHaveBeenCalledTimes(1);
+
+    await act(async () => finishRead());
+    await waitFor(() => expect(result.current.currentStepIndex).toBe(1));
+    expect(result.current.navigating).toBe(false);
+  });
+});

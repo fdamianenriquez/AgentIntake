@@ -1,0 +1,67 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createMockApi, type MockApiCall } from './mockApi.js';
+
+let calls: MockApiCall[];
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  calls = [];
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+async function settle<T>(promise: Promise<T>): Promise<T> {
+  await vi.runAllTimersAsync();
+  return promise;
+}
+
+describe('demo mock API', () => {
+  it('creates, reads, updates and deletes an account', async () => {
+    const api = createMockApi((c) => calls.push(c));
+    const { id } = await (await settle(api.createAccount({ fullName: 'Jordan' }))).json();
+
+    expect(await (await settle(api.getAccount(id))).json()).toEqual({ fullName: 'Jordan' });
+    await settle(api.updateAccount(id, { accountType: 'business' }));
+    expect(await (await settle(api.getAccount(id))).json()).toEqual({ fullName: 'Jordan', accountType: 'business' });
+    expect((await settle(api.deleteAccount(id))).status).toBe(204);
+    expect((await settle(api.getAccount(id))).status).toBe(404);
+  });
+
+  it('scenario A: the payout request times out once, then a retry with the same key succeeds once', async () => {
+    const api = createMockApi((c) => calls.push(c));
+    const { id: accountId } = await (await settle(api.createAccount({}))).json();
+    api.setScenario('payout-timeout');
+
+    const first = api.createPayoutMethod(accountId, { bankName: 'B' }, 'key-1');
+    const rejection = expect(first).rejects.toMatchObject({ name: 'TimeoutError' });
+    await vi.runAllTimersAsync();
+    await rejection;
+
+    const retry = await (await settle(api.createPayoutMethod(accountId, { bankName: 'B' }, 'key-1'))).json();
+    const again = await (await settle(api.createPayoutMethod(accountId, { bankName: 'B' }, 'key-1'))).json();
+    expect(again.id).toBe(retry.id);
+    expect(calls.map((c) => c.status)).toEqual([201, 'timeout', 201, 201]);
+  });
+
+  it('scenario B: adding a payout method fails with a 403 compliance hold', async () => {
+    const api = createMockApi((c) => calls.push(c));
+    const { id: accountId } = await (await settle(api.createAccount({}))).json();
+    api.setScenario('compliance-hold');
+
+    const response = await settle(api.createPayoutMethod(accountId, { bankName: 'B' }, 'key-2'));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: expect.stringContaining('compliance hold') });
+  });
+
+  it('keeps verifications under their account', async () => {
+    const api = createMockApi((c) => calls.push(c));
+    const { id: accountId } = await (await settle(api.createAccount({}))).json();
+    const { id } = await (await settle(api.createVerification(accountId, { dateOfBirth: '1990-01-01' }))).json();
+
+    expect((await settle(api.getVerification('acct_other', id))).status).toBe(404);
+    expect(await (await settle(api.getVerification(accountId, id))).json()).toEqual({ dateOfBirth: '1990-01-01' });
+  });
+});

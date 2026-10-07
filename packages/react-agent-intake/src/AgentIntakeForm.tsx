@@ -28,7 +28,10 @@ export function AgentIntakeForm({ flow, apiUrl, getAuthHeaders, recovery, onReco
   const recoveryBusy = rec.phase === 'proposed' || rec.phase === 'rollingBack' || rec.phase === 'rollbackFailed';
   const staleReason = currentEndpoint ? form.stepRecords[currentEndpoint.id]?.staleReason : undefined;
   const busy =
-    form.editPhase !== 'idle' || form.currentStepStatus === 'validating' || form.currentStepStatus === 'executing';
+    form.navigating ||
+    form.editPhase !== 'idle' ||
+    form.currentStepStatus === 'validating' ||
+    form.currentStepStatus === 'executing';
   const submitLabel = form.isEditing
     ? form.editPhase === 'validating'
       ? 'Validating…'

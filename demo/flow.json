@@ -39,7 +39,14 @@
       ],
       "auth": {
         "type": "none"
-      }
+      },
+      "capabilities": {
+        "read": true,
+        "update": true,
+        "undo": true
+      },
+      "resourcePath": "/accounts",
+      "idParam": "accountId"
     },
     {
       "id": "createVerification",
@@ -112,7 +119,17 @@
       ],
       "auth": {
         "type": "none"
-      }
+      },
+      "capabilities": {
+        "read": true,
+        "update": true,
+        "undo": true
+      },
+      "resourcePath": "/accounts/{accountId}/verifications",
+      "idParam": "verificationId",
+      "pathParams": [
+        "accountId"
+      ]
     },
     {
       "id": "createPayoutMethod",
@@ -167,7 +184,17 @@
       ],
       "auth": {
         "type": "none"
-      }
+      },
+      "capabilities": {
+        "read": false,
+        "update": false,
+        "undo": true
+      },
+      "resourcePath": "/accounts/{accountId}/payout-methods",
+      "idParam": "payoutMethodId",
+      "pathParams": [
+        "accountId"
+      ]
     }
   ]
 }

@@ -117,6 +117,8 @@ export interface UseAgentFormResult {
   editPhase: EditPhase;
   /** Set when revisiting a step failed (e.g. its `read` threw); the user stays where they were. */
   navigationError: string | null;
+  /** True while a step is being opened for review (its read is in flight); submitting is disabled meanwhile. */
+  navigating: boolean;
   recovery: RecoveryView;
   /** Run the proposed undo, in reverse order, stopping at the first failure. */
   confirmRollback: () => Promise<void>;
@@ -287,6 +289,7 @@ interface FormState {
   navigationError: string | null;
   /** A stale step the wizard has to open in edit mode next (it can't just be re-created). */
   pendingRevisit: string | null;
+  navigating: boolean;
   recovery: RecoveryState;
   /** Per endpoint: failures without a known cause so far (the first is retried before asking the model). */
   otherFailures: Record<string, number>;
@@ -378,6 +381,7 @@ const initialState: FormState = {
   drafts: {},
   navigationError: null,
   pendingRevisit: null,
+  navigating: false,
   recovery: IDLE_RECOVERY,
   otherFailures: {},
 };
@@ -509,12 +513,13 @@ function reducer(state: FormState, action: FormAction): FormState {
         }),
       };
     case 'navigationStarted':
-      return { ...state, navigationError: null, pendingRevisit: null };
+      return { ...state, navigationError: null, pendingRevisit: null, navigating: true };
     case 'navigationFailed':
-      return { ...state, navigationError: action.message };
+      return { ...state, navigationError: action.message, navigating: false };
     case 'editStarted':
       return {
         ...state,
+        navigating: false,
         editing: {
           endpointId: action.endpointId,
           returnIndex: state.editing?.returnIndex ?? state.currentStepIndex,
@@ -542,6 +547,7 @@ function reducer(state: FormState, action: FormAction): FormState {
         ...state,
         records,
         editing: null,
+        navigating: false,
         prefill: { endpointId: action.endpointId, values: record?.values ?? {} },
         drafts: withDraft(state.drafts, action.draft),
         currentStepIndex: action.targetIndex,
@@ -1101,6 +1107,9 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
 
   const submitStep = useCallback(async () => {
     if (!currentEndpoint) return;
+    // Between saving an edit and opening the next step to review, the step on
+    // screen must not be submitted again (that would re-run create).
+    if (stateRef.current.navigating || stateRef.current.pendingRevisit) return;
     const { editing } = stateRef.current;
     if (editing) {
       await submitEdit(currentEndpoint, editing);
@@ -1130,6 +1139,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
   // idempotency key -- no new semantic check.
   const retryExecution = useCallback(async () => {
     if (!currentEndpoint) return;
+    if (stateRef.current.navigating || stateRef.current.pendingRevisit) return;
     if (stateRef.current.records[currentEndpoint.id]?.status !== 'executionFailed') return;
     await runCreate(currentEndpoint, stateRef.current.values);
   }, [currentEndpoint, runCreate]);
@@ -1315,6 +1325,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
     editMode: state.editing?.mode ?? null,
     editPhase: state.editing?.phase ?? 'idle',
     navigationError: state.navigationError,
+    navigating: state.navigating || state.pendingRevisit !== null,
     error: state.error,
   };
 }

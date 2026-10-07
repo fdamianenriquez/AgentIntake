@@ -117,17 +117,28 @@ How each way of running it finds its provider:
 
 ### Running the demo
 
-The demo is a fixed "Payment Account Onboarding" wizard over three endpoints: `POST /accounts` → `POST /verification` → `POST /payout-methods`.
+The demo is a "Payment Account Onboarding" wizard built from `server/specs/example-payment-onboarding.openapi.yaml`: three resource families, two of them nested under the account.
+
+| Step | Created with | Revisit / undo with |
+|---|---|---|
+| Account | `POST /accounts` | `GET`, `PATCH`, `DELETE /accounts/{accountId}` |
+| Verification | `POST /accounts/{accountId}/verifications` | `GET`, `PATCH`, `DELETE …/verifications/{verificationId}` |
+| Payout method | `POST /accounts/{accountId}/payout-methods` | `DELETE …/payout-methods/{payoutMethodId}` (no read or update) |
 
 ```bash
-npm start                                   # API server on :3000
+npm start                                   # AgentIntake server on :3000
 npx vite --config demo/vite.config.ts       # demo UI on :5173
 ```
 
-- **Step 1** asks for an account type, `individual` or `business`. In **step 2**, every verification field is optional in the OpenAPI schema (OpenAPI can't express "required only if an earlier answer was X"), and the step engine narrows the set at runtime: choosing `individual` shows only the three individual fields, `business` shows the five business ones. A whole field set swaps out, not one toggle.
-- **Step 3** collects an account holder name. Its description invites a cross-step check, so a name that doesn't plausibly match the one collected earlier is rejected with an explanation no regex could produce.
+The demo's operations call an in-browser mock of that API (`demo/mockApi.ts`), so nothing needs to run besides the two commands above; a log under the form lists every mock call. A "Simulate" switch picks what the mock does:
 
-Each step's `execute()` in the demo just logs to the console and succeeds. Field names are deliberately generic and fictional; the demo illustrates the mechanism and is **not** guidance on the KYC/KYB requirements of any jurisdiction.
+- **Adaptive fields:** every verification field is optional in the spec (OpenAPI can't express "required only if an earlier answer was X"), and the step engine narrows them at runtime: `individual` shows the three individual fields, `business` the five business ones.
+- **Cross-step validation:** the payout step's account holder name is checked against the name collected earlier, which no regex could do.
+- **A — payout request times out once:** the timeout is classified as retryable without an LLM call; Retry succeeds, and the idempotency key keeps the mock from creating the payout method twice.
+- **B — account on compliance hold:** adding a payout method fails with a 403; the model classifies it as fundamental and the form proposes undoing the verification and the account. After you confirm, the mock receives the two `DELETE`s in reverse order and the form starts again at the first step.
+- **C — change an earlier answer:** complete the flow, go back to the account, and switch `individual` → `business`. The account is updated with `PATCH`; the model flags the later steps, and verification, whose questions changed, has to be updated with the business fields before the flow is complete again. The payout method, which can't be changed here, can only be kept.
+
+Live runs depend on the configured model: with a slow or unreliable one, a call may time out and the form falls back as described above (full field list, everything marked for review, no undo proposed). Field names are deliberately generic and fictional; the demo illustrates the mechanism and is **not** guidance on the KYC/KYB requirements of any jurisdiction.
 
 ## Authentication model
 
@@ -352,7 +363,7 @@ One thing that is a fix, not a boundary, but worth being visible about: **`/api/
 
 ## Roadmap
 
-**v1.5 — Smart Recovery**, nearly complete. Done: resource families in the parser, the operations contract, revisiting completed steps with `read`/`update`, an LLM check that narrows down which later steps an edit affects, and recovery from a failed step with a confirmed undo. Remaining: a reworked demo that shows these scenarios end to end.
+**v1.5 — Smart Recovery** is in place: resource families in the parser, the operations contract, revisiting completed steps with `read`/`update`, an LLM check that narrows down which later steps an edit affects, and recovery from a failed step with a confirmed undo. The demo shows each of them.
 
 Smaller stretch goals, roughly in priority order: dynamic enum options, chunked generation for large specs, rate-limiting middleware, free-text bulk fill, hosted Studio with shareable links, multi-spec cross-service flows, an explicit LangGraph state graph for the step engine, session persistence, and a visual `FlowDef` editor.
 
