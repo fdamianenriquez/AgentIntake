@@ -19,23 +19,58 @@ export interface SessionState {
   collectedData: Record<string, Record<string, unknown>>;
   validatedEndpointIds: string[];
   createdAt: number;
+  lastAccessedAt: number;
 }
+
+// Session ids come from unauthenticated clients, so without bounds the map
+// grows for the life of the process. Eviction is lazy (on access), so there is
+// no timer to keep the process alive. The Map's insertion order is kept as
+// least-recently-used first by re-inserting on every access.
+export const SESSION_IDLE_TTL_MS = 2 * 60 * 60 * 1000;
+export const MAX_SESSIONS = 10_000;
 
 const sessions = new Map<string, SessionState>();
 
-export function createSession(): SessionState {
-  const session: SessionState = {
-    id: randomUUID(),
-    collectedData: {},
-    validatedEndpointIds: [],
-    createdAt: Date.now(),
-  };
+function touch(session: SessionState): SessionState {
+  session.lastAccessedAt = Date.now();
+  sessions.delete(session.id);
   sessions.set(session.id, session);
   return session;
 }
 
+function evictStale(): void {
+  const cutoff = Date.now() - SESSION_IDLE_TTL_MS;
+  for (const [id, session] of sessions) {
+    if (session.lastAccessedAt >= cutoff) break;
+    sessions.delete(id);
+  }
+  for (const id of sessions.keys()) {
+    if (sessions.size <= MAX_SESSIONS) break;
+    sessions.delete(id);
+  }
+}
+
+function newSession(id: string): SessionState {
+  evictStale();
+  const now = Date.now();
+  const session: SessionState = { id, collectedData: {}, validatedEndpointIds: [], createdAt: now, lastAccessedAt: now };
+  sessions.set(id, session);
+  evictStale();
+  return session;
+}
+
+export function createSession(): SessionState {
+  return newSession(randomUUID());
+}
+
 export function getSession(sessionId: string): SessionState | undefined {
-  return sessions.get(sessionId);
+  const session = sessions.get(sessionId);
+  if (!session) return undefined;
+  if (session.lastAccessedAt < Date.now() - SESSION_IDLE_TTL_MS) {
+    sessions.delete(sessionId);
+    return undefined;
+  }
+  return touch(session);
 }
 
 // The client (useAgentForm, which manages sessionId internally) generates
@@ -44,17 +79,7 @@ export function getSession(sessionId: string): SessionState | undefined {
 // this to lazily create a session on first reference, keyed by whatever id
 // the client supplied, instead of requiring it to already exist.
 export function getOrCreateSession(sessionId: string): SessionState {
-  const existing = sessions.get(sessionId);
-  if (existing) return existing;
-
-  const session: SessionState = {
-    id: sessionId,
-    collectedData: {},
-    validatedEndpointIds: [],
-    createdAt: Date.now(),
-  };
-  sessions.set(session.id, session);
-  return session;
+  return getSession(sessionId) ?? newSession(sessionId);
 }
 
 export function recordValidatedStep(
@@ -62,7 +87,7 @@ export function recordValidatedStep(
   endpointId: string,
   data: Record<string, unknown>
 ): SessionState {
-  const session = sessions.get(sessionId);
+  const session = getSession(sessionId);
   if (!session) {
     throw new Error(`sessionStore: no session found for id "${sessionId}"`);
   }

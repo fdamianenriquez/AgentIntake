@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FieldDef } from './flowSchema.js';
 
-vi.mock('./llmClient.js', () => ({
+vi.mock('./llmClient.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./llmClient.js')>()),
   generateStructured: vi.fn(),
 }));
 
-import { generateStructured } from './llmClient.js';
-import { selectStepFields, validateStepSubmission } from './stepEngine.js';
+import { generateStructured, LlmTimeoutError } from './llmClient.js';
+import { selectStepFields, STEP_TIMEOUT_MS, validateStepSubmission } from './stepEngine.js';
 
 const mockedGenerateStructured = vi.mocked(generateStructured);
 
@@ -212,5 +213,34 @@ describe('validateStepSubmission', () => {
     });
 
     expect(result).toEqual({ valid: true, errors: {}, degraded: true });
+  });
+});
+
+describe('step engine timeouts', () => {
+  it('asks llmClient to abort both per-step calls after STEP_TIMEOUT_MS', async () => {
+    mockedGenerateStructured
+      .mockResolvedValueOnce({ fields: [{ name: 'email' }], suggestedValues: {} })
+      .mockResolvedValueOnce({ valid: true, errors: [] });
+
+    await selectStepFields({ endpoint });
+    await validateStepSubmission({ endpoint, data: { email: 'a@b.com' } });
+
+    for (const call of mockedGenerateStructured.mock.calls) {
+      expect(call[2]).toEqual({ timeoutMs: STEP_TIMEOUT_MS });
+    }
+  });
+
+  it('degrades both calls when the request is aborted for taking too long', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockedGenerateStructured
+      .mockRejectedValueOnce(new LlmTimeoutError('The model did not respond within 15 seconds.'))
+      .mockRejectedValueOnce(new LlmTimeoutError('The model did not respond within 15 seconds.'));
+
+    const fields = await selectStepFields({ endpoint });
+    const verdict = await validateStepSubmission({ endpoint, data: { email: 'a@b.com' } });
+
+    expect(fields).toEqual({ fields: baseFields, suggestedValues: {}, degraded: true });
+    expect(verdict).toEqual({ valid: true, errors: {}, degraded: true });
+    warn.mockRestore();
   });
 });

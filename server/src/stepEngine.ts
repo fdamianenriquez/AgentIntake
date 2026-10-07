@@ -2,29 +2,13 @@ import { z } from 'zod';
 import type { FieldDef, ParsedEndpoint } from './flowSchema.js';
 import { generateStructured } from './llmClient.js';
 
-const DEFAULT_TIMEOUT_MS = 15_000;
+// Passed to generateStructured, which aborts the underlying request when it
+// expires -- a stalled call stops costing quota, not just stops being awaited.
+export const STEP_TIMEOUT_MS = 15_000;
 
 function isStaticMode(): boolean {
   const raw = process.env.AGENTINTAKE_STATIC_MODE;
   return raw !== undefined && raw !== '' && raw !== 'false' && raw !== '0';
-}
-
-class TimeoutError extends Error {}
-
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new TimeoutError(`${label} timed out after ${ms}ms`)), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error: unknown) => {
-        clearTimeout(timer);
-        reject(error);
-      }
-    );
-  });
 }
 
 // A dynamic enum of a specific endpoint's base field names. Because Zod can
@@ -79,11 +63,7 @@ export async function selectStepFields(input: SelectStepFieldsInput): Promise<Se
     });
 
     const prompt = buildSelectFieldsPrompt(input.endpoint, baseFields, input.previouslyCollectedData ?? {});
-    const result = await withTimeout(
-      generateStructured(prompt, outputSchema),
-      DEFAULT_TIMEOUT_MS,
-      `selectStepFields("${input.endpoint.id}")`
-    );
+    const result = await generateStructured(prompt, outputSchema, { timeoutMs: STEP_TIMEOUT_MS });
 
     if (result.fields.length === 0) {
       return { fields: baseFields, suggestedValues: {}, degraded: true };
@@ -181,11 +161,7 @@ export async function validateStepSubmission(
     });
 
     const prompt = buildValidatePrompt(endpoint, data, input.previouslyCollectedData ?? {});
-    const result = await withTimeout(
-      generateStructured(prompt, outputSchema),
-      DEFAULT_TIMEOUT_MS,
-      `validateStepSubmission("${endpoint.id}")`
-    );
+    const result = await generateStructured(prompt, outputSchema, { timeoutMs: STEP_TIMEOUT_MS });
 
     if (!result.valid) {
       const errors = Object.fromEntries(result.errors.map((entry) => [entry.name, entry.message]));

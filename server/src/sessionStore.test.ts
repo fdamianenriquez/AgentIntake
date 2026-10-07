@@ -1,11 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createSession,
   deleteSession,
   getOrCreateSession,
   getSession,
   isEndpointValidated,
+  MAX_SESSIONS,
   recordValidatedStep,
+  SESSION_IDLE_TTL_MS,
 } from './sessionStore.js';
 
 describe('sessionStore', () => {
@@ -77,5 +79,43 @@ describe('sessionStore', () => {
 
     expect(second).toBe(first);
     expect(second.collectedData.createCandidate).toEqual({ email: 'a@b.com' });
+  });
+});
+
+describe('sessionStore bounds', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('expires a session after SESSION_IDLE_TTL_MS without access', () => {
+    vi.useFakeTimers();
+    const session = getOrCreateSession('idle-session');
+
+    vi.advanceTimersByTime(SESSION_IDLE_TTL_MS + 1);
+
+    expect(getSession(session.id)).toBeUndefined();
+  });
+
+  it('keeps a session alive while it keeps being accessed', () => {
+    vi.useFakeTimers();
+    getOrCreateSession('active-session');
+
+    for (let i = 0; i < 3; i++) {
+      vi.advanceTimersByTime(SESSION_IDLE_TTL_MS - 1000);
+      expect(getSession('active-session')).toBeDefined();
+    }
+  });
+
+  it('never holds more than MAX_SESSIONS, evicting the least recently used first', () => {
+    getOrCreateSession('lru-oldest');
+    getOrCreateSession('lru-kept');
+    for (let i = 0; i < MAX_SESSIONS; i++) {
+      getOrCreateSession(`lru-filler-${i}`);
+      if (i === 0) getSession('lru-kept'); // touched, so it moves behind 'lru-oldest'
+    }
+
+    expect(getSession('lru-oldest')).toBeUndefined();
+    expect(getSession('lru-kept')).toBeDefined();
+    expect(getSession(`lru-filler-${MAX_SESSIONS - 1}`)).toBeDefined();
   });
 });

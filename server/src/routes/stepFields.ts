@@ -5,7 +5,7 @@ import { selectStepFields } from '../stepEngine.js';
 import { getOrCreateSession } from '../sessionStore.js';
 
 const RequestBodySchema = z.object({
-  sessionId: z.string().min(1),
+  sessionId: z.string().min(1).max(128),
   endpoint: ParsedEndpointSchema,
 });
 

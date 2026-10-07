@@ -5,7 +5,7 @@ import { validateStepSubmission } from '../stepEngine.js';
 import { getOrCreateSession, recordValidatedStep } from '../sessionStore.js';
 
 const RequestBodySchema = z.object({
-  sessionId: z.string().min(1),
+  sessionId: z.string().min(1).max(128),
   endpoint: ParsedEndpointSchema,
   data: z.record(z.string(), z.unknown()),
 });
