@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Express } from 'express';
 import { z } from 'zod';
 import {
-  API_KEY_ENV_VARS,
+  API_KEY_ENV_VAR,
   resolveProvider,
   SUPPORTED_PROVIDERS,
   type LlmProvider,
@@ -26,8 +26,7 @@ export function registerStudioProviderRoutes(app: Express): void {
   app.get('/api/provider-status', (_req, res) => {
     try {
       const provider = resolveProvider();
-      const envVar = API_KEY_ENV_VARS[provider];
-      const configured = Boolean(process.env[envVar]);
+      const configured = Boolean(process.env[API_KEY_ENV_VAR]);
       res.status(200).json({ configured, provider: configured ? provider : undefined });
     } catch {
       // resolveProvider() throws on an unrecognized LLM_PROVIDER -- from
@@ -59,8 +58,7 @@ export function registerStudioProviderRoutes(app: Express): void {
 // current process immediately, so it takes effect without a restart.
 async function writeProviderConfig(provider: LlmProvider, apiKey: string): Promise<void> {
   const envPath = path.resolve(process.cwd(), '.env');
-  const envVar = API_KEY_ENV_VARS[provider];
-  const updates: Record<string, string> = { LLM_PROVIDER: provider, [envVar]: apiKey };
+  const updates: Record<string, string> = { LLM_PROVIDER: provider, [API_KEY_ENV_VAR]: apiKey };
 
   let lines: string[] = [];
   try {
@@ -90,5 +88,5 @@ async function writeProviderConfig(provider: LlmProvider, apiKey: string): Promi
   await writeFile(envPath, updatedLines.join('\n') + '\n', 'utf-8');
 
   process.env.LLM_PROVIDER = provider;
-  process.env[envVar] = apiKey;
+  process.env[API_KEY_ENV_VAR] = apiKey;
 }

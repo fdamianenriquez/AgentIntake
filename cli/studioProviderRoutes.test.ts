@@ -19,10 +19,7 @@ beforeEach(async () => {
   tmpDir = await mkdtemp(path.join(tmpdir(), 'agent-intake-studio-test-'));
   vi.spyOn(process, 'cwd').mockReturnValue(tmpDir);
   delete process.env.LLM_PROVIDER;
-  delete process.env.ANTHROPIC_API_KEY;
-  delete process.env.OPENAI_API_KEY;
-  delete process.env.GOOGLE_API_KEY;
-  delete process.env.OPENROUTER_API_KEY;
+  delete process.env.LLM_API_KEY;
 });
 
 afterEach(async () => {
@@ -40,7 +37,7 @@ describe('GET /api/provider-status', () => {
 
   it('reports configured when the resolved provider has its key set', async () => {
     process.env.LLM_PROVIDER = 'openrouter';
-    process.env.OPENROUTER_API_KEY = 'test-key';
+    process.env.LLM_API_KEY = 'test-key';
 
     const response = await request(makeApp()).get('/api/provider-status');
 
@@ -69,16 +66,16 @@ describe('POST /api/provider-setup', () => {
 
     const written = await readFile(path.join(tmpDir, '.env'), 'utf-8');
     expect(written).toContain('LLM_PROVIDER=anthropic');
-    expect(written).toContain('ANTHROPIC_API_KEY=sk-test-123');
+    expect(written).toContain('LLM_API_KEY=sk-test-123');
 
     expect(process.env.LLM_PROVIDER).toBe('anthropic');
-    expect(process.env.ANTHROPIC_API_KEY).toBe('sk-test-123');
+    expect(process.env.LLM_API_KEY).toBe('sk-test-123');
   });
 
   it('updates an existing .env in place without disturbing unrelated lines', async () => {
     await writeFile(
       path.join(tmpDir, '.env'),
-      'LLM_PROVIDER=openai\nOPENAI_API_KEY=old-key\nSOME_OTHER_VAR=keep-me\n',
+      'LLM_PROVIDER=openai\nLLM_API_KEY=old-key\nSOME_OTHER_VAR=keep-me\n',
       'utf-8'
     );
 
@@ -91,9 +88,9 @@ describe('POST /api/provider-setup', () => {
     const written = await readFile(path.join(tmpDir, '.env'), 'utf-8');
     const lines = written.trim().split('\n');
     expect(lines).toContain('LLM_PROVIDER=openai');
-    expect(lines).toContain('OPENAI_API_KEY=new-key');
+    expect(lines).toContain('LLM_API_KEY=new-key');
     expect(lines).toContain('SOME_OTHER_VAR=keep-me');
-    expect(lines.filter((line) => line.startsWith('OPENAI_API_KEY='))).toHaveLength(1);
+    expect(lines.filter((line) => line.startsWith('LLM_API_KEY='))).toHaveLength(1);
   });
 
   it('returns 400 for an invalid body', async () => {

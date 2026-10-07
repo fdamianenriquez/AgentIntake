@@ -34,16 +34,6 @@ flowchart TB
 
 The CLI and Studio share the same `flowGenerator`; Studio reaches it through `/api/generate-flow`, the CLI calls it directly. Every LLM call happens on the server — **the provider API key never reaches the browser**.
 
-## How it compares
-
-| | ConvoForm | openapi-form-generator (unmaintained) | Godspeed uikit | **AgentIntake** |
-|---|---|---|---|---|
-| UI paradigm | Chat-only | Real form (static, mechanical) | Generates a whole app | **Adaptive wizard — real inputs, AI adjusts fields per step live** |
-| Schema origin | AI-generated from a text description | Mechanical JSON Schema mapping, no AI | AI reads OpenAPI to scaffold pages/hooks | **Base schema from OpenAPI, adapted live per step by the same AI** |
-| Core unit | One form to one destination (their DB) | One JSON Schema to one form | One OpenAPI spec to one app | **Multiple related endpoints to one adaptive multi-step wizard** |
-| Distribution | Hosted SaaS / self-hosted platform | Old, abandoned npm package | One-time codegen CLI | **Headless library, plus a CLI and a no-code local Studio preview** |
-| Who can generate a flow | N/A (built in their UI) | Developers only | Developers only (CLI) | **Both — CLI for developers, Studio for anyone** |
-
 ## Why a wizard and not a chat
 
 Multi-endpoint intake (onboarding, KYC-style verification, provisioning) is a form problem: people want to see what's being asked, correct earlier answers, and know how far along they are. A chat transcript hides all of that. So the interaction surface is a wizard, and the AI is an active participant in exactly two bounded ways:
@@ -77,7 +67,7 @@ node dist/cli/index.js generate \
   --output flow.json
 ```
 
-`--spec` accepts a local path or URL — the CLI's caller is a trusted local developer, so it fully resolves `$ref`s, including external ones. `--provider` and `--model` override the environment for one run. Generation flags any fields whose purpose it found ambiguous so you can review them.
+`--spec` accepts a local path or URL — the CLI's caller is a trusted local developer, so it fully resolves `$ref`s, including external ones. `--provider` and `--model` override the environment for one run; if you switch providers with `--provider`, `LLM_API_KEY` must hold that provider's key. Generation flags any fields whose purpose it found ambiguous so you can review them.
 
 The output is a `FlowDef` **without** `execute` functions. Review it, then add each endpoint's `execute` by hand — AgentIntake never generates that part (see [Authentication model](#authentication-model)).
 
@@ -102,7 +92,7 @@ One `.env` at the project root is the source of truth. It is read from the direc
 |---|---|
 | `LLM_PROVIDER` | `anthropic` (default), `openai`, `google`, or `openrouter` |
 | `LLM_MODEL` | Provider-specific model name; optional, each provider has a default |
-| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY` / `OPENROUTER_API_KEY` | Set the one matching `LLM_PROVIDER` |
+| `LLM_API_KEY` | Your API key for the provider named in `LLM_PROVIDER` — one variable for all of them, so it must be a key for that provider |
 | `AGENTINTAKE_STATIC_MODE` | Any value other than empty, `false` or `0` turns adaptivity off (see below) |
 | `PORT` | Port for the runtime server (`npm start`), default `3000` |
 
@@ -110,7 +100,7 @@ Defaults: `anthropic` → `claude-sonnet-4-6`, `openai` → `gpt-4o-mini`, `goog
 
 How each way of running it finds its provider:
 
-- **CLI `generate`** — reads `.env` if present. Variables already set in your shell (for example CI secrets) take precedence over `.env`, and `--provider` / `--model` take precedence over both. It fails fast, before touching the spec, with a specific message if the key for the resolved provider is missing or `LLM_PROVIDER` isn't a supported value — never a raw SDK error.
+- **CLI `generate`** — reads `.env` if present. Variables already set in your shell (for example CI secrets) take precedence over `.env`, and `--provider` / `--model` take precedence over both. It fails fast, before touching the spec, with a specific message if `LLM_API_KEY` is missing or `LLM_PROVIDER` isn't a supported value — never a raw SDK error. Because one variable serves every provider, a key that belongs to a *different* provider can't be detected up front; the provider rejects it on the first call.
 - **Studio** — if no valid provider and key are configured, it shows a one-time setup screen in the browser: pick a provider, paste the key. It is written to `.env` in the directory you launched Studio from, so no text-file editing is needed and you aren't asked again next session.
 - **Runtime wizard server** (`npm start`) — reads `.env` like the CLI. This is a deployment-time concern of whoever hosts the wizard; the person filling out the form never sees or configures it.
 

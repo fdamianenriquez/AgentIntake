@@ -28,15 +28,10 @@ const DEFAULT_MODELS: Record<LlmProvider, string> = {
   openrouter: 'openrouter/free',
 };
 
-// Exported so anything that needs to know "which .env variable holds this
-// provider's key" (e.g. Studio's setup screen) has one source of
-// truth instead of a second hardcoded copy of this mapping.
-export const API_KEY_ENV_VARS: Record<LlmProvider, string> = {
-  anthropic: 'ANTHROPIC_API_KEY',
-  openai: 'OPENAI_API_KEY',
-  google: 'GOOGLE_API_KEY',
-  openrouter: 'OPENROUTER_API_KEY',
-};
+// One variable for every provider: LLM_API_KEY is the key for whichever
+// LLM_PROVIDER is selected. Exported so Studio's setup screen shares
+// this single source of truth instead of a second hardcoded name.
+export const API_KEY_ENV_VAR = 'LLM_API_KEY';
 
 function isSupportedProvider(value: string): value is LlmProvider {
   return (SUPPORTED_PROVIDERS as readonly string[]).includes(value);
@@ -52,11 +47,11 @@ export function resolveProvider(): LlmProvider {
   return raw;
 }
 
-function requireApiKey(envVar: string, provider: LlmProvider): string {
-  const key = process.env[envVar];
+function requireApiKey(provider: LlmProvider): string {
+  const key = process.env[API_KEY_ENV_VAR];
   if (!key) {
     throw new Error(
-      `Set ${envVar} to use LLM_PROVIDER=${provider}, or set LLM_PROVIDER to a different supported provider.`
+      `Set ${API_KEY_ENV_VAR} to your ${provider} API key to use LLM_PROVIDER=${provider}, or set LLM_PROVIDER to a different supported provider.`
     );
   }
   return key;
@@ -68,17 +63,17 @@ export function buildModel(provider: LlmProvider) {
 
   switch (provider) {
     case 'anthropic':
-      return createAnthropic({ apiKey: requireApiKey(API_KEY_ENV_VARS.anthropic, provider) })(modelId);
+      return createAnthropic({ apiKey: requireApiKey(provider) })(modelId);
     case 'openai':
       // .chat() explicitly, not the default callable: as of this SDK
       // version the bare call uses OpenAI's Responses API, which
       // OpenRouter (below) does not implement.
-      return createOpenAI({ apiKey: requireApiKey(API_KEY_ENV_VARS.openai, provider) }).chat(modelId);
+      return createOpenAI({ apiKey: requireApiKey(provider) }).chat(modelId);
     case 'google':
-      return createGoogleGenerativeAI({ apiKey: requireApiKey(API_KEY_ENV_VARS.google, provider) })(modelId);
+      return createGoogleGenerativeAI({ apiKey: requireApiKey(provider) })(modelId);
     case 'openrouter':
       return createOpenAI({
-        apiKey: requireApiKey(API_KEY_ENV_VARS.openrouter, provider),
+        apiKey: requireApiKey(provider),
         baseURL: 'https://openrouter.ai/api/v1',
       }).chat(modelId);
   }
