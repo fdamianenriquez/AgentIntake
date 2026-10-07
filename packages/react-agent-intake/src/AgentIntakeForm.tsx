@@ -21,7 +21,7 @@ export function AgentIntakeForm({ flow, apiUrl, getAuthHeaders }: AgentIntakeFor
   }
 
   const readOnly = form.editMode === 'readOnly';
-  const staleReadOnly = readOnly && form.currentStepStatus === 'stale';
+  const staleReason = currentEndpoint ? form.stepRecords[currentEndpoint.id]?.staleReason : undefined;
   const busy =
     form.editPhase !== 'idle' || form.currentStepStatus === 'validating' || form.currentStepStatus === 'executing';
   const submitLabel = form.isEditing
@@ -29,8 +29,8 @@ export function AgentIntakeForm({ flow, apiUrl, getAuthHeaders }: AgentIntakeFor
       ? 'Validating…'
       : form.editPhase === 'saving'
         ? 'Saving…'
-        : staleReadOnly
-          ? 'Confirm'
+        : form.editPhase === 'checking'
+          ? 'Checking later steps…'
           : 'Save changes'
     : form.currentStepStatus === 'validating'
       ? 'Validating…'
@@ -80,19 +80,39 @@ export function AgentIntakeForm({ flow, apiUrl, getAuthHeaders }: AgentIntakeFor
       )}
 
       {(form.isComplete && !form.isEditing) || !currentEndpoint ? (
-        <p className="agent-intake-form-complete">All steps complete.</p>
+        <div className="agent-intake-form-complete">
+          <p>All steps complete.</p>
+          {form.followUps.length > 0 && (
+            <div className="agent-intake-follow-ups">
+              <p>These steps were accepted but need follow-up outside this form:</p>
+              <ul>
+                {form.followUps.map(({ endpointId, note }) => (
+                  <li key={endpointId}>
+                    <strong>{flow.endpoints.find((endpoint) => endpoint.id === endpointId)?.title}:</strong> {note}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       ) : (
         <section className="agent-intake-step" aria-labelledby="agent-intake-step-title">
           <h2 id="agent-intake-step-title">{currentEndpoint.title}</h2>
           {currentEndpoint.description && <p>{currentEndpoint.description}</p>}
           {form.isEditing && (
             <p className="agent-intake-edit-notice">
-              {staleReadOnly
-                ? "An earlier answer changed. This step can't be changed here -- confirm it still applies."
+              {form.currentStepStatus === 'stale'
+                ? `${staleReason ?? 'An earlier answer changed.'} ${
+                    form.staleResolution === 'mustEdit'
+                      ? 'Its questions changed, so update it before continuing.'
+                      : form.staleResolution === 'followUp'
+                        ? "Its questions changed, but it can't be changed here."
+                        : readOnly
+                          ? "It can't be changed here; keep it if it still applies."
+                          : 'Keep it as it is, or change it and save.'
+                  }`
                 : readOnly
-                ? "This step is already done and can't be changed here."
-                : form.currentStepStatus === 'stale'
-                  ? 'An earlier answer changed. Check this step and save it again.'
+                  ? "This step is already done and can't be changed here."
                   : "You're changing a step you already completed."}
             </p>
           )}
@@ -129,9 +149,19 @@ export function AgentIntakeForm({ flow, apiUrl, getAuthHeaders }: AgentIntakeFor
                 </div>
               )}
 
-              {(!readOnly || staleReadOnly) && (
+              {!readOnly && (
                 <button type="submit" disabled={busy}>
                   {submitLabel}
+                </button>
+              )}
+              {form.staleResolution === 'keepOrEdit' && (
+                <button type="button" onClick={() => form.acknowledgeStale()} disabled={busy}>
+                  Keep as is
+                </button>
+              )}
+              {form.staleResolution === 'followUp' && (
+                <button type="button" onClick={() => form.flagForFollowUp()} disabled={busy}>
+                  Accept and flag for follow-up
                 </button>
               )}
               {form.isEditing && (

@@ -7,7 +7,13 @@ vi.mock('./llmClient.js', async (importOriginal) => ({
 }));
 
 import { generateStructured, LlmTimeoutError } from './llmClient.js';
-import { selectStepFields, STEP_TIMEOUT_MS, validateStepSubmission } from './stepEngine.js';
+import {
+  checkInvalidation,
+  INVALIDATION_TIMEOUT_MS,
+  selectStepFields,
+  STEP_TIMEOUT_MS,
+  validateStepSubmission,
+} from './stepEngine.js';
 
 const mockedGenerateStructured = vi.mocked(generateStructured);
 
@@ -241,6 +247,84 @@ describe('step engine timeouts', () => {
 
     expect(fields).toEqual({ fields: baseFields, suggestedValues: {}, degraded: true });
     expect(verdict).toEqual({ valid: true, errors: {}, degraded: true });
+    warn.mockRestore();
+  });
+});
+
+describe('checkInvalidation (LLM #5)', () => {
+  const edited = { id: 'account', title: 'Account', fields: [{ name: 'type', type: 'enum' as const, label: 'Type', required: true }] };
+  const verification = { id: 'verification', title: 'Verification', fields: [{ name: 'dob', type: 'date' as const, label: 'DOB', required: false }] };
+  const payout = { id: 'payout', title: 'Payout', fields: [{ name: 'holder', type: 'string' as const, label: 'Holder', required: true }] };
+  const input = {
+    editedEndpoint: edited,
+    before: { type: 'individual' },
+    after: { type: 'business' },
+    laterCompletedEndpoints: [verification, payout],
+    laterData: { payout: { holder: 'Jordan Rivera' } },
+  };
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('returns the later steps the model flags, in flow order, with its reasons', async () => {
+    mockedGenerateStructured.mockResolvedValueOnce({
+      affected: [
+        { endpointId: 'payout', reason: 'Holder must match the business name.' },
+        { endpointId: 'verification', reason: 'Business accounts need different details.' },
+      ],
+    });
+
+    expect(await checkInvalidation(input)).toEqual({
+      affected: [
+        { endpointId: 'verification', reason: 'Business accounts need different details.' },
+        { endpointId: 'payout', reason: 'Holder must match the business name.' },
+      ],
+      degraded: false,
+    });
+    const [prompt, , options] = mockedGenerateStructured.mock.calls[0];
+    expect(prompt).toContain('"holder": "Jordan Rivera"');
+    expect(options).toEqual({ timeoutMs: INVALIDATION_TIMEOUT_MS });
+  });
+
+  it('CRITICAL: a response naming a step outside the later completed ones is rejected, and every later step is flagged', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockedGenerateStructured.mockImplementationOnce(async (_prompt, schema) =>
+      schema.parse({ affected: [{ endpointId: 'account', reason: 'The edited step itself.' }] })
+    );
+
+    const result = await checkInvalidation(input);
+
+    expect(result.degraded).toBe(true);
+    expect(result.affected.map((entry) => entry.endpointId)).toEqual(['verification', 'payout']);
+    warn.mockRestore();
+  });
+
+  it('makes no LLM call when there are no later completed steps', async () => {
+    expect(await checkInvalidation({ ...input, laterCompletedEndpoints: [] })).toEqual({ affected: [], degraded: false });
+    expect(mockedGenerateStructured).not.toHaveBeenCalled();
+  });
+
+  it('flags every later step without an LLM call in static mode', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubEnv('AGENTINTAKE_STATIC_MODE', '1');
+
+    const result = await checkInvalidation(input);
+
+    expect(result).toMatchObject({ degraded: true });
+    expect(result.affected.map((entry) => entry.endpointId)).toEqual(['verification', 'payout']);
+    expect(mockedGenerateStructured).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('flags every later step when the call times out', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockedGenerateStructured.mockRejectedValueOnce(new LlmTimeoutError('The model did not respond within 30 seconds.'));
+
+    const result = await checkInvalidation(input);
+
+    expect(result.degraded).toBe(true);
+    expect(result.affected).toHaveLength(2);
     warn.mockRestore();
   });
 });

@@ -21,6 +21,13 @@ function stubFetch() {
     if (url.endsWith('/api/session/sync')) {
       return { ok: true, status: 200, json: async () => ({ ok: true }) } as Response;
     }
+    if (url.endsWith('/api/step/check-invalidation')) {
+      const affected = body.laterCompletedEndpoints.map((endpoint: { id: string }) => ({
+        endpointId: endpoint.id,
+        reason: 'The account holder name may need to match.',
+      }));
+      return { ok: true, status: 200, json: async () => ({ affected, degraded: false }) } as Response;
+    }
     throw new Error(`unexpected fetch to ${url}`);
   });
 }
@@ -277,13 +284,14 @@ describe('AgentIntakeForm', () => {
       await user.click(screen.getByRole('button', { name: /Save changes/i }));
 
       await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
-      // Payout depended on the changed answer; it has no update, so it can only be confirmed.
-      await waitFor(() => expect(screen.getByText(/confirm it still applies/)).toBeInTheDocument());
+      // Payout depends on the changed answer (says the check); it has no update, so it can only be kept.
+      await waitFor(() => expect(screen.getByText(/The account holder name may need to match/)).toBeInTheDocument());
+      expect(screen.getByText(/keep it if it still applies/)).toBeInTheDocument();
       expect(screen.getByRole('heading', { name: 'Payout' })).toBeInTheDocument();
-      expect(screen.getByText(/Payout \(needs review\)|needs review/)).toBeInTheDocument();
+      expect(screen.getByText(/needs review/)).toBeInTheDocument();
       await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
 
-      await user.click(screen.getByRole('button', { name: 'Confirm' }));
+      await user.click(screen.getByRole('button', { name: 'Keep as is' }));
       await waitFor(() => expect(screen.getByText('All steps complete.')).toBeInTheDocument());
     });
 

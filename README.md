@@ -180,6 +180,10 @@ function useAgentForm(
   editMode: 'editable' | 'readOnly' | null;
   editPhase: 'idle' | 'validating' | 'saving';
   navigationError: string | null;      // e.g. the step's read() failed
+  staleResolution: 'keepOrEdit' | 'mustEdit' | 'followUp' | null; // for the step under review
+  acknowledgeStale: () => { ok: true } | { ok: false; reason: 'fieldsChanged' | 'notStale' };
+  flagForFollowUp: () => void;
+  followUps: { endpointId: string; note: string }[];
   error: Error | null;                 // fatal, e.g. a flow with no endpoints
 };
 ```
@@ -253,7 +257,13 @@ Completed steps are clickable in the stepper (`goToStep`). What happens depends 
 
 The step's fields are adapted again to the earlier answers as they are now, and only the visible fields are sent to `update` (the previous values arrive as `ctx.previousValues`, so a PUT-style API can merge). Saving without changes makes no calls. A failed `update` leaves the step as it was — nothing is rolled back. If `read` reports the resource is gone, the step goes back to being filled in and is created again.
 
-When a saved change could affect later steps, every later completed step is marked **needs review** (`stale`) and the wizard takes the user through them; a step that can't be changed there only needs to be confirmed. The flow counts as complete again once none is left. `cancelEdit` discards the change and returns the user to where they were, including anything they had typed on an unfinished step.
+When a saved change could affect later steps, the server asks the model which later completed steps really depend on what changed (a name that has to match, fields that only apply to one account type) and only those are marked **needs review** (`stale`), each with a short reason. If that check can't run (static mode, no answer within 30 seconds, provider error), every later completed step is marked, to be safe. The wizard then takes the user through them, never re-creating anything:
+
+- If the step still asks the same questions, it can be **kept as it is** (`acknowledgeStale`) or changed and saved.
+- If its questions changed (say, individual → business swaps the verification fields), keeping it is refused and it has to be updated.
+- If its questions changed but it has no `update`, it can't be fixed in the wizard: the user accepts it **flagged for follow-up** (`flagForFollowUp`), and the completion screen lists those steps.
+
+The flow counts as complete again once no step needs review. `cancelEdit` discards the change and returns the user to where they were, including anything they had typed on an unfinished step.
 
 ### The `StepStatus` lifecycle
 
@@ -293,6 +303,7 @@ AgentIntake calls the provider you configure, from your server, with:
 
 - **Generation (CLI or Studio):** the write operations parsed from your spec — their paths, field names, types, descriptions and validation rules.
 - **Each wizard step:** that step's field definitions, **the answers the user has given so far in this session**, and, on submit, the answers for the step being validated.
+- **After a completed step is edited:** that step's values before and after the edit, plus the definitions and submitted answers of the later completed steps, to decide which of them need review.
 
 So end users' form answers leave your infrastructure and reach the LLM provider under that provider's data policy. If your intake collects personal or regulated data, check that policy before deploying, or turn the per-step calls off with `AGENTINTAKE_STATIC_MODE` (below). The API key itself never reaches the browser.
 

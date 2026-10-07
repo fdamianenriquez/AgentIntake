@@ -18,7 +18,14 @@ interface FetchCall {
 
 // The server side of the flow: adapted fields can be overridden per endpoint
 // to simulate the step engine hiding fields.
-function stubServer(overrides: { fieldsFor?: Record<string, FieldDef[]>; invalid?: Record<string, string> } = {}) {
+function stubServer(
+  overrides: {
+    fieldsFor?: Record<string, FieldDef[]>;
+    invalid?: Record<string, string>;
+    /** Which later steps the invalidation check flags; default: all of them. 'fail' makes the request fail. */
+    affected?: string[] | 'fail';
+  } = {}
+) {
   const calls: FetchCall[] = [];
   const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
     const body = JSON.parse(init.body as string);
@@ -36,6 +43,13 @@ function stubServer(overrides: { fieldsFor?: Record<string, FieldDef[]>; invalid
     }
     if (path === '/api/session/sync') {
       return { ok: true, status: 200, json: async () => ({ ok: true }) } as Response;
+    }
+    if (path === '/api/step/check-invalidation') {
+      if (overrides.affected === 'fail') return { ok: false, status: 500, json: async () => ({}) } as Response;
+      const later = (body.laterCompletedEndpoints as EndpointDef[]).map((endpoint) => endpoint.id);
+      const ids = overrides.affected ?? later;
+      const affected = ids.map((endpointId) => ({ endpointId, reason: `Because of the change (${endpointId}).` }));
+      return { ok: true, status: 200, json: async () => ({ affected, degraded: false }) } as Response;
     }
     throw new Error(`unexpected fetch to ${url}`);
   });
@@ -360,6 +374,155 @@ describe('cancelEdit', () => {
     expect(result.current.stepRecords.account.values).toEqual({ name: 'Jordan', type: 'individual' });
     expect(calls.find((c) => c.path === '/api/session/sync')?.body.steps).toEqual([
       { endpointId: 'account', data: { name: 'Jordan', type: 'individual' } },
+    ]);
+  });
+});
+
+describe('cross-step invalidation', () => {
+  async function editAccountType(result: Hook) {
+    await act(() => result.current.goToStep('account'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.updateField('type', 'business'));
+    await act(() => result.current.submitStep());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+  }
+
+  it('asks the server about the later completed steps, sending their definitions, and flags only those it names', async () => {
+    const { calls } = stubServer({ affected: ['payout'] });
+    const { flow } = threeStepFlow({ update: vi.fn().mockResolvedValue({ success: true }) });
+    const result = render(flow);
+    await completeFirstTwo(result);
+    await fill(result, { bank: 'First Bank' });
+
+    await editAccountType(result);
+
+    const check = calls.find((c) => c.path === '/api/step/check-invalidation');
+    expect(check?.body).toMatchObject({
+      before: { name: 'Jordan', type: 'individual' },
+      after: { name: 'Jordan', type: 'business' },
+    });
+    expect((check?.body.laterCompletedEndpoints as EndpointDef[]).map((e) => [e.id, e.fields.length])).toEqual([
+      ['details', 1],
+      ['payout', 1],
+    ]);
+    expect(result.current.stepRecords.details.status).toBe('complete');
+    expect(result.current.stepRecords.payout).toMatchObject({ status: 'stale', staleReason: 'Because of the change (payout).' });
+  });
+
+  it('flags every later completed step when the check itself fails (safe side)', async () => {
+    stubServer({ affected: 'fail' });
+    const { flow } = threeStepFlow({ update: vi.fn().mockResolvedValue({ success: true }) });
+    const result = render(flow);
+    await completeFirstTwo(result);
+    await fill(result, { bank: 'First Bank' });
+
+    await editAccountType(result);
+
+    expect(['details', 'payout'].map((id) => result.current.stepRecords[id].status)).toEqual(['stale', 'stale']);
+    expect(result.current.stepRecords.details.staleReason).toMatch(/earlier answer changed/);
+  });
+
+  it('ignores ids it did not ask about', async () => {
+    stubServer({ affected: ['account', 'nope'] });
+    const { flow } = threeStepFlow({ update: vi.fn().mockResolvedValue({ success: true }) });
+    const result = render(flow);
+    await completeFirstTwo(result);
+
+    await editAccountType(result);
+
+    expect(result.current.stepRecords.account.status).toBe('complete');
+    expect(result.current.stepRecords.details.status).toBe('complete');
+    expect(result.current.isComplete).toBe(false); // payout was never done
+  });
+
+  it('makes no check when no later step is complete', async () => {
+    const { calls } = stubServer();
+    const { flow } = threeStepFlow({ update: vi.fn().mockResolvedValue({ success: true }) });
+    const result = render(flow);
+    await fill(result, { name: 'Jordan', type: 'individual' });
+
+    await editAccountType(result);
+
+    expect(calls.some((c) => c.path === '/api/step/check-invalidation')).toBe(false);
+  });
+});
+
+describe('resolving a stale step', () => {
+  function flowWithEditableDetails(detailsUpdate?: ResourceOperations['update']) {
+    const { flow } = threeStepFlow({ update: vi.fn().mockResolvedValue({ success: true }) });
+    flow.endpoints[1] = {
+      id: 'details',
+      title: 'Details',
+      fields: detailsFields,
+      operations: {
+        create: vi.fn().mockResolvedValue({ success: true, resourceId: 'det_1' }),
+        ...(detailsUpdate ? { update: detailsUpdate } : {}),
+      },
+    };
+    return flow;
+  }
+
+  async function makeDetailsStale(result: Hook) {
+    await act(() => result.current.goToStep('account'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.updateField('type', 'business'));
+    await act(() => result.current.submitStep());
+    await waitFor(() => expect(result.current.currentStepIndex).toBe(1));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+  }
+
+  it('keeps a stale step as it is when its fields did not change', async () => {
+    stubServer({ affected: ['details'] });
+    const result = render(flowWithEditableDetails(vi.fn()));
+    await completeFirstTwo(result);
+    await makeDetailsStale(result);
+
+    expect(result.current.staleResolution).toBe('keepOrEdit');
+    let outcome!: ReturnType<typeof result.current.acknowledgeStale>;
+    act(() => {
+      outcome = result.current.acknowledgeStale();
+    });
+
+    expect(outcome).toEqual({ ok: true });
+    expect(result.current.stepRecords.details).toMatchObject({ status: 'complete', staleReason: undefined });
+  });
+
+  it('refuses to keep a stale step whose fields changed; it has to be saved again', async () => {
+    stubServer({ affected: ['details'] });
+    const detailsUpdate = vi.fn().mockResolvedValue({ success: true });
+    const result = render(flowWithEditableDetails(detailsUpdate));
+    await completeFirstTwo(result);
+    const businessDetails: FieldDef[] = [{ name: 'registration', type: 'string', label: 'Registration', required: true }];
+    stubServer({ affected: ['details'], fieldsFor: { details: businessDetails } });
+    await makeDetailsStale(result);
+
+    expect(result.current.staleResolution).toBe('mustEdit');
+    let outcome!: ReturnType<typeof result.current.acknowledgeStale>;
+    act(() => {
+      outcome = result.current.acknowledgeStale();
+    });
+    expect(outcome).toEqual({ ok: false, reason: 'fieldsChanged' });
+
+    act(() => result.current.updateField('registration', 'R-123'));
+    await act(() => result.current.submitStep());
+    expect(detailsUpdate).toHaveBeenCalledWith({ registration: 'R-123' }, expect.objectContaining({ previousValues: { detail: 'd1' } }));
+    expect(result.current.stepRecords.details).toMatchObject({ status: 'complete', fieldNames: ['registration'] });
+  });
+
+  it('a stale step that cannot be changed and whose fields changed is accepted with a follow-up note', async () => {
+    stubServer({ affected: ['details'] });
+    const result = render(flowWithEditableDetails());
+    await completeFirstTwo(result);
+    stubServer({ affected: ['details'], fieldsFor: { details: [{ name: 'registration', type: 'string', label: 'Registration', required: true }] } });
+    await makeDetailsStale(result);
+
+    expect(result.current.editMode).toBe('readOnly');
+    expect(result.current.staleResolution).toBe('followUp');
+    act(() => result.current.flagForFollowUp());
+
+    expect(result.current.stepRecords.details.status).toBe('complete');
+    expect(result.current.followUps).toEqual([
+      { endpointId: 'details', note: expect.stringContaining("can't be changed in this wizard") },
     ]);
   });
 });

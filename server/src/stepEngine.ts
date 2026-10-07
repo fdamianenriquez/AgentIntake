@@ -5,6 +5,10 @@ import { generateStructured } from './llmClient.js';
 // Passed to generateStructured, which aborts the underlying request when it
 // expires -- a stalled call stops costing quota, not just stops being awaited.
 export const STEP_TIMEOUT_MS = 15_000;
+// The invalidation check sends the edited step plus every later step's
+// definition and answers, so it needs more time than a single step's call; a
+// real run took 13.6s, too close to the 15s budget.
+export const INVALIDATION_TIMEOUT_MS = 30_000;
 
 function isStaticMode(): boolean {
   const raw = process.env.AGENTINTAKE_STATIC_MODE;
@@ -198,6 +202,99 @@ ${JSON.stringify(previouslyCollectedData, null, 2)}
 Task: look for implausible values or inconsistencies a simple regex/range check can't catch (e.g. a start date far in the past for a new hire, a value inconsistent with an earlier answer). Only flag genuine problems -- do not invent stricter rules than the field descriptions imply.
 
 Return "valid: true" with an empty "errors" array if nothing looks wrong. Otherwise return "valid: false" and one entry per problem in "errors", each with the exact field "name" (from the fields list above) and a short, user-facing "message".`;
+}
+
+// ---------------------------------------------------------------------------
+// LLM call #5: cross-step invalidation
+// ---------------------------------------------------------------------------
+
+type StepSummary = Pick<ParsedEndpoint, 'id' | 'title' | 'description' | 'fields'>;
+
+export interface CheckInvalidationInput {
+  editedEndpoint: StepSummary;
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+  /** Steps after the edited one that are currently complete, in flow order. */
+  laterCompletedEndpoints: StepSummary[];
+  /** What was submitted for those later steps, by endpoint id. */
+  laterData?: Record<string, Record<string, unknown>>;
+}
+
+export interface CheckInvalidationResult {
+  affected: { endpointId: string; reason: string }[];
+  /** True when the check couldn't run and every later step was flagged to be safe. */
+  degraded: boolean;
+}
+
+const EVERY_LATER_STEP_REASON = 'An earlier answer changed; check that this step still applies.';
+
+/**
+ * After a completed step is edited, decides which later completed steps the
+ * change plausibly invalidates. Degrades toward the safe side: if the check
+ * can't run (static mode, timeout, bad output), every later step is flagged.
+ * The output schema only accepts ids of the later steps it was given, so the
+ * model can't flag an earlier step or one that doesn't exist.
+ */
+export async function checkInvalidation(input: CheckInvalidationInput): Promise<CheckInvalidationResult> {
+  const later = input.laterCompletedEndpoints;
+  if (later.length === 0) return { affected: [], degraded: false };
+
+  const everyLaterStep = () => later.map((endpoint) => ({ endpointId: endpoint.id, reason: EVERY_LATER_STEP_REASON }));
+
+  if (isStaticMode()) {
+    console.warn(`stepEngine: AGENTINTAKE_STATIC_MODE is on -- flagging every step after "${input.editedEndpoint.id}".`);
+    return { affected: everyLaterStep(), degraded: true };
+  }
+
+  try {
+    const outputSchema = z.object({
+      affected: z.array(
+        z.object({
+          endpointId: z.enum(later.map((endpoint) => endpoint.id) as [string, ...string[]]),
+          reason: z.string().max(240),
+        })
+      ),
+    });
+
+    const result = await generateStructured(buildInvalidationPrompt(input), outputSchema, {
+      timeoutMs: INVALIDATION_TIMEOUT_MS,
+    });
+
+    // One entry per step, in flow order, whatever order the model used.
+    const reasons = new Map(result.affected.map((entry) => [entry.endpointId, entry.reason]));
+    const affected = later
+      .filter((endpoint) => reasons.has(endpoint.id))
+      .map((endpoint) => ({ endpointId: endpoint.id, reason: reasons.get(endpoint.id)! }));
+    return { affected, degraded: false };
+  } catch (error) {
+    logDegradation('checkInvalidation', input.editedEndpoint.id, error);
+    return { affected: everyLaterStep(), degraded: true };
+  }
+}
+
+function buildInvalidationPrompt(input: CheckInvalidationInput): string {
+  const laterSteps = input.laterCompletedEndpoints.map((endpoint) => ({
+    id: endpoint.id,
+    title: endpoint.title,
+    description: endpoint.description,
+    fields: endpoint.fields.map((field) => ({ name: field.name, label: field.label, description: field.description })),
+    submittedData: input.laterData?.[endpoint.id] ?? {},
+  }));
+
+  return `In a multi-step intake wizard, the user went back and changed a step they had already completed. Decide which of the LATER completed steps may no longer be correct because of that change.
+
+Edited step: "${input.editedEndpoint.title}" (${input.editedEndpoint.id})
+${input.editedEndpoint.description ? `Description: ${input.editedEndpoint.description}\n` : ''}
+Values before the edit (JSON):
+${JSON.stringify(input.before, null, 2)}
+
+Values after the edit (JSON):
+${JSON.stringify(input.after, null, 2)}
+
+Later completed steps, with what was submitted for each (JSON):
+${JSON.stringify(laterSteps, null, 2)}
+
+Task: list in "affected" only the later steps whose submitted data, or whose set of relevant fields, plausibly depends on what changed (for example a name that must match, or fields that only apply to one account type). For each, give its exact "id" as "endpointId" and a short, user-facing "reason". Return an empty list if the change doesn't affect any later step.`;
 }
 
 function logDegradation(fn: string, endpointId: string, error: unknown): void {

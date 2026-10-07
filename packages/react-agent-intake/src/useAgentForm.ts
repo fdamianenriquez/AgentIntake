@@ -18,7 +18,24 @@ export interface StepRecord {
   /** The last create/update result, including `resourceId` when the author returned one. */
   result?: OperationResult;
   status: StepStatus;
+  /** The fields that were shown when the step was last submitted. */
+  fieldNames?: string[];
+  /** Why the step needs review, while `status` is 'stale'. */
+  staleReason?: string;
+  /**
+   * Set when the step was accepted although it no longer fits (an earlier
+   * answer changed its fields, and it can't be changed here). Needs handling
+   * outside the wizard.
+   */
+  followUp?: string;
 }
+
+/**
+ * What the user can do with the stale step being shown:
+ * keep it as it is, change it (its fields changed, so keeping is refused), or,
+ * when it can't be changed here, accept it and flag it for follow-up.
+ */
+export type StaleResolution = 'keepOrEdit' | 'mustEdit' | 'followUp';
 
 /**
  * When revisiting a completed step: `editable` when the author implemented
@@ -26,7 +43,7 @@ export interface StepRecord {
  * can be looked at but not changed). See README: "Revisiting completed steps".
  */
 export type EditMode = 'editable' | 'readOnly';
-export type EditPhase = 'idle' | 'validating' | 'saving';
+export type EditPhase = 'idle' | 'validating' | 'saving' | 'checking';
 
 export interface UseAgentFormOptions {
   apiUrl: string;
@@ -59,6 +76,14 @@ export interface UseAgentFormResult {
   goToStep: (endpointId: string) => Promise<void>;
   /** Leave the step being revisited without changing it. */
   cancelEdit: () => void;
+  /** For the stale step being shown: keep it as it is. Refused when its fields changed. */
+  acknowledgeStale: () => { ok: true } | { ok: false; reason: 'fieldsChanged' | 'notStale' };
+  /** For a stale step that can't be changed here and whose fields changed: accept it, flagged for follow-up. */
+  flagForFollowUp: () => void;
+  /** How the stale step being shown can be resolved; null when no stale step is shown. */
+  staleResolution: StaleResolution | null;
+  /** Steps accepted with a follow-up note. */
+  followUps: { endpointId: string; note: string }[];
   isEditing: boolean;
   editMode: EditMode | null;
   editPhase: EditPhase;
@@ -150,9 +175,21 @@ function visibleValues(fields: FieldDef[], values: Record<string, unknown>): Rec
   return visible;
 }
 
-// "Unchanged" means: every visible field has the same value as last time, and
-// nothing that was filled in last time is now hidden (the field set moved).
-function isUnchanged(fields: FieldDef[], values: Record<string, unknown>, previous: Record<string, unknown>): boolean {
+function sameFieldSet(fields: FieldDef[], recorded: string[] | undefined): boolean {
+  if (!recorded) return true;
+  const names = new Set(fields.map((field) => field.name));
+  return names.size === recorded.length && recorded.every((name) => names.has(name));
+}
+
+// "Unchanged" means: the same fields are shown as last time, every one has the
+// same value, and nothing that was filled in last time is now hidden.
+function isUnchanged(
+  fields: FieldDef[],
+  values: Record<string, unknown>,
+  previous: Record<string, unknown>,
+  recordedFieldNames: string[] | undefined
+): boolean {
+  if (!sameFieldSet(fields, recordedFieldNames)) return false;
   const visible = new Set(fields.map((field) => field.name));
   for (const field of fields) {
     const now = values[field.name];
@@ -227,7 +264,14 @@ type FormAction =
   | { type: 'validating'; endpointId: string }
   | { type: 'serverInvalid'; endpointId: string; errors: Record<string, string> }
   | { type: 'executing'; endpointId: string; idempotencyKey: string }
-  | { type: 'createSucceeded'; endpointId: string; values: Record<string, unknown>; result: OperationResult; endpointIds: string[] }
+  | {
+      type: 'createSucceeded';
+      endpointId: string;
+      values: Record<string, unknown>;
+      fieldNames: string[];
+      result: OperationResult;
+      endpointIds: string[];
+    }
   | { type: 'createFailed'; endpointId: string; values: Record<string, unknown>; result: OperationResult }
   | { type: 'navigationStarted' }
   | { type: 'navigationFailed'; message: string }
@@ -243,7 +287,15 @@ type FormAction =
   | { type: 'editPhase'; phase: EditPhase; idempotencyKey?: string }
   | { type: 'editInvalid'; errors: Record<string, string> }
   | { type: 'editFailed'; message: string }
-  | { type: 'editSaved'; values: Record<string, unknown>; result: OperationResult; endpointIds: string[] }
+  | {
+      type: 'editSaved';
+      values: Record<string, unknown>;
+      fieldNames: string[];
+      result: OperationResult;
+      stale: { endpointId: string; reason: string }[];
+      endpointIds: string[];
+    }
+  | { type: 'staleAccepted'; followUp?: string; endpointIds: string[] }
   | { type: 'editUnchanged'; endpointIds: string[] }
   | { type: 'editCancelled' };
 
@@ -280,13 +332,18 @@ function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T
   return rest;
 }
 
-// Once a step's data changes,
-// every later completed step may no longer fit and has to be looked at again.
-// narrows this down with an LLM check.
-function markLaterStale(records: Record<string, StepRecord>, endpointIds: string[], editedId: string) {
+const SAFE_SIDE_STALE_REASON = 'An earlier answer changed; check that this step still applies.';
+
+// The safe side of cross-step invalidation: when it can't be narrowed down which later
+// steps a change affects, every later completed step is flagged.
+function laterCompletedIds(records: Record<string, StepRecord>, endpointIds: string[], editedId: string): string[] {
+  return endpointIds.slice(endpointIds.indexOf(editedId) + 1).filter((id) => records[id]?.status === 'complete');
+}
+
+function markStale(records: Record<string, StepRecord>, stale: { endpointId: string; reason: string }[]) {
   let next = records;
-  for (const id of endpointIds.slice(endpointIds.indexOf(editedId) + 1)) {
-    if (next[id]?.status === 'complete') next = withStatus(next, id, 'stale');
+  for (const { endpointId, reason } of stale) {
+    if (next[endpointId]?.status === 'complete') next = withStatus(next, endpointId, 'stale', { staleReason: reason });
   }
   return next;
 }
@@ -363,6 +420,7 @@ function reducer(state: FormState, action: FormAction): FormState {
     case 'createSucceeded': {
       const records = withStatus(state.records, action.endpointId, 'complete', {
         values: action.values,
+        fieldNames: action.fieldNames,
         result: action.result,
       });
       return {
@@ -404,7 +462,13 @@ function reducer(state: FormState, action: FormAction): FormState {
       const record = state.records[action.endpointId];
       const { resourceId: _gone, ...result } = record?.result ?? { success: true };
       let records = withStatus(state.records, action.endpointId, 'idle', { result });
-      records = markLaterStale(records, action.endpointIds, action.endpointId);
+      records = markStale(
+        records,
+        laterCompletedIds(records, action.endpointIds, action.endpointId).map((endpointId) => ({
+          endpointId,
+          reason: 'A step this one builds on has to be submitted again.',
+        }))
+      );
       return {
         ...state,
         records,
@@ -439,9 +503,11 @@ function reducer(state: FormState, action: FormAction): FormState {
       const previousId = state.records[id]?.result?.resourceId;
       let records = withStatus(state.records, id, 'complete', {
         values: action.values,
+        fieldNames: action.fieldNames,
         result: { ...action.result, resourceId: action.result.resourceId ?? previousId },
+        staleReason: undefined,
       });
-      records = markLaterStale(records, action.endpointIds, id);
+      records = markStale(records, action.stale);
       return {
         ...state,
         records,
@@ -454,7 +520,16 @@ function reducer(state: FormState, action: FormAction): FormState {
       if (!state.editing) return state;
       const id = state.editing.endpointId;
       // Re-confirming a stale step without changes makes it complete again.
-      const records = state.records[id]?.status === 'stale' ? withStatus(state.records, id, 'complete') : state.records;
+      const records =
+        state.records[id]?.status === 'stale'
+          ? withStatus(state.records, id, 'complete', { staleReason: undefined })
+          : state.records;
+      return { ...state, records, editing: null, ...advance(state, records, action.endpointIds) };
+    }
+    case 'staleAccepted': {
+      if (!state.editing) return state;
+      const id = state.editing.endpointId;
+      const records = withStatus(state.records, id, 'complete', { staleReason: undefined, followUp: action.followUp });
       return { ...state, records, editing: null, ...advance(state, records, action.endpointIds) };
     }
     case 'editCancelled':
@@ -599,12 +674,48 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
             `useAgentForm: "${endpoint.id}" implements read/update/undo, but create() returned no resourceId, so those operations can't be used for this step.`
           );
         }
-        dispatch({ type: 'createSucceeded', endpointId: endpoint.id, values: data, result, endpointIds });
+        dispatch({
+          type: 'createSucceeded',
+          endpointId: endpoint.id,
+          values: data,
+          fieldNames: stateRef.current.currentStepFields.map((field) => field.name),
+          result,
+          endpointIds,
+        });
       } else {
         dispatch({ type: 'createFailed', endpointId: endpoint.id, values: data, result });
       }
     },
     [endpointIds, options.getAuthHeaders, completedResults]
+  );
+
+  // LLM #5 (cross-step invalidation): which later completed steps does this change
+  // plausibly affect? Unreachable server → every one of them (safe side).
+  const checkLaterSteps = useCallback(
+    async (endpoint: EndpointDef, before: Record<string, unknown>, after: Record<string, unknown>) => {
+      const later = laterCompletedIds(stateRef.current.records, endpointIds, endpoint.id);
+      if (later.length === 0) return [];
+
+      dispatch({ type: 'editPhase', phase: 'checking' });
+      try {
+        const response = await postJson<{ affected: { endpointId: string; reason: string }[] }>(
+          `${options.apiUrl}/api/step/check-invalidation`,
+          {
+            sessionId: sessionIdRef.current,
+            editedEndpoint: toWireEndpoint(endpoint),
+            before,
+            after,
+            laterCompletedEndpoints: later.map((id) => toWireEndpoint(flow.endpoints[endpointIds.indexOf(id)])),
+          }
+        );
+        // Only trust ids this hook asked about.
+        return response.affected.filter((entry) => later.includes(entry.endpointId));
+      } catch (err) {
+        console.warn(`useAgentForm: /api/step/check-invalidation failed for "${endpoint.id}"; flagging every later step.`, err);
+        return later.map((endpointId) => ({ endpointId, reason: SAFE_SIDE_STALE_REASON }));
+      }
+    },
+    [endpointIds, flow.endpoints, options.apiUrl]
   );
 
   const submitEdit = useCallback(
@@ -613,15 +724,12 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
       const { currentStepFields, values, records, idempotencyKeys } = stateRef.current;
       const record = records[endpoint.id];
 
-      // A step that can't be changed here can still be confirmed as-is once an
-      // earlier answer changed; otherwise the flow could never complete.
-      if (editing.mode === 'readOnly') {
-        if (record?.status === 'stale') dispatch({ type: 'editUnchanged', endpointIds });
-        return;
-      }
+      // A step that can't be changed here is resolved through acknowledgeStale
+      // or flagForFollowUp instead.
+      if (editing.mode === 'readOnly') return;
       const previousValues = record?.values ?? {};
 
-      if (isUnchanged(currentStepFields, values, previousValues)) {
+      if (isUnchanged(currentStepFields, values, previousValues, record?.fieldNames)) {
         dispatch({ type: 'editUnchanged', endpointIds });
         return;
       }
@@ -662,14 +770,23 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
       if (!isMountedRef.current) return;
 
       if (result.success) {
-        dispatch({ type: 'editSaved', values: data, result, endpointIds });
+        const stale = await checkLaterSteps(endpoint, previousValues, data);
+        if (!isMountedRef.current) return;
+        dispatch({
+          type: 'editSaved',
+          values: data,
+          fieldNames: currentStepFields.map((field) => field.name),
+          result,
+          stale,
+          endpointIds,
+        });
       } else {
         // /api/step/validate already recorded the edited values.
         syncSession(endpoint.id, previousValues);
         dispatch({ type: 'editFailed', message: result.message ?? 'The update failed.' });
       }
     },
-    [endpointIds, options.getAuthHeaders, completedResults, validateOnServer, syncSession, state.currentStepIndex]
+    [endpointIds, options.getAuthHeaders, completedResults, validateOnServer, syncSession, state.currentStepIndex, checkLaterSteps]
   );
 
   const submitStep = useCallback(async () => {
@@ -800,6 +917,47 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
     dispatch({ type: 'editCancelled' });
   }, [syncSession]);
 
+  const editingStale =
+    state.editing !== null &&
+    !state.loading &&
+    state.editing.phase === 'idle' &&
+    state.records[state.editing.endpointId]?.status === 'stale';
+  const fieldsKept = editingStale
+    ? sameFieldSet(state.currentStepFields, state.records[state.editing!.endpointId]?.fieldNames)
+    : false;
+  const staleResolution: StaleResolution | null = !editingStale
+    ? null
+    : fieldsKept
+      ? 'keepOrEdit'
+      : state.editing!.mode === 'editable'
+        ? 'mustEdit'
+        : 'followUp';
+
+  const acknowledgeStale = useCallback((): { ok: true } | { ok: false; reason: 'fieldsChanged' | 'notStale' } => {
+    if (staleResolution === null) return { ok: false, reason: 'notStale' };
+    if (staleResolution !== 'keepOrEdit') return { ok: false, reason: 'fieldsChanged' };
+    dispatch({ type: 'staleAccepted', endpointIds });
+    return { ok: true };
+  }, [staleResolution, endpointIds]);
+
+  const flagForFollowUp = useCallback(() => {
+    if (staleResolution !== 'followUp') return;
+    const record = stateRef.current.records[stateRef.current.editing!.endpointId];
+    dispatch({
+      type: 'staleAccepted',
+      followUp: `${record?.staleReason ?? SAFE_SIDE_STALE_REASON} Its fields changed, and it can't be changed in this wizard.`,
+      endpointIds,
+    });
+  }, [staleResolution, endpointIds]);
+
+  const followUps = useMemo(
+    () =>
+      flow.endpoints
+        .filter((endpoint) => state.records[endpoint.id]?.followUp)
+        .map((endpoint) => ({ endpointId: endpoint.id, note: state.records[endpoint.id]!.followUp! })),
+    [flow.endpoints, state.records]
+  );
+
   const completedEndpoints = useMemo(
     () => flow.endpoints.filter((endpoint) => state.records[endpoint.id]?.status === 'complete').map((endpoint) => endpoint.id),
     [flow.endpoints, state.records]
@@ -827,6 +985,10 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
     canGoToStep,
     goToStep,
     cancelEdit,
+    acknowledgeStale,
+    flagForFollowUp,
+    staleResolution,
+    followUps,
     isEditing: state.editing !== null,
     editMode: state.editing?.mode ?? null,
     editPhase: state.editing?.phase ?? 'idle',

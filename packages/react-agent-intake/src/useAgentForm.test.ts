@@ -342,6 +342,7 @@ describe('useAgentForm operations', () => {
       endpointId: 'step1',
       status: 'complete',
       values: { email: 'a@b.com' },
+      fieldNames: ['email'],
       result: { success: true, resourceId: 'acct_1' },
     });
   });
