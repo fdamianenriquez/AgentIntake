@@ -8,8 +8,10 @@ export interface AgentIntakeFormProps extends UseAgentFormOptions {
 
 // A thin, replaceable consumer of useAgentForm -- all the
 // actual state/lifecycle logic lives in the hook; this just renders it.
-export function AgentIntakeForm({ flow, apiUrl, getAuthHeaders }: AgentIntakeFormProps) {
-  const form = useAgentForm(flow, { apiUrl, getAuthHeaders });
+export function AgentIntakeForm({ flow, apiUrl, getAuthHeaders, recovery, onRecoveryEvent }: AgentIntakeFormProps) {
+  const form = useAgentForm(flow, { apiUrl, getAuthHeaders, recovery, onRecoveryEvent });
+  const titleOf = (endpointId: string) => flow.endpoints.find((endpoint) => endpoint.id === endpointId)?.title ?? endpointId;
+  const titlesOf = (ids: string[] | undefined) => (ids ?? []).map(titleOf).join(', ');
   const currentEndpoint = flow.endpoints[form.currentStepIndex];
 
   if (form.error) {
@@ -21,6 +23,9 @@ export function AgentIntakeForm({ flow, apiUrl, getAuthHeaders }: AgentIntakeFor
   }
 
   const readOnly = form.editMode === 'readOnly';
+  const rec = form.recovery;
+  const recoveryHere = currentEndpoint !== undefined && rec.endpointId === currentEndpoint.id;
+  const recoveryBusy = rec.phase === 'proposed' || rec.phase === 'rollingBack' || rec.phase === 'rollbackFailed';
   const staleReason = currentEndpoint ? form.stepRecords[currentEndpoint.id]?.staleReason : undefined;
   const busy =
     form.editPhase !== 'idle' || form.currentStepStatus === 'validating' || form.currentStepStatus === 'executing';
@@ -72,6 +77,25 @@ export function AgentIntakeForm({ flow, apiUrl, getAuthHeaders }: AgentIntakeFor
           );
         })}
       </ol>
+
+      {rec.phase === 'rolledBack' && rec.report && (
+        <div role="status" className="agent-intake-rollback-report">
+          <p>Undone: {titlesOf(rec.report.undone)}. You can start again from here.</p>
+          {rec.report.skipped.length > 0 && <p>Needs manual cleanup: {titlesOf(rec.report.skipped)}.</p>}
+        </div>
+      )}
+      {rec.phase === 'rollbackFailed' && rec.report?.failed && (
+        <div role="alert" className="agent-intake-rollback-report">
+          <p>
+            Couldn't undo {titleOf(rec.report.failed.endpointId)}
+            {rec.report.failed.message ? `: ${rec.report.failed.message}` : '.'}
+            {rec.report.undone.length > 0 ? ` Already undone: ${titlesOf(rec.report.undone)}.` : ''}
+          </p>
+          <button type="button" onClick={() => void form.retryRollback()}>
+            Try the undo again
+          </button>
+        </div>
+      )}
 
       {form.navigationError && (
         <p role="alert" className="agent-intake-navigation-error">
@@ -141,7 +165,31 @@ export function AgentIntakeForm({ flow, apiUrl, getAuthHeaders }: AgentIntakeFor
               {(form.currentStepStatus === 'executionFailed' || (form.isEditing && form.executionError)) && (
                 <div role="alert" className="agent-intake-execution-error">
                   <p>{form.executionError}</p>
-                  {!form.isEditing && (
+                  {recoveryHere && rec.phase === 'classifying' && (
+                    <p className="agent-intake-recovery-status">Checking what went wrong…</p>
+                  )}
+                  {recoveryHere && rec.explanation && <p className="agent-intake-recovery-explanation">{rec.explanation}</p>}
+                  {recoveryHere && rec.phase === 'proposed' && (
+                    <div className="agent-intake-recovery-proposal">
+                      <p>Undo what these completed steps created? Nothing is undone unless you confirm.</p>
+                      <ul>
+                        {rec.proposedUndo?.map((step) => (
+                          <li key={step.endpointId}>{step.label}</li>
+                        ))}
+                      </ul>
+                      {(rec.skipped?.length ?? 0) > 0 && (
+                        <p>Can't be undone here (needs manual cleanup): {titlesOf(rec.skipped)}.</p>
+                      )}
+                      <button type="button" onClick={() => void form.confirmRollback()}>
+                        Undo these steps
+                      </button>
+                      <button type="button" onClick={() => form.declineRollback()}>
+                        Keep everything
+                      </button>
+                    </div>
+                  )}
+                  {recoveryHere && rec.phase === 'rollingBack' && <p className="agent-intake-recovery-status">Undoing…</p>}
+                  {!form.isEditing && !recoveryBusy && rec.phase !== 'classifying' && (
                     <button type="button" onClick={() => void form.retryExecution()}>
                       Retry
                     </button>
@@ -150,7 +198,7 @@ export function AgentIntakeForm({ flow, apiUrl, getAuthHeaders }: AgentIntakeFor
               )}
 
               {!readOnly && (
-                <button type="submit" disabled={busy}>
+                <button type="submit" disabled={busy || recoveryBusy}>
                   {submitLabel}
                 </button>
               )}

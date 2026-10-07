@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { EndpointDef, ExecContext, FieldDef, FlowDef, OperationResult } from './contracts.js';
 import { implementedCapabilities, normalizeResult, operationsOf, resultFromError } from './operations.js';
+import {
+  preClassify,
+  type FailureClassification,
+  type RecoveryEvent,
+  type RollbackReport,
+} from './recovery.js';
 
 // StepStatus (README: "The `StepStatus` lifecycle") is the single source of truth for a step's
 // lifecycle -- never inferred from separate booleans. 'complete' is
@@ -45,11 +51,33 @@ export type StaleResolution = 'keepOrEdit' | 'mustEdit' | 'followUp';
 export type EditMode = 'editable' | 'readOnly';
 export type EditPhase = 'idle' | 'validating' | 'saving' | 'checking';
 
+export type RecoveryPhase = 'idle' | 'classifying' | 'proposed' | 'rollingBack' | 'rolledBack' | 'rollbackFailed';
+
+/** What is known about the last failed step, and any undo proposed for it. */
+export interface RecoveryView {
+  phase: RecoveryPhase;
+  /** The step whose create failed. */
+  endpointId?: string;
+  classification?: FailureClassification;
+  explanation?: string;
+  /** The steps that would be undone, in the order the undo runs. */
+  proposedUndo?: { endpointId: string; label: string }[];
+  /** Steps in the undo range with no usable undo; they need manual cleanup. */
+  skipped?: string[];
+  report?: RollbackReport;
+}
+
 export interface UseAgentFormOptions {
   apiUrl: string;
   // The direct-from-browser auth pattern (README: "Authentication model"):
   // flows into each operation's context. May be async (e.g. refreshing a token).
   getAuthHeaders?: () => Promise<Record<string, string>> | Record<string, string>;
+  // 'confirm' (default): a fundamental failure may propose undoing earlier
+  // steps, which only runs after the user confirms. 'off': never propose.
+  // There is deliberately no automatic mode.
+  recovery?: { rollback?: 'confirm' | 'off' };
+  /** For host-app logging/analytics. */
+  onRecoveryEvent?: (event: RecoveryEvent) => void;
 }
 
 export interface UseAgentFormResult {
@@ -89,6 +117,13 @@ export interface UseAgentFormResult {
   editPhase: EditPhase;
   /** Set when revisiting a step failed (e.g. its `read` threw); the user stays where they were. */
   navigationError: string | null;
+  recovery: RecoveryView;
+  /** Run the proposed undo, in reverse order, stopping at the first failure. */
+  confirmRollback: () => Promise<void>;
+  /** Keep everything as it is; the user can still retry or change their answers. */
+  declineRollback: () => void;
+  /** After a failed undo, continue from the step that failed. */
+  retryRollback: () => Promise<void>;
   error: Error | null;
 }
 
@@ -252,7 +287,19 @@ interface FormState {
   navigationError: string | null;
   /** A stale step the wizard has to open in edit mode next (it can't just be re-created). */
   pendingRevisit: string | null;
+  recovery: RecoveryState;
+  /** Per endpoint: failures without a known cause so far (the first is retried before asking the model). */
+  otherFailures: Record<string, number>;
 }
+
+interface RecoveryState extends RecoveryView {
+  /** Where the flow resumes after a rollback. */
+  anchorId?: string;
+  /** Undos still to run, in order. */
+  pending?: string[];
+}
+
+const IDLE_RECOVERY: RecoveryState = { phase: 'idle' };
 
 type FormAction =
   | { type: 'fatal'; error: Error }
@@ -297,7 +344,23 @@ type FormAction =
     }
   | { type: 'staleAccepted'; followUp?: string; endpointIds: string[] }
   | { type: 'editUnchanged'; endpointIds: string[] }
-  | { type: 'editCancelled' };
+  | { type: 'editCancelled' }
+  | { type: 'otherFailureCounted'; endpointId: string }
+  | { type: 'recoveryClassifying'; endpointId: string }
+  | { type: 'recoveryClassified'; endpointId: string; classification: FailureClassification; explanation?: string }
+  | {
+      type: 'recoveryProposed';
+      endpointId: string;
+      explanation: string;
+      anchorId: string;
+      undo: { endpointId: string; label: string }[];
+      skipped: string[];
+    }
+  | { type: 'recoveryDeclined' }
+  | { type: 'rollbackStarted' }
+  | { type: 'undoSucceeded'; endpointId: string }
+  | { type: 'undoFailed'; endpointId: string; result: OperationResult }
+  | { type: 'rollbackFinished'; endpointIds: string[] };
 
 const initialState: FormState = {
   currentStepIndex: 0,
@@ -315,6 +378,8 @@ const initialState: FormState = {
   drafts: {},
   navigationError: null,
   pendingRevisit: null,
+  recovery: IDLE_RECOVERY,
+  otherFailures: {},
 };
 
 function withStatus(
@@ -402,6 +467,8 @@ function reducer(state: FormState, action: FormAction): FormState {
         records: reopen ? withStatus(state.records, action.endpointId, 'idle') : state.records,
         // New values make it a different logical operation.
         idempotencyKeys: withoutKey(state.idempotencyKeys, action.endpointId),
+        recovery:
+          state.recovery.endpointId === action.endpointId && state.recovery.phase === 'idle' ? IDLE_RECOVERY : state.recovery,
       };
     }
     case 'clientInvalid':
@@ -427,6 +494,8 @@ function reducer(state: FormState, action: FormAction): FormState {
         ...state,
         records,
         idempotencyKeys: withoutKey(state.idempotencyKeys, action.endpointId),
+        recovery: IDLE_RECOVERY,
+        otherFailures: withoutKey(state.otherFailures, action.endpointId),
         ...advance(state, records, action.endpointIds),
       };
     }
@@ -535,6 +604,94 @@ function reducer(state: FormState, action: FormAction): FormState {
     case 'editCancelled':
       if (!state.editing) return state;
       return { ...state, editing: null, errors: {}, executionError: null, currentStepIndex: state.editing.returnIndex };
+    case 'otherFailureCounted':
+      return {
+        ...state,
+        otherFailures: { ...state.otherFailures, [action.endpointId]: (state.otherFailures[action.endpointId] ?? 0) + 1 },
+      };
+    case 'recoveryClassifying':
+      return { ...state, recovery: { phase: 'classifying', endpointId: action.endpointId } };
+    case 'recoveryClassified':
+      return {
+        ...state,
+        recovery: {
+          phase: 'idle',
+          endpointId: action.endpointId,
+          classification: action.classification,
+          explanation: action.explanation,
+        },
+      };
+    case 'recoveryProposed':
+      return {
+        ...state,
+        recovery: {
+          phase: 'proposed',
+          endpointId: action.endpointId,
+          classification: 'fundamental',
+          explanation: action.explanation,
+          anchorId: action.anchorId,
+          proposedUndo: action.undo,
+          skipped: action.skipped,
+          pending: action.undo.map((entry) => entry.endpointId),
+          report: { undone: [], skipped: action.skipped },
+        },
+      };
+    case 'recoveryDeclined':
+      if (state.recovery.phase !== 'proposed') return state;
+      return {
+        ...state,
+        recovery: {
+          phase: 'idle',
+          endpointId: state.recovery.endpointId,
+          classification: state.recovery.classification,
+          explanation: state.recovery.explanation,
+        },
+      };
+    case 'rollbackStarted':
+      return { ...state, recovery: { ...state.recovery, phase: 'rollingBack', report: { ...state.recovery.report!, failed: undefined } } };
+    case 'undoSucceeded': {
+      // An undone step is back to being filled in, without its resource id.
+      const record = state.records[action.endpointId];
+      const { resourceId: _gone, ...result } = record?.result ?? { success: true };
+      const report = state.recovery.report ?? { undone: [], skipped: [] };
+      return {
+        ...state,
+        records: withStatus(state.records, action.endpointId, 'idle', { result }),
+        recovery: {
+          ...state.recovery,
+          pending: (state.recovery.pending ?? []).filter((id) => id !== action.endpointId),
+          report: { ...report, undone: [...report.undone, action.endpointId] },
+        },
+      };
+    }
+    case 'undoFailed': {
+      const report = state.recovery.report ?? { undone: [], skipped: [] };
+      return {
+        ...state,
+        recovery: {
+          ...state.recovery,
+          phase: 'rollbackFailed',
+          report: {
+            ...report,
+            failed: { endpointId: action.endpointId, failure: action.result.failure, message: action.result.message },
+          },
+        },
+      };
+    }
+    case 'rollbackFinished': {
+      // The flow resumes at the anchor, prefilled with what was submitted before.
+      const anchorId = state.recovery.anchorId!;
+      const failedId = state.recovery.endpointId!;
+      const records = withStatus(state.records, failedId, 'idle');
+      return {
+        ...state,
+        records,
+        recovery: { ...state.recovery, phase: 'rolledBack', pending: [] },
+        executionError: null,
+        currentStepIndex: action.endpointIds.indexOf(anchorId),
+        prefill: { endpointId: anchorId, values: records[anchorId]?.values ?? {} },
+      };
+    }
   }
 }
 
@@ -559,6 +716,14 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
   }, []);
 
   const warnedMissingIdRef = useRef(new Set<string>());
+  // Read at call time, so a host that passes a new callback each render isn't a problem.
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+  const emitRecoveryEvent = useCallback((event: RecoveryEvent) => optionsRef.current.onRecoveryEvent?.(event), []);
+  // confirmRollback must be idempotent even for two clicks in the same tick,
+  // which state alone (updated on the next render) can't guarantee.
+  const rollingBackRef = useRef(false);
+  const undoKeysRef = useRef<Record<string, string>>({});
 
   const currentEndpoint = flow.endpoints[state.currentStepIndex];
   const endpointIds = useMemo(() => flow.endpoints.map((endpoint) => endpoint.id), [flow.endpoints]);
@@ -651,6 +816,150 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
     [options.apiUrl]
   );
 
+  // Decide what the user can do about a failed create (README: "When a step fails").
+  const recoverFrom = useCallback(
+    async (endpoint: EndpointDef, result: OperationResult) => {
+      const { otherFailures, records } = stateRef.current;
+      const failure = result.failure;
+      if (!failure || failure.kind === 'other') dispatch({ type: 'otherFailureCounted', endpointId: endpoint.id });
+
+      const pre = preClassify(failure, otherFailures[endpoint.id] ?? 0);
+      if (pre.verdict === 'retryable') {
+        dispatch({ type: 'recoveryClassified', endpointId: endpoint.id, classification: 'retryable', explanation: pre.explanation });
+        emitRecoveryEvent({ type: 'classified', endpointId: endpoint.id, classification: 'retryable', byModel: false });
+        return;
+      }
+
+      dispatch({ type: 'recoveryClassifying', endpointId: endpoint.id });
+      const completed = flow.endpoints.filter((e) => records[e.id]?.status === 'complete');
+      let verdict: { classification: FailureClassification; explanation: string; rollbackFromEndpointId: string | null };
+      try {
+        verdict = await postJson(`${options.apiUrl}/api/step/classify-failure`, {
+          sessionId: sessionIdRef.current,
+          failedEndpoint: toWireEndpoint(endpoint),
+          failure: failure ?? { kind: 'other', message: result.message },
+          completedEndpoints: completed.map(toWireEndpoint),
+        });
+      } catch (err) {
+        // Safe side: no classification means no undo proposal.
+        console.warn(`useAgentForm: /api/step/classify-failure failed for "${endpoint.id}".`, err);
+        verdict = {
+          classification: 'retryable',
+          explanation: 'The cause could not be determined. You can try again, change your answers, or stop here.',
+          rollbackFromEndpointId: null,
+        };
+      }
+      if (!isMountedRef.current) return;
+      emitRecoveryEvent({ type: 'classified', endpointId: endpoint.id, classification: verdict.classification, byModel: true });
+
+      const anchor = verdict.rollbackFromEndpointId;
+      const anchorIndex = anchor ? endpointIds.indexOf(anchor) : -1;
+      const rollbackAllowed = (optionsRef.current.recovery?.rollback ?? 'confirm') === 'confirm';
+      if (verdict.classification === 'fundamental' && anchor && rollbackAllowed && completed.some((e) => e.id === anchor)) {
+        // From the anchor through the last completed step, undone in reverse.
+        const range = completed.filter((e) => endpointIds.indexOf(e.id) >= anchorIndex).reverse();
+        const undoable = range.filter((e) => operationsOf(e).undo && records[e.id]?.result?.resourceId);
+        const skipped = range.filter((e) => !undoable.includes(e)).map((e) => e.id);
+        if (undoable.length > 0) {
+          const undo = undoable.map((e) => ({ endpointId: e.id, label: e.title }));
+          dispatch({ type: 'recoveryProposed', endpointId: endpoint.id, explanation: verdict.explanation, anchorId: anchor, undo, skipped });
+          emitRecoveryEvent({ type: 'proposed', endpointId: endpoint.id, undo: undo.map((u) => u.endpointId), skipped });
+          return;
+        }
+        const titles = range.map((e) => e.title).join(', ');
+        dispatch({
+          type: 'recoveryClassified',
+          endpointId: endpoint.id,
+          classification: 'fundamental',
+          explanation: `${verdict.explanation} Nothing here can be undone automatically (${titles}); it needs manual cleanup.`,
+        });
+        return;
+      }
+
+      dispatch({
+        type: 'recoveryClassified',
+        endpointId: endpoint.id,
+        classification: verdict.classification,
+        explanation: verdict.explanation,
+      });
+    },
+    [flow.endpoints, endpointIds, options.apiUrl, emitRecoveryEvent]
+  );
+
+  // Runs the remaining undos in order and stops at the first failure.
+  const runUndos = useCallback(
+    async (ids: string[]) => {
+      for (const id of ids) {
+        const endpoint = flow.endpoints[endpointIds.indexOf(id)];
+        const resourceId = stateRef.current.records[id]?.result?.resourceId;
+        const undo = operationsOf(endpoint).undo;
+        undoKeysRef.current[id] ??= randomId();
+
+        let result: OperationResult;
+        try {
+          result = normalizeResult(
+            await undo!({
+              getAuthHeaders: optionsRef.current.getAuthHeaders,
+              results: completedResults(),
+              idempotencyKey: undoKeysRef.current[id],
+              resourceId: resourceId!,
+            })
+          );
+        } catch (err) {
+          result = resultFromError(err);
+        }
+        // An undo already in flight is allowed to finish; nothing after it runs.
+        if (!isMountedRef.current) return;
+
+        if (!result.success) {
+          dispatch({ type: 'undoFailed', endpointId: id, result });
+          emitRecoveryEvent({ type: 'undoFailed', endpointId: id, failure: result.failure });
+          return;
+        }
+        delete undoKeysRef.current[id];
+        dispatch({ type: 'undoSucceeded', endpointId: id });
+        syncSession(id, null);
+        emitRecoveryEvent({ type: 'undone', endpointId: id });
+      }
+      const failedId = stateRef.current.recovery.endpointId;
+      if (failedId) syncSession(failedId, null);
+      dispatch({ type: 'rollbackFinished', endpointIds });
+    },
+    [flow.endpoints, endpointIds, completedResults, syncSession, emitRecoveryEvent]
+  );
+
+  const confirmRollback = useCallback(async () => {
+    const { recovery } = stateRef.current;
+    if (recovery.phase !== 'proposed' || rollingBackRef.current) return;
+    rollingBackRef.current = true;
+    dispatch({ type: 'rollbackStarted' });
+    emitRecoveryEvent({ type: 'confirmed', endpointId: recovery.endpointId! });
+    try {
+      await runUndos(recovery.pending ?? []);
+    } finally {
+      rollingBackRef.current = false;
+    }
+  }, [runUndos, emitRecoveryEvent]);
+
+  const retryRollback = useCallback(async () => {
+    const { recovery } = stateRef.current;
+    if (recovery.phase !== 'rollbackFailed' || rollingBackRef.current) return;
+    rollingBackRef.current = true;
+    dispatch({ type: 'rollbackStarted' });
+    try {
+      await runUndos(recovery.pending ?? []);
+    } finally {
+      rollingBackRef.current = false;
+    }
+  }, [runUndos]);
+
+  const declineRollback = useCallback(() => {
+    const { recovery } = stateRef.current;
+    if (recovery.phase !== 'proposed') return;
+    dispatch({ type: 'recoveryDeclined' });
+    emitRecoveryEvent({ type: 'declined', endpointId: recovery.endpointId! });
+  }, [emitRecoveryEvent]);
+
   const runCreate = useCallback(
     async (endpoint: EndpointDef, data: Record<string, unknown>) => {
       const idempotencyKey = stateRef.current.idempotencyKeys[endpoint.id] ?? randomId();
@@ -684,9 +993,10 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
         });
       } else {
         dispatch({ type: 'createFailed', endpointId: endpoint.id, values: data, result });
+        await recoverFrom(endpoint, result);
       }
     },
-    [endpointIds, options.getAuthHeaders, completedResults]
+    [endpointIds, options.getAuthHeaders, completedResults, recoverFrom]
   );
 
   // LLM #5 (cross-step invalidation): which later completed steps does this change
@@ -989,6 +1299,18 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
     flagForFollowUp,
     staleResolution,
     followUps,
+    recovery: {
+      phase: state.recovery.phase,
+      endpointId: state.recovery.endpointId,
+      classification: state.recovery.classification,
+      explanation: state.recovery.explanation,
+      proposedUndo: state.recovery.proposedUndo,
+      skipped: state.recovery.skipped,
+      report: state.recovery.report,
+    },
+    confirmRollback,
+    declineRollback,
+    retryRollback,
     isEditing: state.editing !== null,
     editMode: state.editing?.mode ?? null,
     editPhase: state.editing?.phase ?? 'idle',

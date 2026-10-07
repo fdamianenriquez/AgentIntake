@@ -318,4 +318,74 @@ describe('AgentIntakeForm', () => {
       expect(screen.queryByRole('button', { name: /Account/ })).not.toBeInTheDocument();
     });
   });
+
+  describe('recovering from a failed step', () => {
+    it('proposes undoing earlier steps, runs it only after confirmation, and reports what was undone', async () => {
+      const base = stubFetch();
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string, init: RequestInit) => {
+          if (url.endsWith('/api/step/classify-failure')) {
+            return {
+              ok: true,
+              status: 200,
+              json: async () => ({
+                classification: 'fundamental',
+                explanation: 'The account is on hold, so payouts cannot be added.',
+                rollbackFromEndpointId: 'account',
+                degraded: false,
+              }),
+            } as Response;
+          }
+          return base(url, init);
+        })
+      );
+      const undo = vi.fn().mockResolvedValue({ success: true });
+      const flow: FlowDef = {
+        id: 'recover',
+        title: 'Recover',
+        description: 'd',
+        endpoints: [
+          {
+            id: 'account',
+            title: 'Account',
+            fields: [{ name: 'name', type: 'string', label: 'Name', required: true }],
+            operations: { create: vi.fn().mockResolvedValue({ success: true, resourceId: 'acct_1' }), undo },
+          },
+          {
+            id: 'payout',
+            title: 'Payout',
+            fields: [{ name: 'bank', type: 'string', label: 'Bank', required: true }],
+            operations: {
+              create: vi.fn().mockResolvedValue({
+                success: false,
+                message: 'Request rejected.',
+                failure: { kind: 'http', status: 403, message: 'account on compliance hold' },
+              }),
+            },
+          },
+        ],
+      };
+      const user = userEvent.setup();
+      render(<AgentIntakeForm flow={flow} apiUrl="http://test.local" />);
+      await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+      await user.type(screen.getByLabelText(/Name/), 'Jordan');
+      await user.click(screen.getByRole('button', { name: /Continue/i }));
+      await waitFor(() => expect(screen.getByRole('heading', { name: 'Payout' })).toBeInTheDocument());
+      await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+      await user.type(screen.getByLabelText(/Bank/), 'Hold Bank');
+      await user.click(screen.getByRole('button', { name: /Continue/i }));
+
+      await waitFor(() => expect(screen.getByText(/The account is on hold/)).toBeInTheDocument());
+      expect(screen.getByText(/Nothing is undone unless you confirm/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+      expect(undo).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole('button', { name: 'Undo these steps' }));
+
+      await waitFor(() => expect(screen.getByText(/Undone: Account/)).toBeInTheDocument());
+      expect(undo).toHaveBeenCalledWith(expect.objectContaining({ resourceId: 'acct_1' }));
+      await waitFor(() => expect(screen.getByRole('heading', { name: 'Account' })).toBeInTheDocument());
+    });
+  });
 });

@@ -184,6 +184,10 @@ function useAgentForm(
   acknowledgeStale: () => { ok: true } | { ok: false; reason: 'fieldsChanged' | 'notStale' };
   flagForFollowUp: () => void;
   followUps: { endpointId: string; note: string }[];
+  recovery: { phase, classification?, explanation?, proposedUndo?, skipped?, report? }; // see below
+  confirmRollback: () => Promise<void>;
+  declineRollback: () => void;
+  retryRollback: () => Promise<void>;
   error: Error | null;                 // fatal, e.g. a flow with no endpoints
 };
 ```
@@ -204,6 +208,7 @@ interface EndpointDef {
     create: /* same signature as execute */;
     read?: (ctx: ExecContext & { resourceId: string }) => Promise<{ found: true; data: Record<string, unknown> } | { found: false }>;
     update?: (data: Record<string, unknown>, ctx: ExecContext & { resourceId: string }) => Promise<OperationResult>;
+    undo?: (ctx: ExecContext & { resourceId: string }) => Promise<OperationResult>;
   };
 }
 
@@ -265,6 +270,18 @@ When a saved change could affect later steps, the server asks the model which la
 
 The flow counts as complete again once no step needs review. `cancelEdit` discards the change and returns the user to where they were, including anything they had typed on an unfinished step.
 
+### When a step fails
+
+A failed operation is first classified without any LLM call: network errors, timeouts, HTTP 5xx, 408, 429 and 401 are **retryable**, and so is the first failure with no cause given. For other HTTP 4xx responses (or a repeated unexplained failure) the server asks the model to classify it, given what the earlier steps are and what they submitted:
+
+- **retryable** — try again;
+- **needs-edit** — the user can fix it by changing this step's answers;
+- **fundamental** — the flow can't succeed as set up (an account on hold, say). The model may then name the earliest completed step whose result should be undone, and the form **proposes** undoing that step and everything completed after it, in reverse order, through each step's `undo` operation.
+
+Nothing is undone unless the user confirms (`confirmRollback`); `declineRollback` keeps everything. The undo stops at the first failure and `retryRollback` continues from there. Steps without a usable `undo` (none implemented, or no `resourceId`) are reported as needing manual cleanup. Afterwards the user resumes at the first undone step, prefilled with what they had entered. If the classification can't run (static mode, no answer within 30 seconds, provider error), the failure is treated as retryable and no undo is proposed. Pass `recovery: { rollback: 'off' }` to never propose an undo, and `onRecoveryEvent` to log what happened. The model can only name a completed step, and the API's error text is passed to it as untrusted, truncated data.
+
+A failed `update` while revisiting a step is never classified this way and never undoes anything.
+
 ### The `StepStatus` lifecycle
 
 `submitStep()` runs a fixed sequence, and `currentStepStatus` is the single source of truth for where the step is in it.
@@ -304,6 +321,7 @@ AgentIntake calls the provider you configure, from your server, with:
 - **Generation (CLI or Studio):** the write operations parsed from your spec — their paths, field names, types, descriptions and validation rules.
 - **Each wizard step:** that step's field definitions, **the answers the user has given so far in this session**, and, on submit, the answers for the step being validated.
 - **After a completed step is edited:** that step's values before and after the edit, plus the definitions and submitted answers of the later completed steps, to decide which of them need review.
+- **When a step fails with an unclear error:** the failure (status and up to 500 characters of the API's error message), plus the definitions and submitted answers of the failed and completed steps.
 
 So end users' form answers leave your infrastructure and reach the LLM provider under that provider's data policy. If your intake collects personal or regulated data, check that policy before deploying, or turn the per-step calls off with `AGENTINTAKE_STATIC_MODE` (below). The API key itself never reaches the browser.
 
@@ -321,7 +339,7 @@ Stated plainly, because a multi-endpoint, AI-in-the-loop wizard has failure mode
 
 - **No authentication on AgentIntake's own routes.** This is a self-hosted library, not a multi-tenant service. Put the routes behind your own auth middleware, gateway, reverse proxy or private network if you expose them beyond localhost. A `sessionId` is a client-generated opaque string, closer to a shopping-cart id than a user id; it gives no confidentiality beyond "don't leak your own."
 - **No built-in rate limiting.** Nothing limits `/api/generate-flow`, `/api/step/fields` or `/api/step/validate`, and each call spends LLM tokens. Fine for local use; **do not expose a public or shared instance of the demo, Studio or server without adding rate limiting first.**
-- **No cross-endpoint rollback.** If step 2's `execute()` fails after step 1's succeeded, step 1's effect is not undone. The wizard surfaces the error and lets the user retry that step only.
+- **Rollback is proposed, never automatic, and not transactional.** Earlier steps are only undone when the model classifies a failure as fundamental, the steps implement `undo`, and the user confirms. There are no transactions or sagas: an undo that fails stops the rollback, and anything without an `undo` needs manual cleanup.
 - **Revisiting depends on your operations.** A completed step can always be revisited, but it can only be changed if you implemented `update` and `create` returned a `resourceId`; otherwise it is read-only. After a change, all later completed steps are marked for review — none of them is re-submitted automatically.
 - **No idempotency handling.** If a connection drops mid-submit and the user retries, the target endpoint may be called twice. If duplicate calls aren't safe, implement idempotency (for example an idempotency-key header) inside your `execute()`.
 - **Static enums only.** `enumValues` come from the spec's own `enum` declarations; options fetched from another endpoint aren't supported.
@@ -334,7 +352,7 @@ One thing that is a fix, not a boundary, but worth being visible about: **`/api/
 
 ## Roadmap
 
-**v1.5 — Smart Recovery**, in progress. Done: resource families in the parser, the operations contract, and revisiting completed steps with `read`/`update`. Next: an LLM check that narrows down which later steps an edit really affects (today every later step is marked for review), and recovery from a failed step — classifying the failure as transient, fixable or fundamental, and for fundamental ones proposing to undo earlier steps through their `undo` operation, which only runs after the user confirms.
+**v1.5 — Smart Recovery**, nearly complete. Done: resource families in the parser, the operations contract, revisiting completed steps with `read`/`update`, an LLM check that narrows down which later steps an edit affects, and recovery from a failed step with a confirmed undo. Remaining: a reworked demo that shows these scenarios end to end.
 
 Smaller stretch goals, roughly in priority order: dynamic enum options, chunked generation for large specs, rate-limiting middleware, free-text bulk fill, hosted Studio with shareable links, multi-spec cross-service flows, an explicit LangGraph state graph for the step engine, session persistence, and a visual `FlowDef` editor.
 

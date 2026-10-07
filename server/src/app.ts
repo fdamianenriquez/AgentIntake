@@ -1,6 +1,7 @@
 import express, { type ErrorRequestHandler, type Express } from 'express';
 import cors from 'cors';
 import { handleCheckInvalidation } from './routes/checkInvalidation.js';
+import { handleClassifyFailure } from './routes/classifyFailure.js';
 import { handleGenerateFlow } from './routes/generateFlow.js';
 import { handleSessionSync } from './routes/sessionSync.js';
 import { handleStepFields } from './routes/stepFields.js';
@@ -49,6 +50,7 @@ export function createApp(): Express {
   app.post('/api/session/sync', express.json(), handleSessionSync);
   // Carries the definitions of every later step, so it gets more room.
   app.post('/api/step/check-invalidation', express.json({ limit: '1mb' }), handleCheckInvalidation);
+  app.post('/api/step/classify-failure', express.json({ limit: '1mb' }), handleClassifyFailure);
 
   app.use(jsonErrorHandler);
   return app;
