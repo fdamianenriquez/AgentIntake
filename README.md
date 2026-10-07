@@ -173,6 +173,13 @@ function useAgentForm(
   completedEndpoints: string[];        // endpoint ids that reached 'complete'
   isComplete: boolean;
   stepRecords: Record<string, StepRecord>; // per step: last submitted values, result, status
+  canGoToStep: (endpointId: string) => boolean;
+  goToStep: (endpointId: string) => Promise<void>; // revisit a completed step
+  cancelEdit: () => void;
+  isEditing: boolean;
+  editMode: 'editable' | 'readOnly' | null;
+  editPhase: 'idle' | 'validating' | 'saving';
+  navigationError: string | null;      // e.g. the step's read() failed
   error: Error | null;                 // fatal, e.g. a flow with no endpoints
 };
 ```
@@ -189,7 +196,11 @@ interface EndpointDef {
   fields: FieldDef[];
   auth?: AuthRequirement;
   execute?: (data: Record<string, unknown>, context: ExecContext) => Promise<OperationResult>;
-  operations?: { create: /* same signature as execute */ };
+  operations?: {
+    create: /* same signature as execute */;
+    read?: (ctx: ExecContext & { resourceId: string }) => Promise<{ found: true; data: Record<string, unknown> } | { found: false }>;
+    update?: (data: Record<string, unknown>, ctx: ExecContext & { resourceId: string }) => Promise<OperationResult>;
+  };
 }
 
 interface ExecContext {
@@ -227,7 +238,22 @@ operations: {
 }
 ```
 
-AgentIntake never calls your API and never inspects its responses itself; mapping a response into an `OperationResult` is your job. `failureFromResponse` does that for errors (status plus the first 500 characters of the body). A thrown error, or a failed result without a `failure`, is recorded as `kind: 'other'`. Return `resourceId` from `create` whenever your API gives you one: the planned back-navigation and undo (see [Roadmap](#roadmap)) depend on it. Pass `idempotencyKey` along if your API supports idempotency keys, so a retry after a timeout can't create a duplicate.
+AgentIntake never calls your API and never inspects its responses itself; mapping a response into an `OperationResult` is your job. `failureFromResponse` does that for errors (status plus the first 500 characters of the body). A thrown error, or a failed result without a `failure`, is recorded as `kind: 'other'`. Return `resourceId` from `create` whenever your API gives you one: revisiting a step depends on it. Pass `idempotencyKey` along if your API supports idempotency keys, so a retry after a timeout can't create a duplicate.
+
+### Revisiting completed steps
+
+Completed steps are clickable in the stepper (`goToStep`). What happens depends on what you implemented for that step:
+
+| `read` | `update` | Revisiting the step |
+|---|---|---|
+| yes | yes | Shows the resource as your API returns it now; changes are saved with `update` |
+| no | yes | Shows the values submitted last time; changes are saved with `update` |
+| yes | no | Shows the resource read-only |
+| no | no | Shows the values submitted last time, read-only |
+
+The step's fields are adapted again to the earlier answers as they are now, and only the visible fields are sent to `update` (the previous values arrive as `ctx.previousValues`, so a PUT-style API can merge). Saving without changes makes no calls. A failed `update` leaves the step as it was — nothing is rolled back. If `read` reports the resource is gone, the step goes back to being filled in and is created again.
+
+When a saved change could affect later steps, every later completed step is marked **needs review** (`stale`) and the wizard takes the user through them; a step that can't be changed there only needs to be confirmed. The flow counts as complete again once none is left. `cancelEdit` discards the change and returns the user to where they were, including anything they had typed on an unfinished step.
 
 ### The `StepStatus` lifecycle
 
@@ -285,7 +311,7 @@ Stated plainly, because a multi-endpoint, AI-in-the-loop wizard has failure mode
 - **No authentication on AgentIntake's own routes.** This is a self-hosted library, not a multi-tenant service. Put the routes behind your own auth middleware, gateway, reverse proxy or private network if you expose them beyond localhost. A `sessionId` is a client-generated opaque string, closer to a shopping-cart id than a user id; it gives no confidentiality beyond "don't leak your own."
 - **No built-in rate limiting.** Nothing limits `/api/generate-flow`, `/api/step/fields` or `/api/step/validate`, and each call spends LLM tokens. Fine for local use; **do not expose a public or shared instance of the demo, Studio or server without adding rate limiting first.**
 - **No cross-endpoint rollback.** If step 2's `execute()` fails after step 1's succeeded, step 1's effect is not undone. The wizard surfaces the error and lets the user retry that step only.
-- **No backward navigation.** Once a step has completed, it can't be revisited, which avoids re-submission and duplicate-record ambiguity.
+- **Revisiting depends on your operations.** A completed step can always be revisited, but it can only be changed if you implemented `update` and `create` returned a `resourceId`; otherwise it is read-only. After a change, all later completed steps are marked for review — none of them is re-submitted automatically.
 - **No idempotency handling.** If a connection drops mid-submit and the user retries, the target endpoint may be called twice. If duplicate calls aren't safe, implement idempotency (for example an idempotency-key header) inside your `execute()`.
 - **Static enums only.** `enumValues` come from the spec's own `enum` declarations; options fetched from another endpoint aren't supported.
 - **Sized for a handful of related write operations.** Above 15 write operations, generation and Studio warn that quality may degrade. Chunked generation isn't built.
@@ -297,7 +323,7 @@ One thing that is a fix, not a boundary, but worth being visible about: **`/api/
 
 ## Roadmap
 
-Planned for **v1.5 — Smart Recovery** (fully designed, not abandoned): the two v1 boundaries above, rollback and backward navigation, become agent-assisted. Where the spec exposes a CRUD family for a resource, a failed later step would be classified as transient or fundamental and earlier resources rolled back through their own `delete`; navigating back would check existence with a `read` and use `update` instead of `create`; and editing an earlier answer that plausibly invalidates a later step would surface a warning.
+**v1.5 — Smart Recovery**, in progress. Done: resource families in the parser, the operations contract, and revisiting completed steps with `read`/`update`. Next: an LLM check that narrows down which later steps an edit really affects (today every later step is marked for review), and recovery from a failed step — classifying the failure as transient, fixable or fundamental, and for fundamental ones proposing to undo earlier steps through their `undo` operation, which only runs after the user confirms.
 
 Smaller stretch goals, roughly in priority order: dynamic enum options, chunked generation for large specs, rate-limiting middleware, free-text bulk fill, hosted Studio with shareable links, multi-spec cross-service flows, an explicit LangGraph state graph for the step engine, session persistence, and a visual `FlowDef` editor.
 

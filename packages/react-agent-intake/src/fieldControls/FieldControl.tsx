@@ -6,12 +6,13 @@ export interface FieldControlProps {
   onChange: (value: unknown) => void;
   error?: string;
   suggested?: boolean;
+  disabled?: boolean;
 }
 
 // Fully generic (FieldDef.type -> control mapping), with no hardcoded
 // per-field JSX: one switch on `field.type`, nothing that knows
 // about any specific field by name.
-export function FieldControl({ field, value, onChange, error, suggested }: FieldControlProps) {
+export function FieldControl({ field, value, onChange, error, suggested, disabled }: FieldControlProps) {
   return (
     <div className="agent-intake-field" data-suggested={suggested ? 'true' : undefined}>
       <label htmlFor={field.name}>
@@ -19,7 +20,7 @@ export function FieldControl({ field, value, onChange, error, suggested }: Field
         {field.required ? ' *' : ''}
       </label>
       {field.description && <p className="agent-intake-field-description">{field.description}</p>}
-      {renderControl(field, value, onChange, Boolean(error))}
+      {renderControl(field, value, onChange, Boolean(error), Boolean(disabled))}
       {suggested && <span className="agent-intake-field-suggested-badge">AI-suggested</span>}
       {error && (
         <p className="agent-intake-field-error" role="alert">
@@ -30,11 +31,18 @@ export function FieldControl({ field, value, onChange, error, suggested }: Field
   );
 }
 
-function renderControl(field: FieldDef, value: unknown, onChange: (value: unknown) => void, invalid: boolean) {
+function renderControl(
+  field: FieldDef,
+  value: unknown,
+  onChange: (value: unknown) => void,
+  invalid: boolean,
+  disabled: boolean
+) {
   const common = {
     id: field.name,
     name: field.name,
     required: field.required,
+    disabled,
     'aria-invalid': invalid ? true : undefined,
   };
 

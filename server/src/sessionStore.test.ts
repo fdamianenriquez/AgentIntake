@@ -3,10 +3,12 @@ import {
   createSession,
   deleteSession,
   getOrCreateSession,
+  getScopedData,
   getSession,
   isEndpointValidated,
   MAX_SESSIONS,
   recordValidatedStep,
+  replaceStepData,
   SESSION_IDLE_TTL_MS,
 } from './sessionStore.js';
 
@@ -117,5 +119,29 @@ describe('sessionStore bounds', () => {
     expect(getSession('lru-oldest')).toBeUndefined();
     expect(getSession('lru-kept')).toBeDefined();
     expect(getSession(`lru-filler-${MAX_SESSIONS - 1}`)).toBeDefined();
+  });
+});
+
+describe('scoped data and step replacement', () => {
+  it('getScopedData returns only the requested steps', () => {
+    getOrCreateSession('scope-a');
+    recordValidatedStep('scope-a', 'one', { x: 1 });
+    recordValidatedStep('scope-a', 'two', { y: 2 });
+
+    expect(getScopedData('scope-a', ['one', 'missing'])).toEqual({ one: { x: 1 } });
+    expect(getScopedData('no-such-session', ['one'])).toEqual({});
+  });
+
+  it('replaceStepData overwrites and forgets steps', () => {
+    getOrCreateSession('replace-a');
+    recordValidatedStep('replace-a', 'one', { x: 1 });
+
+    replaceStepData('replace-a', [
+      { endpointId: 'one', data: null },
+      { endpointId: 'two', data: { y: 2 } },
+    ]);
+
+    expect(getSession('replace-a')?.collectedData).toEqual({ two: { y: 2 } });
+    expect(getSession('replace-a')?.validatedEndpointIds).toEqual(['two']);
   });
 });

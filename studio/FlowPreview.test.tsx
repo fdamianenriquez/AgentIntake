@@ -123,4 +123,42 @@ describe('FlowPreview', () => {
 
     expect(onReset).toHaveBeenCalledTimes(1);
   });
+
+  it('simulates the read/update the parser found, so revisiting a step can be previewed', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const withFamily: GenerateResponse = {
+      ...generation,
+      flow: {
+        ...generation.flow,
+        endpoints: [
+          {
+            ...generation.flow.endpoints[0],
+            capabilities: { read: true, update: true, undo: false },
+            resourcePath: '/things',
+            idParam: 'thingId',
+          },
+          { id: 'step2', title: 'Step Two', fields: [{ name: 'other', type: 'string', label: 'Other', required: true }] },
+        ],
+      },
+    };
+    const user = userEvent.setup();
+    render(<FlowPreview generation={withFamily} onReset={vi.fn()} />);
+    await waitFor(() => expect(screen.getByLabelText(/Name/)).toBeInTheDocument());
+    await user.type(screen.getByLabelText(/Name/), 'Jane');
+    await user.click(screen.getByRole('button', { name: /Continue/i }));
+    await waitFor(() => expect(screen.getByLabelText(/Other/)).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /Step One/ }));
+    await waitFor(() => expect(screen.getByLabelText(/Name/)).toHaveValue('Jane'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Would read sim-step1-1'));
+
+    await user.clear(screen.getByLabelText(/Name/));
+    await user.type(screen.getByLabelText(/Name/), 'Janet');
+    await user.click(screen.getByRole('button', { name: /Save changes/i }));
+
+    await waitFor(() =>
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Would update sim-step1-1'), { name: 'Janet' })
+    );
+    logSpy.mockRestore();
+  });
 });

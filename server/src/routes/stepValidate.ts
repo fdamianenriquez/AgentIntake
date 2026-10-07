@@ -2,10 +2,13 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { ParsedEndpointSchema } from '../../../packages/react-agent-intake/src/contracts.js';
 import { validateStepSubmission } from '../stepEngine.js';
-import { getOrCreateSession, recordValidatedStep } from '../sessionStore.js';
+import { getOrCreateSession, getScopedData, recordValidatedStep } from '../sessionStore.js';
 
 const RequestBodySchema = z.object({
   sessionId: z.string().min(1).max(128),
+  // The steps before this one, in flow order. When present, only their data
+  // reaches the prompt; absent means all collected data.
+  precedingEndpointIds: z.array(z.string().max(256)).max(200).optional(),
   endpoint: ParsedEndpointSchema,
   data: z.record(z.string(), z.unknown()),
 });
@@ -26,11 +29,14 @@ export async function handleStepValidate(req: Request, res: Response): Promise<v
     return;
   }
 
-  const { sessionId, endpoint, data } = parsed.data;
+  const { sessionId, endpoint, data, precedingEndpointIds } = parsed.data;
   const session = getOrCreateSession(sessionId);
 
   try {
-    const result = await validateStepSubmission({ endpoint, data, previouslyCollectedData: session.collectedData });
+    const previouslyCollectedData = precedingEndpointIds
+      ? getScopedData(sessionId, precedingEndpointIds)
+      : session.collectedData;
+    const result = await validateStepSubmission({ endpoint, data, previouslyCollectedData });
     if (result.valid) {
       recordValidatedStep(sessionId, endpoint.id, data);
     }

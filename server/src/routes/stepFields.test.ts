@@ -92,3 +92,30 @@ describe('POST /api/step/fields', () => {
     expect(response.body.error).toBe('unexpected failure');
   });
 });
+
+describe('scoped context', () => {
+  it('only passes the data of precedingEndpointIds to the step engine', async () => {
+    const sessionId = 'scoped-fields-session';
+    getOrCreateSession(sessionId);
+    recordValidatedStep(sessionId, 'stepA', { a: 1 });
+    recordValidatedStep(sessionId, 'stepC', { c: 3 }); // a later step, visited before going back
+    mockedGenerateStructured.mockResolvedValueOnce({ fields: [{ name: 'email' }], suggestedValues: {} });
+
+    await request(createApp())
+      .post('/api/step/fields')
+      .send({ sessionId, endpoint, precedingEndpointIds: ['stepA'] });
+
+    expect(mockedSelectStepFields).toHaveBeenLastCalledWith({ endpoint, previouslyCollectedData: { stepA: { a: 1 } } });
+  });
+
+  it('keeps passing all collected data when precedingEndpointIds is absent (v1.0 clients)', async () => {
+    const sessionId = 'unscoped-fields-session';
+    getOrCreateSession(sessionId);
+    recordValidatedStep(sessionId, 'stepA', { a: 1 });
+    mockedGenerateStructured.mockResolvedValueOnce({ fields: [{ name: 'email' }], suggestedValues: {} });
+
+    await request(createApp()).post('/api/step/fields').send({ sessionId, endpoint });
+
+    expect(mockedSelectStepFields).toHaveBeenLastCalledWith({ endpoint, previouslyCollectedData: { stepA: { a: 1 } } });
+  });
+});

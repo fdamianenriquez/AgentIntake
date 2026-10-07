@@ -98,6 +98,41 @@ export function recordValidatedStep(
   return session;
 }
 
+// After back-navigation the session holds data from steps
+// that come *after* the one being shown; prompts for a step must only see the
+// steps before it.
+export function getScopedData(sessionId: string, endpointIds: string[]): Record<string, Record<string, unknown>> {
+  const collected = getSession(sessionId)?.collectedData ?? {};
+  const scoped: Record<string, Record<string, unknown>> = {};
+  for (const id of endpointIds) {
+    if (collected[id]) scoped[id] = collected[id];
+  }
+  return scoped;
+}
+
+/**
+ * Overwrites what the session knows about the given steps: `data` replaces a
+ * step's collected data, `null` forgets the step. Used when the client
+ * discards an edit (so the server matches what was actually submitted) and,
+ * later, after a rollback.
+ */
+export function replaceStepData(
+  sessionId: string,
+  steps: { endpointId: string; data: Record<string, unknown> | null }[]
+): SessionState {
+  const session = getOrCreateSession(sessionId);
+  for (const { endpointId, data } of steps) {
+    if (data === null) {
+      delete session.collectedData[endpointId];
+      session.validatedEndpointIds = session.validatedEndpointIds.filter((id) => id !== endpointId);
+    } else {
+      session.collectedData[endpointId] = data;
+      if (!session.validatedEndpointIds.includes(endpointId)) session.validatedEndpointIds.push(endpointId);
+    }
+  }
+  return session;
+}
+
 export function isEndpointValidated(sessionId: string, endpointId: string): boolean {
   return getSession(sessionId)?.validatedEndpointIds.includes(endpointId) ?? false;
 }

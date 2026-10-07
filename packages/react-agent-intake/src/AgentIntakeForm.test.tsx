@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { FieldDef, FlowDef } from './contracts.js';
+import type { FieldDef, FlowDef, ResourceOperations } from './contracts.js';
 import { AgentIntakeForm } from './AgentIntakeForm.js';
 
 function stubFetch() {
@@ -17,6 +17,9 @@ function stubFetch() {
     }
     if (url.endsWith('/api/step/validate')) {
       return { ok: true, status: 200, json: async () => ({ valid: true, errors: {}, degraded: false }) } as Response;
+    }
+    if (url.endsWith('/api/session/sync')) {
+      return { ok: true, status: 200, json: async () => ({ ok: true }) } as Response;
     }
     throw new Error(`unexpected fetch to ${url}`);
   });
@@ -219,5 +222,92 @@ describe('AgentIntakeForm', () => {
 
     await waitFor(() => expect(screen.getByText('All steps complete.')).toBeInTheDocument());
     expect(execute).toHaveBeenCalledTimes(2);
+  });
+
+  describe('revisiting completed steps', () => {
+    function twoStepFlow(update?: ResourceOperations['update']): FlowDef {
+      return {
+        id: 'two',
+        title: 'Two',
+        description: 'd',
+        endpoints: [
+          {
+            id: 'account',
+            title: 'Account',
+            fields: [{ name: 'name', type: 'string', label: 'Name', required: true }],
+            operations: {
+              create: vi.fn().mockResolvedValue({ success: true, resourceId: 'acct_1' }),
+              ...(update ? { update } : {}),
+            },
+          },
+          {
+            id: 'payout',
+            title: 'Payout',
+            fields: [{ name: 'bank', type: 'string', label: 'Bank', required: true }],
+            execute: vi.fn().mockResolvedValue({ success: true }),
+          },
+        ],
+      };
+    }
+
+    async function completeAccount(user: ReturnType<typeof userEvent.setup>) {
+      await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+      await user.type(screen.getByLabelText(/Name/), 'Jordan');
+      await user.click(screen.getByRole('button', { name: /Continue/i }));
+      await waitFor(() => expect(screen.getByRole('heading', { name: 'Payout' })).toBeInTheDocument());
+      await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+    }
+
+    it('lets the user reopen a completed step, save a change, and marks later steps for review', async () => {
+      const update = vi.fn().mockResolvedValue({ success: true });
+      const user = userEvent.setup();
+      render(<AgentIntakeForm flow={twoStepFlow(update)} apiUrl="http://test.local" />);
+      await completeAccount(user);
+      await user.type(screen.getByLabelText(/Bank/), 'First Bank');
+      await user.click(screen.getByRole('button', { name: /Continue/i }));
+      await waitFor(() => expect(screen.getByText('All steps complete.')).toBeInTheDocument());
+
+      await user.click(screen.getByRole('button', { name: /Account/ }));
+      await waitFor(() => expect(screen.getByText(/You're changing a step you already completed/)).toBeInTheDocument());
+      await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+      expect(screen.getByLabelText(/Name/)).toHaveValue('Jordan');
+
+      await user.clear(screen.getByLabelText(/Name/));
+      await user.type(screen.getByLabelText(/Name/), 'Jordan R.');
+      await user.click(screen.getByRole('button', { name: /Save changes/i }));
+
+      await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+      // Payout depended on the changed answer; it has no update, so it can only be confirmed.
+      await waitFor(() => expect(screen.getByText(/confirm it still applies/)).toBeInTheDocument());
+      expect(screen.getByRole('heading', { name: 'Payout' })).toBeInTheDocument();
+      expect(screen.getByText(/Payout \(needs review\)|needs review/)).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+
+      await user.click(screen.getByRole('button', { name: 'Confirm' }));
+      await waitFor(() => expect(screen.getByText('All steps complete.')).toBeInTheDocument());
+    });
+
+    it('shows a step without update read-only, with disabled fields and a Back button', async () => {
+      const user = userEvent.setup();
+      render(<AgentIntakeForm flow={twoStepFlow()} apiUrl="http://test.local" />);
+      await completeAccount(user);
+
+      await user.click(screen.getByRole('button', { name: /Account/ }));
+      await waitFor(() => expect(screen.getByText(/can't be changed here/)).toBeInTheDocument());
+      await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+
+      expect(screen.getByLabelText(/Name/)).toBeDisabled();
+      expect(screen.queryByRole('button', { name: /Save changes/i })).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Back' }));
+      await waitFor(() => expect(screen.getByRole('heading', { name: 'Payout' })).toBeInTheDocument());
+    });
+
+    it('does not offer steps that have not been completed yet', async () => {
+      render(<AgentIntakeForm flow={twoStepFlow()} apiUrl="http://test.local" />);
+      await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+
+      expect(screen.queryByRole('button', { name: /Payout/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Account/ })).not.toBeInTheDocument();
+    });
   });
 });
