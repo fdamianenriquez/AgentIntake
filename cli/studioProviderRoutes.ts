@@ -1,6 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { Express } from 'express';
+import express, { type Express } from 'express';
 import { z } from 'zod';
 import {
   API_KEY_ENV_VAR,
@@ -17,9 +17,19 @@ import {
 // request has no business existing on anything but a local, single-user
 // Studio instance.
 
+// The key is written verbatim into a .env line, so anything that could end the
+// line or start a comment would let a request inject other variables. Real
+// provider keys only use this character set.
+const API_KEY_PATTERN = /^[A-Za-z0-9._~+/=:-]+$/;
+
 const ProviderSetupSchema = z.object({
   provider: z.enum(SUPPORTED_PROVIDERS),
-  apiKey: z.string().min(1),
+  apiKey: z
+    .string()
+    .trim()
+    .min(1, 'Paste an API key.')
+    .max(512, "That doesn't look like an API key (too long).")
+    .regex(API_KEY_PATTERN, "That doesn't look like an API key (unexpected characters)."),
 });
 
 export function registerStudioProviderRoutes(app: Express): void {
@@ -35,10 +45,14 @@ export function registerStudioProviderRoutes(app: Express): void {
     }
   });
 
-  app.post('/api/provider-setup', async (req, res) => {
+  app.post('/api/provider-setup', express.json(), async (req, res) => {
     const parsed = ProviderSetupSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: 'Request body must be { provider: string, apiKey: string }.' });
+      const issue = parsed.error.issues[0];
+      const keyProblem = issue?.path[0] === 'apiKey' && issue.code !== 'invalid_type';
+      res.status(400).json({
+        error: keyProblem ? issue.message : 'Request body must be { provider: string, apiKey: string }.',
+      });
       return;
     }
 

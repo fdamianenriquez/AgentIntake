@@ -93,6 +93,27 @@ describe('POST /api/provider-setup', () => {
     expect(lines.filter((line) => line.startsWith('LLM_API_KEY='))).toHaveLength(1);
   });
 
+  it.each([
+    ['a newline (.env line injection)', 'sk-test\nLLM_PROVIDER=evil'],
+    ['a carriage return', 'sk-test\rX=1'],
+    ['a # (would start a comment)', 'sk-test#rest'],
+    ['a space', 'sk test'],
+    ['a quote', 'sk-"test'],
+  ])('rejects an API key containing %s, without touching .env', async (_label, apiKey) => {
+    const response = await request(makeApp()).post('/api/provider-setup').send({ provider: 'openai', apiKey });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/doesn't look like an API key/);
+    await expect(readFile(path.join(tmpDir, '.env'), 'utf-8')).rejects.toThrow();
+  });
+
+  it('accepts typical provider key formats', async () => {
+    for (const apiKey of ['sk-or-v1-0123abcd', 'sk-ant-api03-AbC_dEf-123', 'AIzaSyA1b2C3d4_E5f6-G7h8']) {
+      const response = await request(makeApp()).post('/api/provider-setup').send({ provider: 'openai', apiKey });
+      expect(response.status).toBe(200);
+    }
+  });
+
   it('returns 400 for an invalid body', async () => {
     const response = await request(makeApp()).post('/api/provider-setup').send({ provider: 'anthropic' }); // missing apiKey
 
