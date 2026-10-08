@@ -295,3 +295,81 @@ describe('propose -> confirm -> run', () => {
     expect(accountUndo).not.toHaveBeenCalled();
   });
 });
+
+describe('no navigation or submits while a rollback is pending, running or failed', () => {
+  const fundamental = { classification: 'fundamental', explanation: 'On hold.', rollbackFromEndpointId: 'account' };
+  const ids = ['account', 'verification', 'payout'];
+
+  function expectLocked(result: Hook['result']) {
+    expect(ids.map((id) => result.current.canGoToStep(id))).toEqual([false, false, false]);
+  }
+
+  it('while a proposal is pending', async () => {
+    stubServer(fundamental);
+    const payoutCreate = vi.fn().mockResolvedValue(complianceHold);
+    const { flow } = makeFlow(payoutCreate);
+    const { result } = await failAtPayout(flow);
+    expect(result.current.recovery.phase).toBe('proposed');
+
+    expectLocked(result);
+    await act(() => result.current.submitStep());
+    await act(() => result.current.retryExecution());
+    await act(() => result.current.goToStep('account'));
+
+    expect(payoutCreate).toHaveBeenCalledTimes(1);
+    expect(result.current.currentStepIndex).toBe(2);
+  });
+
+  it('while the undo is running', async () => {
+    stubServer(fundamental);
+    const payoutCreate = vi.fn().mockResolvedValue(complianceHold);
+    const { flow } = makeFlow(payoutCreate);
+    let finish!: () => void;
+    (flow.endpoints[1].operations!.undo as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => new Promise<OperationResult>((resolve) => (finish = () => resolve({ success: true })))
+    );
+    const { result } = await failAtPayout(flow);
+
+    let rollback!: Promise<void>;
+    act(() => {
+      rollback = result.current.confirmRollback();
+    });
+    await waitFor(() => expect(result.current.recovery.phase).toBe('rollingBack'));
+
+    expectLocked(result);
+    await act(() => result.current.submitStep());
+    expect(payoutCreate).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      finish();
+      await rollback;
+    });
+  });
+
+  it('after an undo failed, until it is retried', async () => {
+    stubServer(fundamental);
+    const payoutCreate = vi.fn().mockResolvedValue(complianceHold);
+    const { flow } = makeFlow(payoutCreate);
+    (flow.endpoints[1].operations!.undo as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ success: false, message: 'Locked.' });
+    const { result } = await failAtPayout(flow);
+    await act(() => result.current.confirmRollback());
+    expect(result.current.recovery.phase).toBe('rollbackFailed');
+
+    expectLocked(result);
+    await act(() => result.current.submitStep());
+    await act(() => result.current.retryExecution());
+    expect(payoutCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('everything works again after the proposal is declined', async () => {
+    stubServer(fundamental);
+    const { flow } = makeFlow(vi.fn().mockResolvedValue(complianceHold));
+    const { result } = await failAtPayout(flow);
+
+    act(() => result.current.declineRollback());
+
+    expect(result.current.canGoToStep('account')).toBe(true);
+    await act(() => result.current.goToStep('account'));
+    expect(result.current.currentStepIndex).toBe(0);
+  });
+});

@@ -304,6 +304,14 @@ interface RecoveryState extends RecoveryView {
 
 const IDLE_RECOVERY: RecoveryState = { phase: 'idle' };
 
+// While an undo is proposed, running, or stopped on a failure, nothing else may
+// move the flow: a navigation or submit would act on resources the undo is
+// about to remove (or has partly removed).
+function recoveryLocked(state: FormState): boolean {
+  const { phase } = state.recovery;
+  return phase === 'proposed' || phase === 'rollingBack' || phase === 'rollbackFailed';
+}
+
 type FormAction =
   | { type: 'fatal'; error: Error }
   | { type: 'stepEntered'; endpointId: string; fields: FieldDef[] }
@@ -1036,7 +1044,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
 
   const submitEdit = useCallback(
     async (endpoint: EndpointDef, editing: Editing) => {
-      if (editing.phase !== 'idle') return;
+      if (editing.phase !== 'idle' || recoveryLocked(stateRef.current)) return;
       const { currentStepFields, values, records, idempotencyKeys } = stateRef.current;
       const record = records[endpoint.id];
 
@@ -1110,6 +1118,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
     // Between saving an edit and opening the next step to review, the step on
     // screen must not be submitted again (that would re-run create).
     if (stateRef.current.navigating || stateRef.current.pendingRevisit) return;
+    if (recoveryLocked(stateRef.current)) return;
     const { editing } = stateRef.current;
     if (editing) {
       await submitEdit(currentEndpoint, editing);
@@ -1140,6 +1149,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
   const retryExecution = useCallback(async () => {
     if (!currentEndpoint) return;
     if (stateRef.current.navigating || stateRef.current.pendingRevisit) return;
+    if (recoveryLocked(stateRef.current)) return;
     if (stateRef.current.records[currentEndpoint.id]?.status !== 'executionFailed') return;
     await runCreate(currentEndpoint, stateRef.current.values);
   }, [currentEndpoint, runCreate]);
@@ -1157,7 +1167,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
     (endpointId: string) => {
       const { records, currentStepIndex, editing } = stateRef.current;
       const index = endpointIds.indexOf(endpointId);
-      if (index === -1) return false;
+      if (index === -1 || recoveryLocked(stateRef.current)) return false;
       // Once every step is done, the last one is no longer "where the user is".
       const allComplete = endpointIds.every((id) => records[id]?.status === 'complete');
       if (index === currentStepIndex && !(allComplete && !editing)) return false;
@@ -1173,7 +1183,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
 
   const goToStep = useCallback(
     async (endpointId: string) => {
-      if (!canGoToStep(endpointId)) return;
+      if (recoveryLocked(stateRef.current) || !canGoToStep(endpointId)) return;
       const { records, currentStepIndex, values, editing } = stateRef.current;
       const index = endpointIds.indexOf(endpointId);
       const endpoint = flow.endpoints[index];
