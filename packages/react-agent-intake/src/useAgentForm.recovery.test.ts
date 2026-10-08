@@ -373,3 +373,40 @@ describe('no navigation or submits while a rollback is pending, running or faile
     expect(result.current.currentStepIndex).toBe(0);
   });
 });
+
+describe('steps a rollback could not undo', () => {
+  const fundamental = { classification: 'fundamental', explanation: 'On hold.', rollbackFromEndpointId: 'account' };
+
+  it('are marked stale (not left complete), keep their values, and are reviewed after the anchor is redone', async () => {
+    stubServer(fundamental);
+    const { flow, accountUndo } = makeFlow(vi.fn().mockResolvedValue(complianceHold));
+    delete (flow.endpoints[1].operations as { undo?: unknown }).undo; // verification can't be undone
+    const { result } = await failAtPayout(flow);
+    expect(result.current.recovery).toMatchObject({
+      proposedUndo: [{ endpointId: 'account', label: 'Account' }],
+      skipped: ['verification'],
+    });
+
+    await act(() => result.current.confirmRollback());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(accountUndo).toHaveBeenCalledTimes(1);
+    expect(result.current.stepRecords.verification).toMatchObject({
+      status: 'stale',
+      staleReason: 'A step it depends on was undone and this one could not be undone automatically.',
+      values: { idNumber: 'ID-1' },
+      result: { success: true, resourceId: 'ver_1' },
+    });
+    expect(result.current.recovery.report?.skipped).toEqual(['verification']);
+    expect(result.current.isComplete).toBe(false);
+    expect(result.current.currentStepIndex).toBe(0);
+
+    // Redoing the anchor routes to the stale step for review, never re-creating it.
+    await act(() => result.current.submitStep());
+    await waitFor(() => expect(result.current.currentStepIndex).toBe(1));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.isEditing).toBe(true);
+    expect(result.current.currentStepStatus).toBe('stale');
+    expect(flow.endpoints[1].operations!.create).toHaveBeenCalledTimes(1);
+  });
+});

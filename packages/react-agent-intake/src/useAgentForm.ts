@@ -409,6 +409,9 @@ function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T
   return rest;
 }
 
+const SKIPPED_BY_ROLLBACK_REASON =
+  'A step it depends on was undone and this one could not be undone automatically.';
+
 const SAFE_SIDE_STALE_REASON = 'An earlier answer changed; check that this step still applies.';
 
 // The safe side of cross-step invalidation: when it can't be narrowed down which later
@@ -693,17 +696,27 @@ function reducer(state: FormState, action: FormAction): FormState {
       };
     }
     case 'rollbackFinished': {
-      // The flow resumes at the anchor, prefilled with what was submitted before.
-      const anchorId = state.recovery.anchorId!;
       const failedId = state.recovery.endpointId!;
-      const records = withStatus(state.records, failedId, 'idle');
+      let records = withStatus(state.records, failedId, 'idle');
+      // A step in the undo range without a usable undo still owns a real
+      // resource, but something it depends on is gone: it needs review (and
+      // manual cleanup), so it can't stay 'complete'.
+      for (const id of state.recovery.report?.skipped ?? []) {
+        if (records[id]?.status === 'complete') {
+          records = withStatus(records, id, 'stale', { staleReason: SKIPPED_BY_ROLLBACK_REASON });
+        }
+      }
+      const base = { ...state, records, recovery: { ...state.recovery, phase: 'rolledBack' as const, pending: [] }, executionError: null };
+      // Resume at the first step in flow order that needs the user -- normally
+      // the anchor, now undone. Steps after it that were skipped are reviewed
+      // once it is redone (through advance(), like any stale step). A stale
+      // step has to be opened through goToStep, never re-created.
+      const resumeId = action.endpointIds.find((id) => records[id]?.status !== 'complete')!;
+      if (records[resumeId]?.status === 'stale') return { ...base, pendingRevisit: resumeId };
       return {
-        ...state,
-        records,
-        recovery: { ...state.recovery, phase: 'rolledBack', pending: [] },
-        executionError: null,
-        currentStepIndex: action.endpointIds.indexOf(anchorId),
-        prefill: { endpointId: anchorId, values: records[anchorId]?.values ?? {} },
+        ...base,
+        currentStepIndex: action.endpointIds.indexOf(resumeId),
+        prefill: { endpointId: resumeId, values: records[resumeId]?.values ?? {} },
       };
     }
   }
