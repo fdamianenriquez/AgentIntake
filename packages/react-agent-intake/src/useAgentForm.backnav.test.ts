@@ -559,3 +559,53 @@ describe('the gap between saving an edit and opening the step to review', () => 
     expect(result.current.navigating).toBe(false);
   });
 });
+
+describe('cancelling a review that opened automatically after an edit', () => {
+  async function editAccountAndLandOnReview(result: Hook) {
+    await act(() => result.current.goToStep('account'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.updateField('type', 'business'));
+    await act(() => result.current.submitStep());
+    await waitFor(() => expect(result.current.currentStepIndex).toBe(1));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.isEditing).toBe(true);
+  }
+
+  it('returns to where the user was before starting the edit, not to the edited step', async () => {
+    stubServer({ affected: ['details'] });
+    const { flow, account } = threeStepFlow({ update: vi.fn().mockResolvedValue({ success: true }) });
+    const result = render(flow);
+    await completeFirstTwo(result); // now on payout, not yet done
+    await editAccountAndLandOnReview(result);
+
+    act(() => result.current.cancelEdit());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.currentStepIndex).toBe(2);
+    expect(result.current.isEditing).toBe(false);
+    expect(result.current.stepRecords.account.status).toBe('complete');
+    expect(account.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('never leaves a completed step on screen outside edit mode, and submitting one never re-creates it', async () => {
+    stubServer({ affected: ['details'] });
+    const { flow, account } = threeStepFlow({ update: vi.fn().mockResolvedValue({ success: true }) });
+    const result = render(flow);
+    await completeFirstTwo(result);
+    await fill(result, { bank: 'First Bank' }); // everything complete; the user is "on" the last step
+    await editAccountAndLandOnReview(result);
+
+    act(() => result.current.cancelEdit());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // The only step needing the user is the stale one, so it is reopened for review.
+    await waitFor(() => expect(result.current.isEditing).toBe(true));
+    expect(result.current.currentStepIndex).toBe(1);
+
+    // And at the hook level: a completed step outside edit mode is never created again.
+    act(() => result.current.cancelEdit());
+    await act(() => result.current.submitStep());
+    expect(account.create).toHaveBeenCalledTimes(1);
+    expect(result.current.stepRecords.account.status).toBe('complete');
+  });
+});

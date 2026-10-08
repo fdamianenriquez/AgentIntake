@@ -289,6 +289,12 @@ interface FormState {
   navigationError: string | null;
   /** A stale step the wizard has to open in edit mode next (it can't just be re-created). */
   pendingRevisit: string | null;
+  /**
+   * Where cancel should return to once the stale step queued in
+   * `pendingRevisit` opens: the user's position before the edit that
+   * started this chain of reviews, not the step that was just edited.
+   */
+  pendingReturnIndex: number | null;
   navigating: boolean;
   recovery: RecoveryState;
   /** Per endpoint: failures without a known cause so far (the first is retried before asking the model). */
@@ -355,7 +361,7 @@ type FormAction =
     }
   | { type: 'staleAccepted'; followUp?: string; endpointIds: string[] }
   | { type: 'editUnchanged'; endpointIds: string[] }
-  | { type: 'editCancelled' }
+  | { type: 'editCancelled'; endpointIds: string[] }
   | { type: 'otherFailureCounted'; endpointId: string }
   | { type: 'recoveryClassifying'; endpointId: string }
   | { type: 'recoveryClassified'; endpointId: string; classification: FailureClassification; explanation?: string }
@@ -389,6 +395,7 @@ const initialState: FormState = {
   drafts: {},
   navigationError: null,
   pendingRevisit: null,
+  pendingReturnIndex: null,
   navigating: false,
   recovery: IDLE_RECOVERY,
   otherFailures: {},
@@ -437,6 +444,13 @@ function advance(state: FormState, records: Record<string, StepRecord>, endpoint
   if (stale) return { pendingRevisit: stale };
   const next = endpointIds.findIndex((id) => records[id]?.status !== 'complete');
   return { currentStepIndex: next === -1 ? state.currentStepIndex : next, pendingRevisit: null };
+}
+
+// advance(), remembering where the user was when a review gets queued, so that
+// cancelling that review returns there.
+function advanceKeepingReturn(state: FormState, records: Record<string, StepRecord>, endpointIds: string[]) {
+  const next = advance(state, records, endpointIds);
+  return { ...next, pendingReturnIndex: next.pendingRevisit ? state.editing?.returnIndex ?? null : null };
 }
 
 function reducer(state: FormState, action: FormAction): FormState {
@@ -533,13 +547,14 @@ function reducer(state: FormState, action: FormAction): FormState {
         navigating: false,
         editing: {
           endpointId: action.endpointId,
-          returnIndex: state.editing?.returnIndex ?? state.currentStepIndex,
+          returnIndex: state.editing?.returnIndex ?? state.pendingReturnIndex ?? state.currentStepIndex,
           mode: action.mode,
           phase: 'idle',
         },
         prefill: { endpointId: action.endpointId, values: action.prefill },
         drafts: withDraft(state.drafts, action.draft),
         currentStepIndex: action.targetIndex,
+        pendingReturnIndex: null,
       };
     case 'resourceMissing': {
       // The resource is gone (read found nothing), so this step has to be created
@@ -599,7 +614,7 @@ function reducer(state: FormState, action: FormAction): FormState {
         records,
         editing: null,
         idempotencyKeys: withoutKey(state.idempotencyKeys, id),
-        ...advance(state, records, action.endpointIds),
+        ...advanceKeepingReturn(state, records, action.endpointIds),
       };
     }
     case 'editUnchanged': {
@@ -610,17 +625,24 @@ function reducer(state: FormState, action: FormAction): FormState {
         state.records[id]?.status === 'stale'
           ? withStatus(state.records, id, 'complete', { staleReason: undefined })
           : state.records;
-      return { ...state, records, editing: null, ...advance(state, records, action.endpointIds) };
+      return { ...state, records, editing: null, ...advanceKeepingReturn(state, records, action.endpointIds) };
     }
     case 'staleAccepted': {
       if (!state.editing) return state;
       const id = state.editing.endpointId;
       const records = withStatus(state.records, id, 'complete', { staleReason: undefined, followUp: action.followUp });
-      return { ...state, records, editing: null, ...advance(state, records, action.endpointIds) };
+      return { ...state, records, editing: null, ...advanceKeepingReturn(state, records, action.endpointIds) };
     }
-    case 'editCancelled':
+    case 'editCancelled': {
       if (!state.editing) return state;
-      return { ...state, editing: null, errors: {}, executionError: null, currentStepIndex: state.editing.returnIndex };
+      const base = { ...state, editing: null, errors: {}, executionError: null, pendingReturnIndex: null };
+      const target = state.editing.returnIndex;
+      const targetStatus = state.records[action.endpointIds[target]]?.status;
+      if (targetStatus !== 'complete' && targetStatus !== 'stale') return { ...base, currentStepIndex: target };
+      // A completed (or stale) step can't be shown outside edit mode: Continue
+      // would create it again. Go where the user is needed instead.
+      return { ...base, currentStepIndex: target, ...advance(base, state.records, action.endpointIds) };
+    }
     case 'otherFailureCounted':
       return {
         ...state,
@@ -1137,6 +1159,10 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
       await submitEdit(currentEndpoint, editing);
       return;
     }
+    // Outside edit mode only a step without a resource may be submitted: a
+    // complete or stale one would be created a second time.
+    const status = stateRef.current.records[currentEndpoint.id]?.status;
+    if (status === 'complete' || status === 'stale') return;
 
     const { currentStepFields, values } = stateRef.current;
     const clientErrors = validateClientSide(currentStepFields, values);
@@ -1257,8 +1283,8 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
     const { editing, records } = stateRef.current;
     if (!editing || editing.phase !== 'idle') return;
     syncSession(editing.endpointId, records[editing.endpointId]?.values ?? null);
-    dispatch({ type: 'editCancelled' });
-  }, [syncSession]);
+    dispatch({ type: 'editCancelled', endpointIds });
+  }, [syncSession, endpointIds]);
 
   const editingStale =
     state.editing !== null &&
