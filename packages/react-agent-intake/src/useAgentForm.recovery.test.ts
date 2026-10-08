@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EndpointDef, ExecuteFn, FlowDef, OperationResult } from './contracts.js';
 import type { RecoveryEvent } from './recovery.js';
+import { undoResultFromResponse } from './operations.js';
 import { useAgentForm, type UseAgentFormOptions } from './useAgentForm.js';
 
 interface Call {
@@ -443,5 +444,29 @@ describe('stale steps still own their resources (rollback range)', () => {
     expect(result.current.stepRecords.verification.status).toBe('idle');
     expect(result.current.stepRecords.verification.staleReason).toBeUndefined();
     expect(result.current.stepRecords.verification.result?.resourceId).toBeUndefined();
+  });
+});
+
+describe('an undo whose response was lost', () => {
+  it('completes on retry when the API reports the resource as already gone', async () => {
+    stubServer({ classification: 'fundamental', explanation: 'On hold.', rollbackFromEndpointId: 'account' });
+    const { flow } = makeFlow(vi.fn().mockResolvedValue(complianceHold));
+    let deleted = false;
+    // The server deletes the verification, but the client never sees the answer.
+    (flow.endpoints[1].operations!.undo as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      if (!deleted) {
+        deleted = true;
+        throw new TypeError('Failed to fetch');
+      }
+      return undoResultFromResponse(new Response(JSON.stringify({ error: 'No such verification.' }), { status: 404 }));
+    });
+    const { result } = await failAtPayout(flow);
+
+    await act(() => result.current.confirmRollback());
+    expect(result.current.recovery.phase).toBe('rollbackFailed');
+
+    await act(() => result.current.retryRollback());
+
+    expect(result.current.recovery).toMatchObject({ phase: 'rolledBack', report: { undone: ['verification', 'account'] } });
   });
 });

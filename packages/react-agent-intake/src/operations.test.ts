@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { EndpointDef } from './contracts.js';
-import { failureFromResponse, implementedCapabilities, normalizeResult, operationsOf } from './operations.js';
+import { failureFromResponse, implementedCapabilities, normalizeResult, operationsOf, undoResultFromResponse } from './operations.js';
 
 describe('failureFromResponse', () => {
   it('captures the HTTP status and body', async () => {
@@ -60,5 +60,19 @@ describe('operationsOf / implementedCapabilities', () => {
   it('reports exactly the operations the author implemented', () => {
     const endpoint: EndpointDef = { id: 'e', title: 'E', fields: [], operations: { create: fn, update: fn } };
     expect(implementedCapabilities(endpoint)).toEqual({ read: false, update: true, undo: false });
+  });
+});
+
+describe('undoResultFromResponse', () => {
+  it.each([204, 200, 404, 410])('treats %s as success (the resource is gone, which is what undo wants)', async (status) => {
+    expect(await undoResultFromResponse(new Response(null, { status }))).toEqual({ success: true });
+  });
+
+  it.each([403, 500])('treats %s as a failure, with the status and body', async (status) => {
+    expect(await undoResultFromResponse(new Response('not allowed', { status }))).toEqual({
+      success: false,
+      message: `The undo was answered with ${status}.`,
+      failure: { kind: 'http', status, message: 'not allowed' },
+    });
   });
 });

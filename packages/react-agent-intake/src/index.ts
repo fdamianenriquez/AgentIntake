@@ -7,7 +7,7 @@ export {
 } from './useAgentForm.js';
 export { AgentIntakeForm, type AgentIntakeFormProps } from './AgentIntakeForm.js';
 export { FieldControl, type FieldControlProps } from './fieldControls/index.js';
-export { failureFromResponse } from './operations.js';
+export { failureFromResponse, undoResultFromResponse } from './operations.js';
 export type {
   AuthRequirement,
   EndpointCapabilities,

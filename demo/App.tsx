@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AgentIntakeForm, failureFromResponse } from '../packages/react-agent-intake/src/index.js';
+import { AgentIntakeForm, failureFromResponse, undoResultFromResponse } from '../packages/react-agent-intake/src/index.js';
 import {
   GeneratedFlowSchema,
   type FlowDef,
@@ -37,6 +37,15 @@ async function call(request: () => Promise<Response>): Promise<OperationResult> 
   }
 }
 
+// Undo counts "already gone" as done (see undoResultFromResponse).
+async function undo(request: () => Promise<Response>): Promise<OperationResult> {
+  try {
+    return await undoResultFromResponse(await request());
+  } catch (error) {
+    return { success: false, message: String(error), failure: { kind: 'network' } };
+  }
+}
+
 async function read(request: () => Promise<Response>) {
   const response = await request();
   if (response.status === 404) return { found: false as const };
@@ -54,18 +63,18 @@ function operationsFor(api: MockApi): Record<string, ResourceOperations> {
       create: (data) => call(() => api.createAccount(data)),
       read: ({ resourceId }) => read(() => api.getAccount(resourceId)),
       update: (data, { resourceId }) => call(() => api.updateAccount(resourceId, data)),
-      undo: ({ resourceId }) => call(() => api.deleteAccount(resourceId)),
+      undo: ({ resourceId }) => undo(() => api.deleteAccount(resourceId)),
     },
     createVerification: {
       create: (data, { results }) => call(() => api.createVerification(accountIdOf(results), data)),
       read: ({ resourceId, results }) => read(() => api.getVerification(accountIdOf(results), resourceId)),
       update: (data, { resourceId, results }) => call(() => api.updateVerification(accountIdOf(results), resourceId, data)),
-      undo: ({ resourceId, results }) => call(() => api.deleteVerification(accountIdOf(results), resourceId)),
+      undo: ({ resourceId, results }) => undo(() => api.deleteVerification(accountIdOf(results), resourceId)),
     },
     createPayoutMethod: {
       create: (data, { results, idempotencyKey }) =>
         call(() => api.createPayoutMethod(accountIdOf(results), data, idempotencyKey)),
-      undo: ({ resourceId, results }) => call(() => api.deletePayoutMethod(accountIdOf(results), resourceId)),
+      undo: ({ resourceId, results }) => undo(() => api.deletePayoutMethod(accountIdOf(results), resourceId)),
     },
   };
 }

@@ -70,6 +70,10 @@ export interface ResourceOperations {
     context: ExecContext & { resourceId: string }
   ) => Promise<{ found: true; data: Record<string, unknown> } | { found: false }>;
   update?: (data: Record<string, unknown>, context: ExecContext & { resourceId: string }) => Promise<OperationResult>;
+  /**
+   * Should treat "already gone" (e.g. 404/410) as success: a retry after a
+   * lost response would otherwise fail forever. See undoResultFromResponse.
+   */
   undo?: (context: ExecContext & { resourceId: string }) => Promise<OperationResult>;
 }
 

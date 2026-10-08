@@ -17,6 +17,23 @@ export async function failureFromResponse(response: Response): Promise<Operation
   return { kind: 'http', status: response.status, message };
 }
 
+/**
+ * Maps the response of an undo request (typically a DELETE) to an
+ * OperationResult. 2xx, 404 and 410 all mean the resource is gone -- which is
+ * what an undo wants -- so they count as success. Without that, an undo whose
+ * response was lost (the server deleted, the client never heard back) would
+ * fail forever on retry. Any other status is a failure with its details.
+ * AgentIntake doesn't apply this itself: only the author knows their API's semantics.
+ */
+export async function undoResultFromResponse(response: Response): Promise<OperationResult> {
+  if (response.ok || response.status === 404 || response.status === 410) return { success: true };
+  return {
+    success: false,
+    message: `The undo was answered with ${response.status}.`,
+    failure: await failureFromResponse(response),
+  };
+}
+
 /** `execute` (the v1.0 API) is exactly `operations.create`. */
 export function operationsOf(endpoint: EndpointDef): ResourceOperations {
   if (endpoint.operations) return endpoint.operations;
