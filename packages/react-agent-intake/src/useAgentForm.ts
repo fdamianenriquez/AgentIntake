@@ -695,7 +695,7 @@ function reducer(state: FormState, action: FormAction): FormState {
       const report = state.recovery.report ?? { undone: [], skipped: [] };
       return {
         ...state,
-        records: withStatus(state.records, action.endpointId, 'idle', { result }),
+        records: withStatus(state.records, action.endpointId, 'idle', { result, staleReason: undefined }),
         recovery: {
           ...state.recovery,
           pending: (state.recovery.pending ?? []).filter((id) => id !== action.endpointId),
@@ -880,7 +880,12 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
       }
 
       dispatch({ type: 'recoveryClassifying', endpointId: endpoint.id });
-      const completed = flow.endpoints.filter((e) => records[e.id]?.status === 'complete');
+      // Steps that own a real resource: complete ones, and stale ones (an
+      // earlier edit flagged them, but what they created still exists).
+      const completed = flow.endpoints.filter((e) => {
+        const record = records[e.id];
+        return (record?.status === 'complete' || record?.status === 'stale') && record.result !== undefined;
+      });
       let verdict: { classification: FailureClassification; explanation: string; rollbackFromEndpointId: string | null };
       try {
         verdict = await postJson(`${options.apiUrl}/api/step/classify-failure`, {

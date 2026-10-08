@@ -410,3 +410,38 @@ describe('steps a rollback could not undo', () => {
     expect(flow.endpoints[1].operations!.create).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('stale steps still own their resources (rollback range)', () => {
+  it('a stale step can be the anchor, is proposed for undo, is undone, and goes back to idle', async () => {
+    const calls = stubServer({ classification: 'fundamental', explanation: 'On hold.', rollbackFromEndpointId: 'verification' });
+    const payoutCreate = vi.fn().mockResolvedValue(complianceHold);
+    const { flow, order } = makeFlow(payoutCreate);
+    (flow.endpoints[0].operations as { update?: unknown }).update = vi.fn().mockResolvedValue({ success: true });
+    const { result } = renderHook(() => useAgentForm(flow, { apiUrl: 'http://test.local' }));
+    await submit(result, 'name', 'Jordan');
+    await submit(result, 'idNumber', 'ID-1');
+
+    // Edit step 1: step 2 becomes stale and opens for review; leave it for now.
+    await act(() => result.current.goToStep('account'));
+    await submit(result, 'name', 'Jordan R');
+    await waitFor(() => expect(result.current.currentStepIndex).toBe(1));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.stepRecords.verification.status).toBe('stale');
+    act(() => result.current.cancelEdit());
+    await waitFor(() => expect(result.current.currentStepIndex).toBe(2));
+
+    await submit(result, 'bank', 'Hold Bank');
+    await waitFor(() => expect(result.current.recovery.phase).toBe('proposed'));
+
+    const request = calls.find((c) => c.path === '/api/step/classify-failure')!.body;
+    expect(request.completedEndpoints.map((e: EndpointDef) => e.id)).toEqual(['account', 'verification']);
+    expect(result.current.recovery.proposedUndo).toEqual([{ endpointId: 'verification', label: 'Verification' }]);
+
+    await act(() => result.current.confirmRollback());
+
+    expect(order).toEqual(['verification:ver_1']);
+    expect(result.current.stepRecords.verification.status).toBe('idle');
+    expect(result.current.stepRecords.verification.staleReason).toBeUndefined();
+    expect(result.current.stepRecords.verification.result?.resourceId).toBeUndefined();
+  });
+});

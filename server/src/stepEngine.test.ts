@@ -363,6 +363,16 @@ describe('classifyFailure (LLM #4)', () => {
     expect(options).toEqual({ timeoutMs: CLASSIFY_FAILURE_TIMEOUT_MS });
   });
 
+  it('accepts as anchor any step the client sent as still owning a resource, including a stale one', async () => {
+    // The client sends complete and stale steps alike; the server doesn't know
+    // the difference and builds the enum from exactly what it was given.
+    mockedGenerateStructured.mockImplementationOnce(async (_prompt, schema) =>
+      schema.parse({ classification: 'fundamental', explanation: 'x', rollbackFromEndpointId: 'verification' })
+    );
+
+    expect(await classifyFailure(input)).toMatchObject({ rollbackFromEndpointId: 'verification', degraded: false });
+  });
+
   it('CRITICAL: a rollback anchor outside the completed steps is rejected (falls back to retryable, no undo)', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     mockedGenerateStructured.mockImplementationOnce(async (_prompt, schema) =>
