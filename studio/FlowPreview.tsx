@@ -88,8 +88,8 @@ export function FlowPreview({ generation, onReset }: FlowPreviewProps) {
   return (
     <section className="studio-preview">
       <div role="status" className="studio-preview-banner">
-        Preview mode -- each step's "execute" just logs to the browser console instead of hitting a real
-        API.
+        Preview mode -- each step's operations (create, and read/update/undo where the API offers them) are
+        simulated in memory and logged to the browser console instead of hitting a real API.
       </div>
 
       {generation.warnings.length > 0 && (

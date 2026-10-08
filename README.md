@@ -89,6 +89,10 @@ node dist/cli/index.js studio --port 4100 --no-open
 
 Paste raw spec text, upload a file, or paste a URL. Studio validates that the input looks like OpenAPI before doing anything and shows plain-language errors. Click **Generate** to get a live wizard rendered with the real `<AgentIntakeForm />`, then download `flow.json` or copy the embed snippet.
 
+![Studio: pasting the example spec, generating, and the live preview adapting step 2 to a business account](docs/demo-studio.gif)
+
+*Captured from a real run against the example spec; frames are spaced out, not real time.*
+
 The preview runs in **Preview mode**: adaptive fields and semantic validation are real LLM calls, but each step's `execute()` is simulated — it logs what it *would* call to the browser console instead of hitting any API. A notice in the UI says so.
 
 Studio itself resolves a pasted URL or uploaded file to spec *content* in your browser first. Fetching a URL from the browser is subject to that host's CORS policy, so some URLs will fail there; pasting the spec text always works.
@@ -129,6 +133,10 @@ The demo is a "Payment Account Onboarding" wizard built from `server/specs/examp
 npm start                                   # AgentIntake server on :3000
 npx vite --config demo/vite.config.ts       # demo UI on :5173
 ```
+
+![Demo wizard: step 2 shows business fields for a business account and individual fields for an individual one, then the payout step rejects an account holder name that doesn't match](docs/demo-wizard.gif)
+
+*Captured from real runs; frames are spaced out, not real time. Field descriptions are written by the model at runtime.*
 
 The demo's operations call an in-browser mock of that API (`demo/mockApi.ts`), so nothing needs to run besides the two commands above; a log under the form lists every mock call. A "Simulate" switch picks what the mock does:
 
