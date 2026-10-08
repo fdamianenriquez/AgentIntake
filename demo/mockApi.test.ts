@@ -29,7 +29,7 @@ describe('demo mock API', () => {
     expect((await settle(api.getAccount(id))).status).toBe(404);
   });
 
-  it('scenario A: the payout request times out once, then a retry with the same key succeeds once', async () => {
+  it('scenario A: the timed-out attempt did create the payout method; a retry with the same key returns it', async () => {
     const api = createMockApi((c) => calls.push(c));
     const { id: accountId } = await (await settle(api.createAccount({}))).json();
     api.setScenario('payout-timeout');
@@ -38,11 +38,29 @@ describe('demo mock API', () => {
     const rejection = expect(first).rejects.toMatchObject({ name: 'TimeoutError' });
     await vi.runAllTimersAsync();
     await rejection;
+    expect(api.payoutMethodCount()).toBe(1); // created, but the client never saw the response
 
-    const retry = await (await settle(api.createPayoutMethod(accountId, { bankName: 'B' }, 'key-1'))).json();
-    const again = await (await settle(api.createPayoutMethod(accountId, { bankName: 'B' }, 'key-1'))).json();
-    expect(again.id).toBe(retry.id);
-    expect(calls.map((c) => c.status)).toEqual([201, 'timeout', 201, 201]);
+    const retry = await settle(api.createPayoutMethod(accountId, { bankName: 'B' }, 'key-1'));
+    const { id } = await retry.json();
+    expect(api.payoutMethodCount()).toBe(1);
+    expect(calls.slice(1)).toEqual([
+      { method: 'POST', path: `/accounts/${accountId}/payout-methods`, status: 'timeout' },
+      { method: 'POST', path: `/accounts/${accountId}/payout-methods`, status: 201 },
+    ]);
+
+    // The key is what prevents the duplicate: a different key creates a second one.
+    const other = await (await settle(api.createPayoutMethod(accountId, { bankName: 'B' }, 'key-2'))).json();
+    expect(other.id).not.toBe(id);
+    expect(api.payoutMethodCount()).toBe(2);
+  });
+
+  it('only deletes a verification through the account it belongs to', async () => {
+    const api = createMockApi((c) => calls.push(c));
+    const { id: accountId } = await (await settle(api.createAccount({}))).json();
+    const { id } = await (await settle(api.createVerification(accountId, {}))).json();
+
+    expect((await settle(api.deleteVerification('acct_other', id))).status).toBe(404);
+    expect((await settle(api.deleteVerification(accountId, id))).status).toBe(204);
   });
 
   it('scenario B: adding a payout method fails with a 403 compliance hold', async () => {

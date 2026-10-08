@@ -142,7 +142,7 @@ The demo's operations call an in-browser mock of that API (`demo/mockApi.ts`), s
 
 - **Adaptive fields:** every verification field is optional in the spec (OpenAPI can't express "required only if an earlier answer was X"), and the step engine narrows them at runtime: `individual` shows the three individual fields, `business` the five business ones.
 - **Cross-step validation:** the payout step's account holder name is checked against the name collected earlier, which no regex could do.
-- **A — payout request times out once:** the timeout is classified as retryable without an LLM call; Retry succeeds, and the idempotency key keeps the mock from creating the payout method twice.
+- **A — payout request times out once:** the first attempt does create the payout method, but the response never arrives. The timeout is classified as retryable without an LLM call; Retry sends the same idempotency key, so the mock returns the payout method it already created instead of a second one (the log shows the timed-out POST, then a 201 with the same id).
 - **B — account on compliance hold:** adding a payout method fails with a 403; the model classifies it as fundamental and the form proposes undoing the verification and the account. After you confirm, the mock receives the two `DELETE`s in reverse order and the form starts again at the first step.
 - **C — change an earlier answer:** complete the flow, go back to the account, and switch `individual` → `business`. The account is updated with `PATCH`; the model flags the later steps, and verification, whose questions changed, has to be updated with the business fields before the flow is complete again. The payout method, which can't be changed here, can only be kept.
 

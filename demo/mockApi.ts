@@ -90,14 +90,29 @@ export function createMockApi(onCall: (call: MockApiCall) => void) {
         return respond(200, { id });
       }),
     deleteVerification: (accountId: string, id: string) =>
-      handle('DELETE', `/accounts/${accountId}/verifications/${id}`, () =>
-        verifications.delete(id) ? respond(204) : respond(404, { error: 'No such verification.' })
-      ),
+      handle('DELETE', `/accounts/${accountId}/verifications/${id}`, () => {
+        const record = verifications.get(id);
+        if (!record || record.accountId !== accountId) return respond(404, { error: 'No such verification.' });
+        verifications.delete(id);
+        return respond(204);
+      }),
 
     async createPayoutMethod(accountId: string, data: Data, idempotencyKey: string): Promise<Response> {
       const path = `/accounts/${accountId}/payout-methods`;
-      if (timeoutsLeft > 0) {
+      // The idempotency key makes a retry safe: same key, same payout method.
+      const store = () => {
+        const existing = payoutsByIdempotencyKey.get(idempotencyKey);
+        if (existing) return existing;
+        const id = nextId('pm');
+        payoutMethods.set(id, { ...data, accountId });
+        payoutsByIdempotencyKey.set(idempotencyKey, id);
+        return id;
+      };
+
+      if (timeoutsLeft > 0 && accounts.has(accountId)) {
+        // The server does its work, but the client never gets the answer.
         timeoutsLeft--;
+        store();
         await wait(TIMEOUT_MS);
         onCall({ method: 'POST', path, status: 'timeout' });
         throw new DOMException('The request timed out.', 'TimeoutError');
@@ -107,15 +122,12 @@ export function createMockApi(onCall: (call: MockApiCall) => void) {
         if (scenario === 'compliance-hold') {
           return respond(403, { error: 'account on compliance hold: payouts are disabled for this account' });
         }
-        // The idempotency key makes a retry after a timeout safe: same key, same payout method.
-        const existing = payoutsByIdempotencyKey.get(idempotencyKey);
-        if (existing) return respond(201, { id: existing, ...payoutMethods.get(existing) });
-        const id = nextId('pm');
-        payoutMethods.set(id, { ...data, accountId });
-        payoutsByIdempotencyKey.set(idempotencyKey, id);
-        return respond(201, { id, ...data });
+        const id = store();
+        return respond(201, { id, ...payoutMethods.get(id) });
       });
     },
+    /** How many payout methods exist (for checking that retries don't duplicate them). */
+    payoutMethodCount: () => payoutMethods.size,
     deletePayoutMethod: (accountId: string, id: string) =>
       handle('DELETE', `/accounts/${accountId}/payout-methods/${id}`, () =>
         payoutMethods.delete(id) ? respond(204) : respond(404, { error: 'No such payout method.' })
