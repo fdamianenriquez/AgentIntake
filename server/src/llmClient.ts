@@ -16,9 +16,9 @@ import { API_KEY_ENV_VAR, SUPPORTED_PROVIDERS, type LlmProvider } from './provid
 // OpenAI/Google key. This is
 // exactly that kind of choice, called out in the pull request.
 const DEFAULT_MODELS: Record<LlmProvider, string> = {
-  anthropic: 'claude-sonnet-4-6',
-  openai: 'gpt-4o-mini',
-  google: 'gemini-1.5-flash',
+  anthropic: 'claude-haiku-5-5',
+  openai: 'gpt-6-luna',
+  google: 'gemini-3.8-flash',
   // "openrouter/free" is OpenRouter's own router model: it randomly selects
   // among the free models available on OpenRouter for each request, so this
   // stays a zero-cost default without pinning to one specific free model.
