@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import type { ParsedEndpoint } from '../../packages/react-agent-intake/src/contracts.js';
 import type { FlowGenerationResult } from '../../packages/react-agent-intake/src/contracts.js';
 
@@ -278,5 +279,53 @@ describe('parser-owned metadata', () => {
     const { flow } = await generateFlow({ endpoints: rawEndpoints });
 
     expect(Object.keys(flow.endpoints[0]).sort()).toEqual(['auth', 'description', 'fields', 'id', 'title']);
+  });
+});
+
+describe('output schema portability', () => {
+  const twoEndpoints: ParsedEndpoint[] = [
+    rawEndpoints[0],
+    {
+      id: 'createReference',
+      title: 'POST /references',
+      fields: [{ name: 'refereeName', type: 'string', label: 'Referee Name', required: true }],
+      auth: { type: 'none' },
+    },
+  ];
+
+  async function capturedSchema(): Promise<z.ZodType> {
+    let schema: z.ZodType | undefined;
+    mockedGenerateStructured.mockImplementationOnce(async (_prompt, s) => {
+      schema = s;
+      throw new Error('stop');
+    });
+    mockedGenerateStructured.mockRejectedValueOnce(new Error('stop'));
+    await generateFlow({ endpoints: twoEndpoints }).catch(() => {});
+    return schema!;
+  }
+
+  it('sends a JSON schema without oneOf, which some providers (Anthropic) reject outright', async () => {
+    const jsonSchema = JSON.stringify(z.toJSONSchema(await capturedSchema()));
+
+    expect(jsonSchema).not.toContain('"oneOf"');
+  });
+
+  it('CRITICAL: still rejects a field name that belongs to a different endpoint', async () => {
+    const schema = await capturedSchema();
+    const output = (fieldsOfFirst: { name: string }[]) => ({
+      flow: {
+        id: 'job-application',
+        title: 'Job Application',
+        description: 'Apply for a role.',
+        endpoints: [
+          { id: 'createCandidate', title: 'Your Details', fields: fieldsOfFirst },
+          { id: 'createReference', title: 'Reference', fields: [{ name: 'refereeName' }] },
+        ],
+      },
+      ambiguousFields: [],
+    });
+
+    expect(schema.safeParse(output([{ name: 'email' }, { name: 'yearsOfExperience' }])).success).toBe(true);
+    expect(schema.safeParse(output([{ name: 'email' }, { name: 'refereeName' }])).success).toBe(false);
   });
 });

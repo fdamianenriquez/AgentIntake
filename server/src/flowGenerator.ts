@@ -19,14 +19,6 @@ export interface GenerateFlowInput {
   specDescription?: string;
 }
 
-// Mirrors stepEngine.ts's fieldNameEnum: a dynamic enum of one endpoint's own
-// field names, so Zod itself rejects any name outside that specific
-// endpoint's fields -- not just "some field name somewhere in the flow."
-function fieldNameEnum(fields: FieldDef[]) {
-  const names = fields.map((field) => field.name);
-  return z.enum(names as [string, ...string[]]);
-}
-
 // Structural guardrail, not a prompted promise (README: "The 'no invented
 // fields' bound"): the LLM's output schema for each field accepts only
 // "name" and optional "labelOverride"/"descriptionOverride" -- never "type", "required",
@@ -42,34 +34,48 @@ function fieldNameEnum(fields: FieldDef[]) {
 // because the non-negotiable human review step happened to catch it. This
 // makes that failure mode structurally impossible instead of merely
 // detectable after the fact.
-function endpointOutputSchema(endpoint: ParsedEndpoint) {
-  return z.object({
-    id: z.literal(endpoint.id),
-    title: z.string(),
-    description: z.string().optional(),
-    fields: z.array(
-      z.object({
-        name: fieldNameEnum(endpoint.fields),
-        labelOverride: z.string().optional(),
-        descriptionOverride: z.string().optional(),
-      })
-    ),
-  });
-}
-
+// One schema shared by every endpoint entry, then a refinement that checks
+// each entry's field names against THAT endpoint's own fields -- a field
+// name valid on one endpoint is rejected if it shows up under a different
+// endpoint's id. Not a z.discriminatedUnion: that becomes "oneOf" in the JSON
+// schema sent to the provider, which some providers (Anthropic) reject
+// outright. The refinement isn't sent to the model, but generateStructured
+// validates every response against the full Zod schema, so it is enforced
+// all the same.
 function buildLlmOutputSchema(endpoints: ParsedEndpoint[]) {
-  const perEndpointSchemas = endpoints.map((endpoint) => endpointOutputSchema(endpoint));
+  const ids = endpoints.map((endpoint) => endpoint.id);
+  const allFieldNames = [...new Set(endpoints.flatMap((endpoint) => endpoint.fields.map((field) => field.name)))];
+  const ownFieldNames = new Map(endpoints.map((endpoint) => [endpoint.id, new Set(endpoint.fields.map((field) => field.name))]));
 
-  // z.discriminatedUnion picks the right per-endpoint schema variant by its
-  // literal "id", so an entry's "fields" are validated against THAT
-  // endpoint's own field names -- a field name valid on one endpoint is
-  // structurally rejected if it shows up under a different endpoint's id.
-  const endpointsSchema = z.array(
-    z.discriminatedUnion(
-      'id',
-      perEndpointSchemas as [(typeof perEndpointSchemas)[number], ...(typeof perEndpointSchemas)[number][]]
+  const endpointsSchema = z
+    .array(
+      z.object({
+        id: z.enum(ids as [string, ...string[]]),
+        title: z.string(),
+        description: z.string().optional(),
+        fields: z.array(
+          z.object({
+            name: allFieldNames.length > 0 ? z.enum(allFieldNames as [string, ...string[]]) : z.never(),
+            labelOverride: z.string().optional(),
+            descriptionOverride: z.string().optional(),
+          })
+        ),
+      })
     )
-  );
+    .superRefine((entries, ctx) => {
+      entries.forEach((entry, index) => {
+        const own = ownFieldNames.get(entry.id)!;
+        entry.fields.forEach((field, fieldIndex) => {
+          if (!own.has(field.name)) {
+            ctx.addIssue({
+              code: 'custom',
+              path: [index, 'fields', fieldIndex, 'name'],
+              message: `"${field.name}" is not a field of endpoint "${entry.id}".`,
+            });
+          }
+        });
+      });
+    });
 
   return z.object({
     flow: z.object({
