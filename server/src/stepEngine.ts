@@ -16,11 +16,18 @@ export const CLASSIFY_FAILURE_TIMEOUT_MS = 30_000;
 /** Longest user-facing text the invalidation check and failure classifier return. */
 export const MAX_REASON_LENGTH = 240;
 export const MAX_EXPLANATION_LENGTH = 300;
+/**
+ * The length the prompts ask for. Well under the cap, because models
+ * overshoot a stated limit; the cut is only a safety net, and a sentence cut
+ * mid-word is what the user would see.
+ */
+export const REASON_TARGET_LENGTH = 160;
+export const EXPLANATION_TARGET_LENGTH = 200;
 
 // Providers drop maxLength from the JSON schema they enforce, so a model can
 // write past a z.string().max() -- and that alone used to fail validation and
-// throw away an otherwise correct answer. The prompt states the limit; text
-// that still runs over is cut here instead of rejected.
+// throw away an otherwise correct answer. The prompt asks for less than the
+// limit; text that still runs over is cut here instead of rejected.
 function cappedText(max: number) {
   return z.string().transform((text) => (text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`));
 }
@@ -327,7 +334,7 @@ ${JSON.stringify(input.after, null, 2)}
 Later completed steps, with what was submitted for each (JSON):
 ${JSON.stringify(laterSteps, null, 2)}
 
-Task: list in "affected" only the later steps whose submitted data, or whose set of relevant fields, plausibly depends on what changed (for example a name that must match, or fields that only apply to one account type). For each, give its exact "id" as "endpointId" and a short, user-facing "reason" (at most ${MAX_REASON_LENGTH} characters). Return an empty list if the change doesn't affect any later step.`;
+Task: list in "affected" only the later steps whose submitted data, or whose set of relevant fields, plausibly depends on what changed (for example a name that must match, or fields that only apply to one account type). For each, give its exact "id" as "endpointId" and a short, user-facing "reason": one sentence, under ${REASON_TARGET_LENGTH} characters. Return an empty list if the change doesn't affect any later step.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -445,7 +452,7 @@ Classify as exactly one of:
 - "needs-edit": the user can fix it by changing their answers on the failed step (e.g. a duplicate or invalid value).
 - "fundamental": the flow can't succeed as set up (e.g. the account is on hold, or not eligible), so what earlier steps created may need to be undone.
 
-Write a short, user-facing "explanation" (at most ${MAX_EXPLANATION_LENGTH} characters). Only for "fundamental", set "rollbackFromEndpointId" to the EARLIEST completed step whose result should be undone (everything from it to the last completed step would be undone, after the user confirms), or null if nothing should be undone. For any other classification it must be null.`;
+Write a short, user-facing "explanation": one or two sentences, under ${EXPLANATION_TARGET_LENGTH} characters. Only for "fundamental", set "rollbackFromEndpointId" to the EARLIEST completed step whose result should be undone (everything from it to the last completed step would be undone, after the user confirms), or null if nothing should be undone. For any other classification it must be null.`;
 }
 
 function logDegradation(fn: string, endpointId: string, error: unknown): void {
