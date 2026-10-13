@@ -41,11 +41,33 @@ const jsonErrorHandler: ErrorRequestHandler = (error, _req, res, next) => {
 // from a browser. Unset, any origin is allowed (so the local demo works out of
 // the box) and a warning says so once per process.
 function corsOriginsFromEnv(): string[] | null {
-  const origins = (process.env.AGENTINTAKE_CORS_ORIGINS ?? '')
+  const entries = (process.env.AGENTINTAKE_CORS_ORIGINS ?? '')
     .split(',')
-    .map((origin) => origin.trim())
+    .map((entry) => entry.trim())
     .filter(Boolean);
-  return origins.length > 0 ? origins : null;
+  return entries.length > 0 ? entries.map(toOrigin) : null;
+}
+
+// A browser's Origin header is scheme://host[:port] with nothing after it, so
+// an entry is normalized to exactly that ("https://app.example.com/" matches)
+// and anything else -- a path, a query, no scheme -- stops the server at
+// startup rather than silently never matching.
+function toOrigin(entry: string): string {
+  const invalid = () =>
+    new Error(
+      `AGENTINTAKE_CORS_ORIGINS: "${entry}" is not an origin. Use scheme://host[:port] with no path, e.g. https://app.example.com.`
+    );
+  let url: URL;
+  try {
+    url = new URL(entry);
+  } catch {
+    throw invalid();
+  }
+  const bare = url.pathname === '/' && !url.search && !url.hash && !url.username && !url.password;
+  if ((url.protocol !== 'http:' && url.protocol !== 'https:') || !bare || entry.includes('?') || entry.includes('#')) {
+    throw invalid();
+  }
+  return url.origin;
 }
 
 let warnedOpenCors = false;

@@ -73,6 +73,25 @@ describe('CORS', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
+  it('an entry with a trailing slash still matches the browser\'s Origin', async () => {
+    vi.stubEnv('AGENTINTAKE_CORS_ORIGINS', 'https://app.example.com/');
+    const app = (await freshCreateApp())();
+
+    const response = await request(app).post('/api/session/sync').set('Origin', 'https://app.example.com').send({});
+
+    expect(response.headers['access-control-allow-origin']).toBe('https://app.example.com');
+  });
+
+  it.each(['https://app.example.com/app', 'app.example.com', 'ftp://files.example.com', 'https://app.example.com?x=1'])(
+    'refuses to start with an entry that is not an origin (%s), naming it',
+    async (entry) => {
+      vi.stubEnv('AGENTINTAKE_CORS_ORIGINS', `https://ok.example.com, ${entry}`);
+      const create = await freshCreateApp();
+
+      expect(() => create()).toThrow(entry);
+    }
+  );
+
   it('unset: any origin is allowed, as before, and a warning is logged once', async () => {
     vi.stubEnv('AGENTINTAKE_CORS_ORIGINS', '');
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

@@ -372,7 +372,7 @@ Flow generation has no fallback to degrade to, so it is bounded differently: the
 - **The routes have no authentication of their own.** Run the server behind your app's auth (as middleware in front of `createApp()`, or a reverse proxy that only forwards authenticated requests), or on a private network your app reaches.
 - **Every call can spend LLM quota.** Rate-limit the routes, per user or per IP, at the proxy or with middleware. An open public endpoint is a free LLM proxy for anyone who finds it.
 - **Session ids come from the client.** A `sessionId` only groups one wizard's calls; it isn't proof of who the caller is. Don't treat it as an identity.
-- **Restrict CORS to your app's origin.** Set `AGENTINTAKE_CORS_ORIGINS` (comma-separated) and only those origins get CORS headers. Unset, every origin is allowed, which keeps the local demo working out of the box, and the server logs a warning at startup.
+- **Restrict CORS to your app's origin.** Set `AGENTINTAKE_CORS_ORIGINS` (comma-separated, each `scheme://host[:port]`; a trailing slash is ignored, and an entry with a path or query stops the server at startup) and only those origins get CORS headers. Unset, every origin is allowed, which keeps the local demo working out of the box, and the server logs a warning at startup. CORS only limits which web pages a browser lets call the server: curl, scripts and other servers ignore it, so it doesn't replace authentication or rate limiting.
 - **Studio is not part of this server.** Its provider-setup routes, which write an API key to `.env`, are mounted only by the local `studio` command.
 
 ## Known operational boundaries

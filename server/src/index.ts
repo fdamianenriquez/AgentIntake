@@ -11,7 +11,15 @@ try {
 }
 
 const port = Number(process.env.PORT ?? 3000);
-const app = createApp();
+let app: ReturnType<typeof createApp>;
+try {
+  app = createApp();
+} catch (error) {
+  // A configuration error (for example a bad AGENTINTAKE_CORS_ORIGINS entry):
+  // say what is wrong, without a stack trace.
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
 
 app.listen(port, () => {
   console.log(`AgentIntake server listening on http://localhost:${port}`);
