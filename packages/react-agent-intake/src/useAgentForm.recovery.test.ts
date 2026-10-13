@@ -577,3 +577,93 @@ describe('stale steps still own their resources (ctx.results)', () => {
     expect(parentSeenByCreate).toBe('acct_1');
   });
 });
+
+describe('while a failure is being classified', () => {
+  // The classify-failure answer is held until the test releases it.
+  function deferClassification() {
+    const calls = stubServer();
+    const base = globalThis.fetch as unknown as (url: string, init: RequestInit) => Promise<Response>;
+    let release!: (verdict: Exclude<Verdict, 'fail'> | 'fail') => void;
+    const answered = new Promise<Exclude<Verdict, 'fail'> | 'fail'>((resolve) => (release = resolve));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init: RequestInit) => {
+        if (!url.endsWith('/api/step/classify-failure')) return base(url, init);
+        const verdict = await answered;
+        if (verdict === 'fail') return { ok: false, status: 500, json: async () => ({}) } as Response;
+        return { ok: true, status: 200, json: async () => ({ ...verdict, degraded: false }) } as Response;
+      })
+    );
+    return { calls, release };
+  }
+
+  async function failAndStartClassifying(payoutCreate: ExecuteFn, events: RecoveryEvent[] = []) {
+    const { flow } = makeFlow(payoutCreate);
+    const hook = renderHook(() =>
+      useAgentForm(flow, { apiUrl: 'http://test.local', onRecoveryEvent: (event) => events.push(event) })
+    );
+    await submit(hook.result, 'name', 'Jordan');
+    await submit(hook.result, 'idNumber', 'ID-1');
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    act(() => hook.result.current.updateField('bank', 'Hold Bank'));
+    act(() => void hook.result.current.submitStep());
+    await waitFor(() => expect(hook.result.current.recovery.phase).toBe('classifying'));
+    return { flow, ...hook };
+  }
+
+  it('blocks navigation, submits and retries until the verdict arrives', async () => {
+    const { release } = deferClassification();
+    const payoutCreate = vi.fn().mockResolvedValueOnce(complianceHold).mockResolvedValue({ success: true, resourceId: 'pay_1' });
+    const { result } = await failAndStartClassifying(payoutCreate);
+
+    for (const id of ['account', 'verification', 'payout']) expect(result.current.canGoToStep(id)).toBe(false);
+    await act(() => result.current.retryExecution());
+    await act(() => result.current.submitStep());
+    await act(() => result.current.goToStep('account'));
+    expect(payoutCreate).toHaveBeenCalledTimes(1);
+    expect(result.current.currentStepIndex).toBe(2);
+
+    await act(async () => release({ classification: 'retryable', explanation: 'Try again.', rollbackFromEndpointId: null }));
+    await waitFor(() => expect(result.current.recovery.phase).toBe('idle'));
+    expect(result.current.canGoToStep('account')).toBe(true);
+
+    await act(() => result.current.retryExecution());
+    expect(payoutCreate).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(result.current.isComplete).toBe(true));
+  });
+
+  it('drops a verdict that arrives after the user changed the failed step, and unlocks', async () => {
+    const { release } = deferClassification();
+    const events: RecoveryEvent[] = [];
+    const payoutCreate = vi.fn().mockResolvedValueOnce(complianceHold).mockResolvedValue({ success: true, resourceId: 'pay_1' });
+    const { result } = await failAndStartClassifying(payoutCreate, events);
+
+    // Typing reopens the failed step; the pending verdict is about the old answer.
+    act(() => result.current.updateField('bank', 'Other Bank'));
+    expect(result.current.stepRecords.payout.status).toBe('idle');
+    await act(async () => release({ classification: 'fundamental', explanation: 'On hold.', rollbackFromEndpointId: 'account' }));
+
+    await waitFor(() => expect(result.current.recovery.phase).toBe('idle'));
+    expect(result.current.recovery.proposedUndo).toBeUndefined();
+    expect(events.map((e) => e.type)).not.toContain('proposed');
+    expect(events.filter((e) => e.type === 'classified')).toEqual([]);
+    expect(result.current.canGoToStep('account')).toBe(true);
+
+    await act(() => result.current.submitStep());
+    expect(payoutCreate).toHaveBeenCalledTimes(2);
+  });
+
+  it('a classify-failure call that fails leaves the flow unlocked with a retryable explanation', async () => {
+    const { release } = deferClassification();
+    const payoutCreate = vi.fn().mockResolvedValueOnce(complianceHold).mockResolvedValue({ success: true, resourceId: 'pay_1' });
+    const { result } = await failAndStartClassifying(payoutCreate);
+
+    await act(async () => release('fail'));
+
+    await waitFor(() => expect(result.current.recovery.phase).toBe('idle'));
+    expect(result.current.recovery).toMatchObject({ classification: 'retryable', explanation: expect.stringContaining('could not be determined') });
+    expect(result.current.canGoToStep('account')).toBe(true);
+    await act(() => result.current.retryExecution());
+    expect(payoutCreate).toHaveBeenCalledTimes(2);
+  });
+});

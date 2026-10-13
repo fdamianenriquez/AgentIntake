@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FieldDef, FlowDef, ResourceOperations } from './contracts.js';
@@ -255,6 +255,60 @@ describe('AgentIntakeForm', () => {
     const alert = await screen.findByRole('alert');
     await waitFor(() => expect(alert.textContent).toContain('Try again.'));
     expect(alert.textContent!.split('The service took too long to answer.').length - 1).toBe(1);
+  });
+
+  it('keeps the stepper and submit locked, with the status visible, while a failure is classified', async () => {
+    let release!: () => void;
+    const answered = new Promise<void>((resolve) => (release = resolve));
+    const base = stubFetch();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init: RequestInit) => {
+        if (!url.endsWith('/api/step/classify-failure')) return base(url, init);
+        await answered;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ classification: 'needs-edit', explanation: 'Use another bank.', rollbackFromEndpointId: null, degraded: false }),
+        } as Response;
+      })
+    );
+    const flow: FlowDef = {
+      id: 'test-flow',
+      title: 'Test Flow',
+      description: 'A test flow.',
+      endpoints: [
+        { id: 'step1', title: 'Step One', fields: [{ name: 'name', type: 'string', label: 'Name', required: true }], execute: vi.fn().mockResolvedValue({ success: true }) },
+        {
+          id: 'step2',
+          title: 'Step Two',
+          fields: [{ name: 'bank', type: 'string', label: 'Bank', required: true }],
+          execute: vi.fn().mockResolvedValue({ success: false, message: 'Rejected.', failure: { kind: 'http', status: 422 } }),
+        },
+      ],
+    };
+    const user = userEvent.setup();
+    render(<AgentIntakeForm flow={flow} apiUrl="http://test.local" />);
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+    await user.type(screen.getByLabelText(/Name/), 'Jane');
+    await user.click(screen.getByRole('button', { name: /Continue/i }));
+    await waitFor(() => expect(screen.getByLabelText(/Bank/)).toBeInTheDocument());
+    await user.type(screen.getByLabelText(/Bank/), 'B');
+    await user.click(screen.getByRole('button', { name: /Continue/i }));
+
+    await screen.findByText('Checking what went wrong…');
+    expect(screen.queryByRole('button', { name: /Step One/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Continue/i })).toBeDisabled();
+
+    // Typing reopens the step, but the check is still running.
+    await user.type(screen.getByLabelText(/Bank/), 'X');
+    expect(screen.getByText('Checking what went wrong…')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Continue/i })).toBeDisabled();
+
+    await act(async () => release());
+    await waitFor(() => expect(screen.queryByText('Checking what went wrong…')).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /Step One/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Continue/i })).toBeEnabled();
   });
 
   describe('revisiting completed steps', () => {

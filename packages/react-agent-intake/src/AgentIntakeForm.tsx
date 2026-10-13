@@ -25,7 +25,9 @@ export function AgentIntakeForm({ flow, apiUrl, getAuthHeaders, recovery, onReco
   const readOnly = form.editMode === 'readOnly';
   const rec = form.recovery;
   const recoveryHere = currentEndpoint !== undefined && rec.endpointId === currentEndpoint.id;
-  const recoveryBusy = rec.phase === 'proposed' || rec.phase === 'rollingBack' || rec.phase === 'rollbackFailed';
+  const recoveryBusy =
+    rec.phase === 'classifying' || rec.phase === 'proposed' || rec.phase === 'rollingBack' || rec.phase === 'rollbackFailed';
+  const classifyingHere = recoveryHere && rec.phase === 'classifying';
   const staleReason = currentEndpoint ? form.stepRecords[currentEndpoint.id]?.staleReason : undefined;
   const busy =
     form.navigating ||
@@ -165,14 +167,15 @@ export function AgentIntakeForm({ flow, apiUrl, getAuthHeaders, recovery, onReco
                 />
               ))}
 
-              {(form.currentStepStatus === 'executionFailed' || (form.isEditing && form.executionError)) && (
+              {/* Stays up while the failure is classified, even if typing reopened the step. */}
+              {(form.currentStepStatus === 'executionFailed' || (form.isEditing && form.executionError) || classifyingHere) && (
                 <div role="alert" className="agent-intake-execution-error">
                   {/* The operation's own message is often what the explanation
                       starts with (a timeout, for one); say it once. */}
-                  {!(recoveryHere && form.executionError && rec.explanation?.includes(form.executionError.trim())) && (
+                  {form.executionError && !(recoveryHere && rec.explanation?.includes(form.executionError.trim())) && (
                     <p>{form.executionError}</p>
                   )}
-                  {recoveryHere && rec.phase === 'classifying' && (
+                  {classifyingHere && (
                     <p className="agent-intake-recovery-status">Checking what went wrong…</p>
                   )}
                   {recoveryHere && rec.explanation && <p className="agent-intake-recovery-explanation">{rec.explanation}</p>}
@@ -196,7 +199,7 @@ export function AgentIntakeForm({ flow, apiUrl, getAuthHeaders, recovery, onReco
                     </div>
                   )}
                   {recoveryHere && rec.phase === 'rollingBack' && <p className="agent-intake-recovery-status">Undoing…</p>}
-                  {!form.isEditing && !recoveryBusy && rec.phase !== 'classifying' && (
+                  {!form.isEditing && !recoveryBusy && form.currentStepStatus === 'executionFailed' && (
                     <button type="button" onClick={() => void form.retryExecution()}>
                       Retry
                     </button>

@@ -310,12 +310,13 @@ interface RecoveryState extends RecoveryView {
 
 const IDLE_RECOVERY: RecoveryState = { phase: 'idle' };
 
-// While an undo is proposed, running, or stopped on a failure, nothing else may
-// move the flow: a navigation or submit would act on resources the undo is
-// about to remove (or has partly removed).
+// While a failure is being classified, or an undo is proposed, running, or
+// stopped on a failure, nothing else may move the flow: a navigation or submit
+// would act on resources the undo is about to remove (or has partly removed),
+// or let the flow move on before a verdict about it arrives.
 function recoveryLocked(state: FormState): boolean {
   const { phase } = state.recovery;
-  return phase === 'proposed' || phase === 'rollingBack' || phase === 'rollbackFailed';
+  return phase === 'classifying' || phase === 'proposed' || phase === 'rollingBack' || phase === 'rollbackFailed';
 }
 
 type FormAction =
@@ -364,6 +365,7 @@ type FormAction =
   | { type: 'editCancelled'; endpointIds: string[] }
   | { type: 'otherFailureCounted'; endpointId: string }
   | { type: 'recoveryClassifying'; endpointId: string }
+  | { type: 'classificationDropped'; endpointId: string }
   | { type: 'recoveryClassified'; endpointId: string; classification: FailureClassification; explanation?: string }
   | {
       type: 'recoveryProposed';
@@ -650,6 +652,9 @@ function reducer(state: FormState, action: FormAction): FormState {
       };
     case 'recoveryClassifying':
       return { ...state, recovery: { phase: 'classifying', endpointId: action.endpointId } };
+    case 'classificationDropped':
+      if (state.recovery.phase !== 'classifying' || state.recovery.endpointId !== action.endpointId) return state;
+      return { ...state, recovery: IDLE_RECOVERY };
     case 'recoveryClassified':
       return {
         ...state,
@@ -773,6 +778,11 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
   // which state alone (updated on the next render) can't guarantee.
   const rollingBackRef = useRef(false);
   const undoKeysRef = useRef<Record<string, string>>({});
+  // The classification in flight, if its verdict still applies. Kept in a ref
+  // rather than read from stateRef: a fast answer can arrive before React has
+  // rendered the state that started it.
+  const classificationRunRef = useRef(0);
+  const pendingClassificationRef = useRef<{ endpointId: string; run: number } | null>(null);
 
   const currentEndpoint = flow.endpoints[state.currentStepIndex];
   const endpointIds = useMemo(() => flow.endpoints.map((endpoint) => endpoint.id), [flow.endpoints]);
@@ -882,6 +892,8 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
         return;
       }
 
+      const run = ++classificationRunRef.current;
+      pendingClassificationRef.current = { endpointId: endpoint.id, run };
       dispatch({ type: 'recoveryClassifying', endpointId: endpoint.id });
       // Steps that own a real resource: complete ones, and stale ones (an
       // earlier edit flagged them, but what they created still exists).
@@ -907,6 +919,13 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
         };
       }
       if (!isMountedRef.current) return;
+      // The verdict is about the failure as it was. If the user has since
+      // changed the step (typing reopens it), drop it and release the lock.
+      if (pendingClassificationRef.current?.run !== run) {
+        dispatch({ type: 'classificationDropped', endpointId: endpoint.id });
+        return;
+      }
+      pendingClassificationRef.current = null;
       emitRecoveryEvent({ type: 'classified', endpointId: endpoint.id, classification: verdict.classification, byModel: true });
 
       const anchor = verdict.rollbackFromEndpointId;
@@ -1205,6 +1224,10 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
     (fieldName: string, value: unknown) => {
       if (!currentEndpoint) return;
       if (stateRef.current.editing?.mode === 'readOnly') return;
+      // Typing reopens a failed step, so a verdict still on its way no longer applies.
+      if (!stateRef.current.editing && pendingClassificationRef.current?.endpointId === currentEndpoint.id) {
+        pendingClassificationRef.current = null;
+      }
       dispatch({ type: 'fieldUpdated', endpointId: currentEndpoint.id, name: fieldName, value });
     },
     [currentEndpoint]
