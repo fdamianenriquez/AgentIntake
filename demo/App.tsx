@@ -56,8 +56,15 @@ async function read(request: () => Promise<Response>) {
 // The flow author's own operations, written against the (mock) API. flow.json
 // lists what the spec offers per step (capabilities, path parameters); these
 // implement it. Later steps get the account id from ctx.results.
-function operationsFor(api: MockApi): Record<string, ResourceOperations> {
-  const accountIdOf = (results: Record<string, OperationResult>) => results.createAccount?.resourceId ?? '';
+export function operationsFor(api: MockApi): Record<string, ResourceOperations> {
+  // Throws rather than building "/accounts//...": a wrong URL can come back as
+  // a 404, which an undo would count as "already gone". The error is read
+  // before the request helpers run, so the hook reports it as a failure.
+  const accountIdOf = (results: Record<string, OperationResult>) => {
+    const id = results.createAccount?.resourceId;
+    if (!id) throw new Error('No account id in ctx.results; the account step has no result.');
+    return id;
+  };
   return {
     createAccount: {
       create: (data) => call(() => api.createAccount(data)),
@@ -66,15 +73,32 @@ function operationsFor(api: MockApi): Record<string, ResourceOperations> {
       undo: ({ resourceId }) => undo(() => api.deleteAccount(resourceId)),
     },
     createVerification: {
-      create: (data, { results }) => call(() => api.createVerification(accountIdOf(results), data)),
-      read: ({ resourceId, results }) => read(() => api.getVerification(accountIdOf(results), resourceId)),
-      update: (data, { resourceId, results }) => call(() => api.updateVerification(accountIdOf(results), resourceId, data)),
-      undo: ({ resourceId, results }) => undo(() => api.deleteVerification(accountIdOf(results), resourceId)),
+      create: async (data, { results }) => {
+        const accountId = accountIdOf(results);
+        return call(() => api.createVerification(accountId, data));
+      },
+      read: async ({ resourceId, results }) => {
+        const accountId = accountIdOf(results);
+        return read(() => api.getVerification(accountId, resourceId));
+      },
+      update: async (data, { resourceId, results }) => {
+        const accountId = accountIdOf(results);
+        return call(() => api.updateVerification(accountId, resourceId, data));
+      },
+      undo: async ({ resourceId, results }) => {
+        const accountId = accountIdOf(results);
+        return undo(() => api.deleteVerification(accountId, resourceId));
+      },
     },
     createPayoutMethod: {
-      create: (data, { results, idempotencyKey }) =>
-        call(() => api.createPayoutMethod(accountIdOf(results), data, idempotencyKey)),
-      undo: ({ resourceId, results }) => undo(() => api.deletePayoutMethod(accountIdOf(results), resourceId)),
+      create: async (data, { results, idempotencyKey }) => {
+        const accountId = accountIdOf(results);
+        return call(() => api.createPayoutMethod(accountId, data, idempotencyKey));
+      },
+      undo: async ({ resourceId, results }) => {
+        const accountId = accountIdOf(results);
+        return undo(() => api.deletePayoutMethod(accountId, resourceId));
+      },
     },
   };
 }

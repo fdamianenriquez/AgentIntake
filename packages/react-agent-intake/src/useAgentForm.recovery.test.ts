@@ -470,3 +470,110 @@ describe('an undo whose response was lost', () => {
     expect(result.current.recovery).toMatchObject({ phase: 'rolledBack', report: { undone: ['verification', 'account'] } });
   });
 });
+
+describe('stale steps still own their resources (ctx.results)', () => {
+  // profile → account → verification → payout. The verification lives under
+  // the account, so its undo needs the account's id from
+  // ctx.results. Editing the profile makes account and verification stale.
+  function nestedFlow(payoutCreate: ExecuteFn) {
+    const order: string[] = [];
+    const seen: Record<string, (string | undefined)[]> = { verificationUndo: [] };
+    const parentOf = (ctx: { results: Record<string, OperationResult> }) => ctx.results.account?.resourceId;
+    const flow: FlowDef = {
+      id: 'nested',
+      title: 'Nested',
+      description: 'd',
+      endpoints: [
+        {
+          id: 'profile',
+          title: 'Profile',
+          fields: field('nick'),
+          operations: {
+            create: vi.fn().mockResolvedValue({ success: true, resourceId: 'prof_1' }),
+            update: vi.fn().mockResolvedValue({ success: true }),
+          },
+        },
+        {
+          id: 'account',
+          title: 'Account',
+          fields: field('name'),
+          operations: {
+            create: vi.fn().mockResolvedValue({ success: true, resourceId: 'acct_1' }),
+            undo: vi.fn(async ({ resourceId }) => {
+              order.push(`account:${resourceId}`);
+              return { success: true };
+            }),
+          },
+        },
+        {
+          id: 'verification',
+          title: 'Verification',
+          fields: field('idNumber'),
+          operations: {
+            create: vi.fn().mockResolvedValue({ success: true, resourceId: 'ver_1' }),
+            undo: vi.fn(async (ctx) => {
+              seen.verificationUndo.push(parentOf(ctx));
+              order.push(`verification:${parentOf(ctx)}/${ctx.resourceId}`);
+              return { success: true };
+            }),
+          },
+        },
+        { id: 'payout', title: 'Payout', fields: field('bank'), operations: { create: payoutCreate } },
+      ],
+    };
+    return { flow, order, seen };
+  }
+
+  async function makeAccountAndVerificationStale(result: Hook['result']) {
+    await submit(result, 'nick', 'J');
+    await submit(result, 'name', 'Jordan');
+    await submit(result, 'idNumber', 'ID-1');
+    await act(() => result.current.goToStep('profile'));
+    await submit(result, 'nick', 'JR'); // no invalidation server → every later step is flagged
+    await waitFor(() => expect(result.current.stepRecords.verification.status).toBe('stale'));
+    expect(result.current.stepRecords.account.status).toBe('stale');
+  }
+
+  it("a child's undo receives the stale parent's id, and the undo runs in reverse", async () => {
+    stubServer({ classification: 'fundamental', explanation: 'On hold.', rollbackFromEndpointId: 'account' });
+    const { flow, order, seen } = nestedFlow(vi.fn().mockResolvedValue(complianceHold));
+    const { result } = renderHook(() => useAgentForm(flow, { apiUrl: 'http://test.local' }));
+    await makeAccountAndVerificationStale(result);
+
+    // Leave the reviews for later and fail the payout.
+    await waitFor(() => expect(result.current.isEditing).toBe(true));
+    act(() => result.current.cancelEdit());
+    await waitFor(() => expect(result.current.currentStepIndex).toBe(3));
+    await submit(result, 'bank', 'Hold Bank');
+    await waitFor(() => expect(result.current.recovery.phase).toBe('proposed'));
+    expect(result.current.recovery.proposedUndo?.map((u) => u.endpointId)).toEqual(['verification', 'account']);
+
+    await act(() => result.current.confirmRollback());
+
+    expect(seen.verificationUndo).toEqual(['acct_1']);
+    expect(order).toEqual(['verification:acct_1/ver_1', 'account:acct_1']);
+  });
+
+  it("a nested create after a stale parent receives the parent's result", async () => {
+    // Read and update of a nested step can't run while its parent is stale:
+    // navigation never goes past the first step that isn't complete. Create
+    // can -- cancelling the reviews leaves the flow on the next open step.
+    stubServer();
+    let parentSeenByCreate: string | undefined;
+    const payoutCreate = vi.fn(async (_data: Record<string, unknown>, ctx: { results: Record<string, OperationResult> }) => {
+      parentSeenByCreate = ctx.results.account?.resourceId;
+      return { success: true, resourceId: 'pay_1' } as OperationResult;
+    });
+    const { flow } = nestedFlow(payoutCreate);
+    const { result } = renderHook(() => useAgentForm(flow, { apiUrl: 'http://test.local' }));
+    await makeAccountAndVerificationStale(result);
+
+    await waitFor(() => expect(result.current.isEditing).toBe(true));
+    act(() => result.current.cancelEdit());
+    await waitFor(() => expect(result.current.currentStepIndex).toBe(3));
+    await submit(result, 'bank', 'First Bank');
+
+    expect(payoutCreate).toHaveBeenCalledTimes(1);
+    expect(parentSeenByCreate).toBe('acct_1');
+  });
+});

@@ -778,10 +778,13 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
   const endpointIds = useMemo(() => flow.endpoints.map((endpoint) => endpoint.id), [flow.endpoints]);
   const precedingIds = useCallback((index: number) => endpointIds.slice(0, index), [endpointIds]);
 
+  // ctx.results: every step that still owns a resource. A stale step counts --
+  // an earlier edit flagged it, but what it created still exists, and a nested
+  // step's operations need its id. Undone steps are idle with no result.
   const completedResults = useCallback(() => {
     const results: Record<string, OperationResult> = {};
     for (const record of Object.values(stateRef.current.records)) {
-      if (record.status === 'complete' && record.result) results[record.endpointId] = record.result;
+      if ((record.status === 'complete' || record.status === 'stale') && record.result) results[record.endpointId] = record.result;
     }
     return results;
   }, []);

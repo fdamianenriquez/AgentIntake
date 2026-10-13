@@ -73,6 +73,9 @@ export interface ResourceOperations {
   /**
    * Should treat "already gone" (e.g. 404/410) as success: a retry after a
    * lost response would otherwise fail forever. See undoResultFromResponse.
+   * A 404 also comes back when the request URL is wrong (a missing parent id,
+   * for example), so build the request only from ids you actually have, and
+   * throw when one is missing instead of sending the request.
    */
   undo?: (context: ExecContext & { resourceId: string }) => Promise<OperationResult>;
 }
