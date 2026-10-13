@@ -30,7 +30,7 @@ export async function runStudio(options: StudioOptions): Promise<void> {
   // so another website can't reach Studio's routes from the user's browser.
   const app = express();
   app.use(localOnlyGuard());
-  app.use(createApp());
+  app.use(createApp({ warnOpenCors: false }));
   registerStudioProviderRoutes(app);
 
   // Vite's client always opens a socket for live reload. Attaching it to this

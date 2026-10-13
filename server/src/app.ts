@@ -37,12 +37,37 @@ const jsonErrorHandler: ErrorRequestHandler = (error, _req, res, next) => {
   res.status(status).json({ error: message });
 };
 
+// AGENTINTAKE_CORS_ORIGINS: comma-separated origins allowed to call the API
+// from a browser. Unset, any origin is allowed (so the local demo works out of
+// the box) and a warning says so once per process.
+function corsOriginsFromEnv(): string[] | null {
+  const origins = (process.env.AGENTINTAKE_CORS_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  return origins.length > 0 ? origins : null;
+}
+
+let warnedOpenCors = false;
+
+export interface CreateAppOptions {
+  /** Studio turns this off: its own guard already rejects other origins. */
+  warnOpenCors?: boolean;
+}
+
 // Separated from index.ts (not part of  sketch, but the standard
 // Express split) so tests can build and exercise the app -- routes, CORS,
 // JSON parsing -- without binding a real port.
-export function createApp(): Express {
+export function createApp({ warnOpenCors = true }: CreateAppOptions = {}): Express {
   const app = express();
-  app.use(cors());
+  const origins = corsOriginsFromEnv();
+  if (!origins && warnOpenCors && !warnedOpenCors) {
+    warnedOpenCors = true;
+    console.warn(
+      'AgentIntake: CORS is open to every origin. Set AGENTINTAKE_CORS_ORIGINS to your app\'s origin(s) before exposing this server.'
+    );
+  }
+  app.use(cors(origins ? { origin: origins } : {}));
 
   app.post('/api/generate-flow', express.json({ limit: SPEC_BODY_LIMIT }), handleGenerateFlow);
   app.post('/api/step/fields', express.json(), handleStepFields);
