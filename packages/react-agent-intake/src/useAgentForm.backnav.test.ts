@@ -414,6 +414,80 @@ describe('edit-mode baseline when the step has read', () => {
   });
 });
 
+describe('edit-mode baseline: only the step\'s own fields', () => {
+  // What a real API's read returns: the form's data plus its own metadata.
+  const fromApi = { id: 'acct_1', status: 'active', createdAt: '2026-01-01', name: 'Jordan', type: 'individual' };
+
+  async function openAccount(result: Hook) {
+    await completeFirstTwo(result);
+    await act(() => result.current.goToStep('account'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+  }
+
+  it('an untouched form is unchanged even though read returned extra keys; nothing extra is stored or synced', async () => {
+    const { calls } = stubServer();
+    const update = vi.fn().mockResolvedValue({ success: true });
+    const read = vi.fn().mockResolvedValue({ found: true, data: { ...fromApi, name: 'Jordan (server)' } });
+    const { flow } = threeStepFlow({ read, update });
+    const result = render(flow);
+    await openAccount(result);
+    expect(result.current.values).toEqual({ name: 'Jordan (server)', type: 'individual' });
+    calls.length = 0;
+
+    await act(() => result.current.submitStep());
+    await waitFor(() => expect(result.current.isEditing).toBe(false));
+
+    expect(update).not.toHaveBeenCalled();
+    const paths = calls.map((c) => c.path);
+    expect(paths).not.toContain('/api/step/check-invalidation');
+    expect(paths).not.toContain('/api/step/validate');
+    expect(result.current.stepRecords.account.values).toEqual({ name: 'Jordan (server)', type: 'individual' });
+    const sync = calls.find((c) => c.path === '/api/session/sync')!;
+    expect(sync.body.steps).toEqual([{ endpointId: 'account', data: { name: 'Jordan (server)', type: 'individual' } }]);
+  });
+
+  it('a change reports previousValues and the check\'s "before" with the form fields only', async () => {
+    const { calls } = stubServer();
+    const update = vi.fn().mockResolvedValue({ success: true });
+    const { flow } = threeStepFlow({ read: vi.fn().mockResolvedValue({ found: true, data: fromApi }), update });
+    const result = render(flow);
+    await openAccount(result);
+
+    act(() => result.current.updateField('type', 'business'));
+    await act(() => result.current.submitStep());
+    await waitFor(() => expect(update).toHaveBeenCalled());
+
+    expect(update.mock.calls[0][1].previousValues).toEqual({ name: 'Jordan', type: 'individual' });
+    await waitFor(() => expect(calls.some((c) => c.path === '/api/step/check-invalidation')).toBe(true));
+    expect(calls.find((c) => c.path === '/api/step/check-invalidation')!.body.before).toEqual({ name: 'Jordan', type: 'individual' });
+  });
+
+  it('keeps a field of the step that is not shown right now', async () => {
+    // The step defines a nickname the adaptation never shows.
+    stubServer({ fieldsFor: { account: accountFields } });
+    const update = vi.fn().mockResolvedValue({ success: true });
+    const read = vi.fn().mockResolvedValue({ found: true, data: { ...fromApi, nickname: '' } });
+    const { flow } = threeStepFlow({ read, update });
+    flow.endpoints[0].fields = [...accountFields, { name: 'nickname', type: 'string', label: 'Nickname', required: false }];
+    const result = render(flow);
+    await openAccount(result);
+
+    // Untouched: the hidden field is empty, so nothing changed.
+    await act(() => result.current.submitStep());
+    await waitFor(() => expect(result.current.isEditing).toBe(false));
+    expect(update).not.toHaveBeenCalled();
+
+    // Changed: the hidden field travels in previousValues; the metadata doesn't.
+    read.mockResolvedValue({ found: true, data: { ...fromApi, nickname: 'JR' } });
+    await act(() => result.current.goToStep('account'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.updateField('type', 'business'));
+    await act(() => result.current.submitStep());
+    await waitFor(() => expect(update).toHaveBeenCalled());
+    expect(update.mock.calls[0][1].previousValues).toEqual({ name: 'Jordan', type: 'individual', nickname: 'JR' });
+  });
+});
+
 describe('cancelEdit', () => {
   it('returns to the step the user was on, restores what they had typed there, and re-syncs the session', async () => {
     const { calls } = stubServer();

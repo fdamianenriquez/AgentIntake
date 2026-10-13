@@ -236,6 +236,14 @@ function isUnchanged(
   return Object.entries(previous).every(([name, value]) => visible.has(name) || isEmptyValue(value));
 }
 
+function ownFields(endpoint: EndpointDef, data: Record<string, unknown>): Record<string, unknown> {
+  const own: Record<string, unknown> = {};
+  for (const field of endpoint.fields) {
+    if (field.name in data) own[field.name] = data[field.name];
+  }
+  return own;
+}
+
 function sameValues(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
   return [...keys].every((key) => a[key] === b[key] || (isEmptyValue(a[key]) && isEmptyValue(b[key])));
@@ -1315,7 +1323,12 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
             dispatch({ type: 'resourceMissing', endpointId, targetIndex: index, endpointIds, draft });
             return;
           }
-          prefill = found.data; // the server's current state wins over the local record
+          // The server's current state wins over the local record -- but only
+          // the step's own fields: an API's read also returns its metadata (id,
+          // status, timestamps...), which isn't form data and would otherwise
+          // make an untouched form look changed and reach the record and the
+          // session. All of the step's fields, not just the ones shown now.
+          prefill = ownFields(endpoint, found.data);
         } catch (err) {
           if (!isMountedRef.current) return;
           const message = err instanceof Error ? err.message : String(err);

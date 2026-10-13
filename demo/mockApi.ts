@@ -57,8 +57,11 @@ export function createMockApi(onCall: (call: MockApiCall) => void) {
         accounts.set(id, data);
         return respond(201, { id, ...data });
       }),
+    // Reads answer like a real API: the resource's data plus its own id.
     getAccount: (id: string) =>
-      handle('GET', `/accounts/${id}`, () => (accounts.has(id) ? respond(200, accounts.get(id)) : respond(404, { error: 'No such account.' }))),
+      handle('GET', `/accounts/${id}`, () =>
+        accounts.has(id) ? respond(200, { id, ...accounts.get(id) }) : respond(404, { error: 'No such account.' })
+      ),
     updateAccount: (id: string, data: Data) =>
       handle('PATCH', `/accounts/${id}`, () => {
         if (!accounts.has(id)) return respond(404, { error: 'No such account.' });
@@ -80,7 +83,7 @@ export function createMockApi(onCall: (call: MockApiCall) => void) {
         const record = verifications.get(id);
         if (!record || record.accountId !== accountId) return respond(404, { error: 'No such verification.' });
         const { accountId: _owner, ...data } = record;
-        return respond(200, data);
+        return respond(200, { id, ...data });
       }),
     updateVerification: (accountId: string, id: string, data: Data) =>
       handle('PATCH', `/accounts/${accountId}/verifications/${id}`, () => {

@@ -22,9 +22,9 @@ describe('demo mock API', () => {
     const api = createMockApi((c) => calls.push(c));
     const { id } = await (await settle(api.createAccount({ fullName: 'Jordan' }))).json();
 
-    expect(await (await settle(api.getAccount(id))).json()).toEqual({ fullName: 'Jordan' });
+    expect(await (await settle(api.getAccount(id))).json()).toEqual({ id, fullName: 'Jordan' });
     await settle(api.updateAccount(id, { accountType: 'business' }));
-    expect(await (await settle(api.getAccount(id))).json()).toEqual({ fullName: 'Jordan', accountType: 'business' });
+    expect(await (await settle(api.getAccount(id))).json()).toEqual({ id, fullName: 'Jordan', accountType: 'business' });
     expect((await settle(api.deleteAccount(id))).status).toBe(204);
     expect((await settle(api.getAccount(id))).status).toBe(404);
   });
@@ -80,6 +80,6 @@ describe('demo mock API', () => {
     const { id } = await (await settle(api.createVerification(accountId, { dateOfBirth: '1990-01-01' }))).json();
 
     expect((await settle(api.getVerification('acct_other', id))).status).toBe(404);
-    expect(await (await settle(api.getVerification(accountId, id))).json()).toEqual({ dateOfBirth: '1990-01-01' });
+    expect(await (await settle(api.getVerification(accountId, id))).json()).toEqual({ id, dateOfBirth: '1990-01-01' });
   });
 });
