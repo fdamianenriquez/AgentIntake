@@ -335,13 +335,16 @@ A validation failure and an execution failure are deliberately different states.
 
 ### Server routes
 
-The three routes are mounted by `createApp()` in `server/src/app.ts`:
+The routes are mounted by `createApp()` in `server/src/app.ts`. The form calls all of them except `/api/generate-flow`; `endpoint` values are the step definitions from the flow (the server holds no flow of its own).
 
 | Route | Body | Returns |
 |---|---|---|
 | `POST /api/generate-flow` | `{ specContent }` — raw JSON or YAML text | `{ flow, ambiguousFields, warnings }` |
-| `POST /api/step/fields` | `{ sessionId, endpoint }` | `{ fields, suggestedValues, degraded }` |
-| `POST /api/step/validate` | `{ sessionId, endpoint, data }` | `{ valid, errors, degraded }` |
+| `POST /api/step/fields` | `{ sessionId, endpoint, precedingEndpointIds? }` | `{ fields, suggestedValues, degraded }` |
+| `POST /api/step/validate` | `{ sessionId, endpoint, data, precedingEndpointIds? }` | `{ valid, errors, degraded }` |
+| `POST /api/session/sync` | `{ sessionId, steps: [{ endpointId, data \| null }] }` — replaces (or, with `null`, clears) what the session holds for those steps | `{ ok: true }` |
+| `POST /api/step/check-invalidation` | `{ sessionId, editedEndpoint, before, after, laterCompletedEndpoints }` | `{ affected: [{ endpointId, reason }], degraded }` |
+| `POST /api/step/classify-failure` | `{ sessionId, failedEndpoint, failure: { kind, status?, message? }, completedEndpoints }` | `{ classification, explanation, rollbackFromEndpointId, degraded }` |
 
 ## What is sent to the LLM provider
 
@@ -377,10 +380,10 @@ Flow generation has no fallback to degrade to, so it is bounded differently: the
 Stated plainly, because a multi-endpoint, AI-in-the-loop wizard has failure modes a static form doesn't.
 
 - **No authentication on AgentIntake's own routes.** This is a self-hosted library, not a multi-tenant service. Put the routes behind your own auth middleware, gateway, reverse proxy or private network if you expose them beyond localhost. A `sessionId` is a client-generated opaque string, closer to a shopping-cart id than a user id; it gives no confidentiality beyond "don't leak your own."
-- **No built-in rate limiting.** Nothing limits `/api/generate-flow`, `/api/step/fields` or `/api/step/validate`, and each call spends LLM tokens. Fine for local use; **do not expose a public or shared instance of the demo, Studio or server without adding rate limiting first.**
+- **No built-in rate limiting.** Nothing limits the routes, and most calls spend LLM tokens. Fine for local use; **do not expose a public or shared instance of the demo, Studio or server without adding rate limiting first** (see [Deploying the runtime server](#deploying-the-runtime-server)).
 - **Rollback is proposed, never automatic, and not transactional.** Earlier steps are only undone when the model classifies a failure as fundamental, the steps implement `undo`, and the user confirms. There are no transactions or sagas: an undo that fails stops the rollback, and anything without an `undo` needs manual cleanup.
 - **Revisiting depends on your operations.** A completed step can always be revisited, but it can only be changed if you implemented `update` and `create` returned a `resourceId`; otherwise it is read-only. After a change, all later completed steps are marked for review — none of them is re-submitted automatically.
-- **No idempotency handling.** If a connection drops mid-submit and the user retries, the target endpoint may be called twice. If duplicate calls aren't safe, implement idempotency (for example an idempotency-key header) inside your `execute()`.
+- **Idempotency depends on your API.** Each submission gets a `ctx.idempotencyKey` that stays the same across retries of that submission (and changes when the answers change). If your API accepts idempotency keys, pass it along, and a retry after a timeout can't create a duplicate. If it doesn't, a retry after a lost response may call the endpoint twice.
 - **Static enums only.** `enumValues` come from the spec's own `enum` declarations; options fetched from another endpoint aren't supported.
 - **Sized for a handful of related write operations.** Above 15 write operations, generation and Studio warn that quality may degrade. Chunked generation isn't built.
 - **In-memory sessions.** Session state is a process-local map; there's no persistence across restarts. A session expires after 2 hours without activity, and at most 10,000 are kept (least recently used are dropped first), so a long-running server's memory stays bounded.
