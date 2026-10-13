@@ -236,6 +236,11 @@ function isUnchanged(
   return Object.entries(previous).every(([name, value]) => visible.has(name) || isEmptyValue(value));
 }
 
+function sameValues(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  return [...keys].every((key) => a[key] === b[key] || (isEmptyValue(a[key]) && isEmptyValue(b[key])));
+}
+
 async function postJson<T>(url: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(url, {
     method: 'POST',
@@ -267,6 +272,12 @@ interface Editing {
   returnIndex: number;
   mode: EditMode;
   phase: EditPhase;
+  /**
+   * What the form was prefilled with: the server's data when the step has
+   * read, otherwise the local record. "Unchanged", previousValues and the
+   * invalidation check's "before" are all judged against this.
+   */
+  baseline: Record<string, unknown>;
 }
 
 interface FormState {
@@ -361,7 +372,7 @@ type FormAction =
       endpointIds: string[];
     }
   | { type: 'staleAccepted'; followUp?: string; endpointIds: string[] }
-  | { type: 'editUnchanged'; endpointIds: string[] }
+  | { type: 'editUnchanged'; endpointIds: string[]; values?: Record<string, unknown> }
   | { type: 'editCancelled'; endpointIds: string[] }
   | { type: 'otherFailureCounted'; endpointId: string }
   | { type: 'recoveryClassifying'; endpointId: string }
@@ -552,6 +563,7 @@ function reducer(state: FormState, action: FormAction): FormState {
           returnIndex: state.editing?.returnIndex ?? state.pendingReturnIndex ?? state.currentStepIndex,
           mode: action.mode,
           phase: 'idle',
+          baseline: action.prefill,
         },
         prefill: { endpointId: action.endpointId, values: action.prefill },
         drafts: withDraft(state.drafts, action.draft),
@@ -623,10 +635,12 @@ function reducer(state: FormState, action: FormAction): FormState {
       if (!state.editing) return state;
       const id = state.editing.endpointId;
       // Re-confirming a stale step without changes makes it complete again.
-      const records =
+      let records =
         state.records[id]?.status === 'stale'
           ? withStatus(state.records, id, 'complete', { staleReason: undefined })
           : state.records;
+      // The form showed the server's data; the record now matches it.
+      if (action.values && records[id]) records = { ...records, [id]: { ...records[id], values: action.values } };
       return { ...state, records, editing: null, ...advanceKeepingReturn(state, records, action.endpointIds) };
     }
     case 'staleAccepted': {
@@ -1113,10 +1127,14 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
       // A step that can't be changed here is resolved through acknowledgeStale
       // or flagForFollowUp instead.
       if (editing.mode === 'readOnly') return;
-      const previousValues = record?.values ?? {};
+      const previousValues = editing.baseline;
 
       if (isUnchanged(currentStepFields, values, previousValues, record?.fieldNames)) {
-        dispatch({ type: 'editUnchanged', endpointIds });
+        // Read may have shown data newer than the local record: adopt it, with
+        // no update and no invalidation check, since the user changed nothing.
+        const adopt = !sameValues(previousValues, record?.values ?? {});
+        if (adopt) syncSession(endpoint.id, previousValues);
+        dispatch({ type: 'editUnchanged', endpointIds, ...(adopt ? { values: previousValues } : {}) });
         return;
       }
 

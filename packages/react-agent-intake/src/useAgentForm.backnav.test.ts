@@ -134,7 +134,8 @@ describe('goToStep: what read/update allow', () => {
 
     expect(update).toHaveBeenCalledWith(
       { name: 'Jordan (server)', type: 'business' },
-      expect.objectContaining({ resourceId: 'acct_1', previousValues: { name: 'Jordan', type: 'individual' } })
+      // The baseline is what the form showed (the server's data), not the local record.
+      expect.objectContaining({ resourceId: 'acct_1', previousValues: { name: 'Jordan (server)', type: 'individual' } })
     );
     expect(result.current.stepRecords.account).toMatchObject({
       status: 'complete',
@@ -351,6 +352,65 @@ describe('edit-mode submit', () => {
     await act(() => result.current.submitStep());
 
     expect(update.mock.calls[0][1].idempotencyKey).toBe(update.mock.calls[1][1].idempotencyKey);
+  });
+});
+
+describe('edit-mode baseline when the step has read', () => {
+  const server = { name: 'Jordan (server)', type: 'individual' };
+
+  async function openAccount(result: Hook) {
+    await completeFirstTwo(result);
+    await act(() => result.current.goToStep('account'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.values).toEqual(server);
+  }
+
+  it('saving an untouched form makes no update or invalidation call, and adopts the server data', async () => {
+    const { calls } = stubServer();
+    const update = vi.fn().mockResolvedValue({ success: true });
+    const { flow } = threeStepFlow({ read: vi.fn().mockResolvedValue({ found: true, data: server }), update });
+    const result = render(flow);
+    await openAccount(result);
+    calls.length = 0;
+
+    await act(() => result.current.submitStep());
+    await waitFor(() => expect(result.current.isEditing).toBe(false));
+
+    expect(update).not.toHaveBeenCalled();
+    expect(calls.map((c) => c.path)).not.toContain('/api/step/check-invalidation');
+    expect(calls.map((c) => c.path)).not.toContain('/api/step/validate');
+    expect(result.current.stepRecords.account.values).toEqual(server);
+    expect(calls).toContainEqual({ path: '/api/session/sync', body: expect.objectContaining({ steps: [{ endpointId: 'account', data: server }] }) });
+    expect(result.current.stepRecords.details.status).toBe('complete'); // nothing went stale
+  });
+
+  it('a change is compared with, and reported against, the server data', async () => {
+    const { calls } = stubServer();
+    const update = vi.fn().mockResolvedValue({ success: true });
+    const { flow } = threeStepFlow({ read: vi.fn().mockResolvedValue({ found: true, data: server }), update });
+    const result = render(flow);
+    await openAccount(result);
+
+    act(() => result.current.updateField('type', 'business'));
+    await act(() => result.current.submitStep());
+    await waitFor(() => expect(result.current.isEditing).toBe(true)); // reviewing the later steps
+
+    expect(update).toHaveBeenCalledWith({ ...server, type: 'business' }, expect.objectContaining({ previousValues: server }));
+    const check = calls.find((c) => c.path === '/api/step/check-invalidation')!;
+    expect(check.body.before).toEqual(server);
+  });
+
+  it('editing back to the old local values is a change when the server holds something else', async () => {
+    stubServer();
+    const update = vi.fn().mockResolvedValue({ success: true });
+    const { flow } = threeStepFlow({ read: vi.fn().mockResolvedValue({ found: true, data: server }), update });
+    const result = render(flow);
+    await openAccount(result);
+
+    act(() => result.current.updateField('name', 'Jordan')); // what was submitted the first time
+    await act(() => result.current.submitStep());
+
+    expect(update).toHaveBeenCalledWith({ name: 'Jordan', type: 'individual' }, expect.objectContaining({ previousValues: server }));
   });
 });
 
