@@ -796,7 +796,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
   // rather than read from stateRef: a fast answer can arrive before React has
   // rendered the state that started it.
   const classificationRunRef = useRef(0);
-  const pendingClassificationRef = useRef<{ endpointId: string; run: number } | null>(null);
+  const pendingClassificationRef = useRef<{ endpointId: string; run: number; controller: AbortController } | null>(null);
 
   const currentEndpoint = flow.endpoints[state.currentStepIndex];
   const endpointIds = useMemo(() => flow.endpoints.map((endpoint) => endpoint.id), [flow.endpoints]);
@@ -907,7 +907,8 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
       }
 
       const run = ++classificationRunRef.current;
-      pendingClassificationRef.current = { endpointId: endpoint.id, run };
+      const controller = new AbortController();
+      pendingClassificationRef.current = { endpointId: endpoint.id, run, controller };
       dispatch({ type: 'recoveryClassifying', endpointId: endpoint.id });
       // Steps that own a real resource: complete ones, and stale ones (an
       // earlier edit flagged them, but what they created still exists).
@@ -917,13 +918,20 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
       });
       let verdict: { classification: FailureClassification; explanation: string; rollbackFromEndpointId: string | null };
       try {
-        verdict = await postJson(`${options.apiUrl}/api/step/classify-failure`, {
-          sessionId: sessionIdRef.current,
-          failedEndpoint: toWireEndpoint(endpoint),
-          failure: failure ?? { kind: 'other', message: result.message },
-          completedEndpoints: completed.map(toWireEndpoint),
-        });
+        verdict = await postJson(
+          `${options.apiUrl}/api/step/classify-failure`,
+          {
+            sessionId: sessionIdRef.current,
+            failedEndpoint: toWireEndpoint(endpoint),
+            failure: failure ?? { kind: 'other', message: result.message },
+            completedEndpoints: completed.map(toWireEndpoint),
+          },
+          controller.signal
+        );
       } catch (err) {
+        // Aborted because the user changed the step: already dropped and
+        // unlocked by updateField, so no fallback verdict and no events.
+        if (controller.signal.aborted) return;
         // Safe side: no classification means no undo proposal.
         console.warn(`useAgentForm: /api/step/classify-failure failed for "${endpoint.id}".`, err);
         verdict = {
@@ -934,7 +942,8 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
       }
       if (!isMountedRef.current) return;
       // The verdict is about the failure as it was. If the user has since
-      // changed the step (typing reopens it), drop it and release the lock.
+      // changed the step (typing reopens it), drop it and make sure the lock
+      // is released (updateField normally did that already).
       if (pendingClassificationRef.current?.run !== run) {
         dispatch({ type: 'classificationDropped', endpointId: endpoint.id });
         return;
@@ -1242,9 +1251,14 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
     (fieldName: string, value: unknown) => {
       if (!currentEndpoint) return;
       if (stateRef.current.editing?.mode === 'readOnly') return;
-      // Typing reopens a failed step, so a verdict still on its way no longer applies.
-      if (!stateRef.current.editing && pendingClassificationRef.current?.endpointId === currentEndpoint.id) {
+      // Typing reopens a failed step, so a verdict still on its way no longer
+      // applies: cancel the request and unlock now. A verdict that already
+      // arrived is dropped by the run check in recoverFrom.
+      const pending = pendingClassificationRef.current;
+      if (!stateRef.current.editing && pending?.endpointId === currentEndpoint.id) {
         pendingClassificationRef.current = null;
+        pending.controller.abort();
+        dispatch({ type: 'classificationDropped', endpointId: currentEndpoint.id });
       }
       dispatch({ type: 'fieldUpdated', endpointId: currentEndpoint.id, name: fieldName, value });
     },

@@ -585,16 +585,23 @@ describe('while a failure is being classified', () => {
     const base = globalThis.fetch as unknown as (url: string, init: RequestInit) => Promise<Response>;
     let release!: (verdict: Exclude<Verdict, 'fail'> | 'fail') => void;
     const answered = new Promise<Exclude<Verdict, 'fail'> | 'fail'>((resolve) => (release = resolve));
+    const signals: (AbortSignal | undefined)[] = [];
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string, init: RequestInit) => {
         if (!url.endsWith('/api/step/classify-failure')) return base(url, init);
-        const verdict = await answered;
+        const signal = init.signal ?? undefined;
+        signals.push(signal);
+        // Like a real fetch: an abort rejects the pending request.
+        const aborted = new Promise<never>((_, reject) =>
+          signal?.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')))
+        );
+        const verdict = await Promise.race([answered, aborted]);
         if (verdict === 'fail') return { ok: false, status: 500, json: async () => ({}) } as Response;
         return { ok: true, status: 200, json: async () => ({ ...verdict, degraded: false }) } as Response;
       })
     );
-    return { calls, release };
+    return { calls, release, signals };
   }
 
   async function failAndStartClassifying(payoutCreate: ExecuteFn, events: RecoveryEvent[] = []) {
@@ -651,6 +658,28 @@ describe('while a failure is being classified', () => {
 
     await act(() => result.current.submitStep());
     expect(payoutCreate).toHaveBeenCalledTimes(2);
+  });
+
+  it('typing during classification aborts the request and unlocks at once', async () => {
+    const { signals } = deferClassification();
+    const events: RecoveryEvent[] = [];
+    const payoutCreate = vi.fn().mockResolvedValueOnce(complianceHold).mockResolvedValue({ success: true, resourceId: 'pay_1' });
+    const { result } = await failAndStartClassifying(payoutCreate, events);
+    expect(signals).toHaveLength(1);
+
+    act(() => result.current.updateField('bank', 'Other Bank'));
+
+    // No waiting for the verdict, which never arrives.
+    expect(result.current.recovery.phase).toBe('idle');
+    expect(result.current.canGoToStep('account')).toBe(true);
+    expect(signals[0]?.aborted).toBe(true);
+    await act(async () => {}); // let the aborted request settle
+    expect(events.map((e) => e.type)).toEqual([]);
+    expect(result.current.recovery).not.toMatchObject({ classification: 'retryable' });
+
+    await act(() => result.current.submitStep());
+    expect(payoutCreate).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(result.current.isComplete).toBe(true));
   });
 
   it('a classify-failure call that fails leaves the flow unlocked with a retryable explanation', async () => {

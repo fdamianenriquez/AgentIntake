@@ -300,14 +300,47 @@ describe('AgentIntakeForm', () => {
     expect(screen.queryByRole('button', { name: /Step One/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Continue/i })).toBeDisabled();
 
-    // Typing reopens the step, but the check is still running.
-    await user.type(screen.getByLabelText(/Bank/), 'X');
-    expect(screen.getByText('Checking what went wrong…')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Continue/i })).toBeDisabled();
-
     await act(async () => release());
     await waitFor(() => expect(screen.queryByText('Checking what went wrong…')).not.toBeInTheDocument());
+    expect(screen.getByText('Use another bank.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Step One/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Continue/i })).toBeEnabled();
+  });
+
+  it('typing during the check cancels it and unlocks the form at once', async () => {
+    const base = stubFetch();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init: RequestInit) => {
+        if (!url.endsWith('/api/step/classify-failure')) return base(url, init);
+        return new Promise<Response>((_, reject) =>
+          init.signal?.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')))
+        );
+      })
+    );
+    const flow: FlowDef = {
+      id: 'test-flow',
+      title: 'Test Flow',
+      description: 'A test flow.',
+      endpoints: [
+        {
+          id: 'step1',
+          title: 'Step One',
+          fields: [{ name: 'bank', type: 'string', label: 'Bank', required: true }],
+          execute: vi.fn().mockResolvedValue({ success: false, message: 'Rejected.', failure: { kind: 'http', status: 422 } }),
+        },
+      ],
+    };
+    const user = userEvent.setup();
+    render(<AgentIntakeForm flow={flow} apiUrl="http://test.local" />);
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+    await user.type(screen.getByLabelText(/Bank/), 'B');
+    await user.click(screen.getByRole('button', { name: /Continue/i }));
+    await screen.findByText('Checking what went wrong…');
+
+    await user.type(screen.getByLabelText(/Bank/), 'X');
+
+    expect(screen.queryByText('Checking what went wrong…')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Continue/i })).toBeEnabled();
   });
 
