@@ -682,6 +682,21 @@ describe('while a failure is being classified', () => {
     await waitFor(() => expect(result.current.isComplete).toBe(true));
   });
 
+  it('unmounting aborts the pending request, with no events and no warning', async () => {
+    const { signals } = deferClassification();
+    const events: RecoveryEvent[] = [];
+    const { unmount } = await failAndStartClassifying(vi.fn().mockResolvedValue(complianceHold), events);
+    const warn = vi.mocked(console.warn);
+    warn.mockClear();
+
+    unmount();
+    await act(async () => {}); // let the aborted request settle
+
+    expect(signals[0]?.aborted).toBe(true);
+    expect(events).toEqual([]);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
   it('a classify-failure call that fails leaves the flow unlocked with a retryable explanation', async () => {
     const { release } = deferClassification();
     const payoutCreate = vi.fn().mockResolvedValueOnce(complianceHold).mockResolvedValue({ success: true, resourceId: 'pay_1' });

@@ -805,6 +805,15 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
   // rendered the state that started it.
   const classificationRunRef = useRef(0);
   const pendingClassificationRef = useRef<{ endpointId: string; run: number; controller: AbortController } | null>(null);
+  // Nobody is left to act on a verdict: cancel the request. recoverFrom sees
+  // the abort and returns without a fallback verdict, events or a warning.
+  useEffect(
+    () => () => {
+      pendingClassificationRef.current?.controller.abort();
+      pendingClassificationRef.current = null;
+    },
+    []
+  );
 
   const currentEndpoint = flow.endpoints[state.currentStepIndex];
   const endpointIds = useMemo(() => flow.endpoints.map((endpoint) => endpoint.id), [flow.endpoints]);
