@@ -52,12 +52,14 @@ function buildLlmOutputSchema(endpoints: ParsedEndpoint[]) {
       z.object({
         id: z.enum(ids as [string, ...string[]]),
         title: z.string(),
-        description: z.string().optional(),
+        // Nullable, not optional: OpenAI's strict structured output requires
+        // every property to be present.
+        description: z.string().nullable(),
         fields: z.array(
           z.object({
             name: allFieldNames.length > 0 ? z.enum(allFieldNames as [string, ...string[]]) : z.never(),
-            labelOverride: z.string().optional(),
-            descriptionOverride: z.string().optional(),
+            labelOverride: z.string().nullable(),
+            descriptionOverride: z.string().nullable(),
           })
         ),
       })
@@ -142,7 +144,7 @@ Rules:
 2. For each endpoint, "fields" must reference exactly that endpoint's own field names below (in any order you like) -- one entry per field, never a name from a different endpoint, never an invented one, never a missing one.
 3. You may reorder the endpoints array into the most sensible sequence for a user filling out a multi-step wizard.
 4. Write a clear, human-friendly "title" and "description" for the overall flow, and for each endpoint.
-5. For each field, optionally set "labelOverride" and/or "descriptionOverride" to rewrite its label/description into clear, user-facing text -- this is most of the value you add, so do it for every field where the raw text could be clearer. Omit either to keep the field's original label/description. (Field "type", "required", "enumValues", and "validation" aren't part of this output -- they're taken directly from the raw data below, so don't repeat them.)
+5. For each field, optionally set "labelOverride" and/or "descriptionOverride" to rewrite its label/description into clear, user-facing text -- this is most of the value you add, so do it for every field where the raw text could be clearer. Set either to null to keep the field's original label/description. (Field "type", "required", "enumValues", and "validation" aren't part of this output -- they're taken directly from the raw data below, so don't repeat them.)
 6. List any field whose purpose or expected value is genuinely ambiguous from the spec alone in "ambiguousFields", with a short "note" explaining why -- do not change the field itself to address the ambiguity, just flag it for human review.
 
 ${context ? context + '\n\n' : ''}Raw endpoints (JSON):
@@ -184,7 +186,7 @@ function expandLlmOutput(raw: LlmOutput, rawEndpoints: ParsedEndpoint[]): FlowGe
     return {
       id: endpoint.id,
       title: endpoint.title,
-      description: endpoint.description,
+      ...(endpoint.description !== null ? { description: endpoint.description } : {}),
       fields,
       // Rehydrated, never LLM-controlled -- same principle as type/required/etc.
       // (the no-invented-fields rule). The LLM output schema has no slot for

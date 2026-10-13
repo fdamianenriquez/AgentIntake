@@ -10,6 +10,7 @@ vi.mock('./llmClient.js', async (importOriginal) => ({
 
 import { generateStructured, LlmTimeoutError } from './llmClient.js';
 import { generateFlow, GENERATION_TIMEOUT_MS } from './flowGenerator.js';
+import { portabilityProblems } from './__fixtures__/portableSchema.js';
 
 const mockedGenerateStructured = vi.mocked(generateStructured);
 
@@ -24,6 +25,9 @@ const rawEndpoints: ParsedEndpoint[] = [
     auth: { type: 'none' },
   },
 ];
+
+// A field entry as the model sends it: every key present, null = no change.
+const entry = (name: string) => ({ name, labelOverride: null, descriptionOverride: null });
 
 // What a real generateStructured() call returns once the model's response
 // passes the narrow LLM-output schema (name + optional overrides only).
@@ -115,7 +119,8 @@ describe('generateFlow', () => {
             {
               id: 'createCandidate',
               title: 'Your Details',
-              fields: [{ name: 'ssn' }], // not a real field on this endpoint
+              description: null,
+              fields: [{ name: 'ssn', labelOverride: null, descriptionOverride: null }], // not a real field on this endpoint
             },
           ],
         },
@@ -141,9 +146,10 @@ describe('generateFlow', () => {
             {
               id: 'createCandidate',
               title: 'Your Details',
-              fields: [{ name: 'email' }, { name: 'yearsOfExperience' }],
+              description: null,
+              fields: [entry('email'), entry('yearsOfExperience')],
             },
-            { id: 'extraStep', title: 'Extra Step', fields: [] }, // not an id in the input
+            { id: 'extraStep', title: 'Extra Step', description: null, fields: [] }, // not an id in the input
           ],
         },
         ambiguousFields: [],
@@ -172,6 +178,7 @@ describe('generateFlow', () => {
             {
               id: 'createCandidate',
               title: 'Your Details',
+              description: null,
               fields: [
                 {
                   name: 'email',
@@ -179,8 +186,9 @@ describe('generateFlow', () => {
                   required: false, // attempted corruption -- not part of the schema
                   validation: { pattern: 'anything-goes' }, // attempted corruption
                   labelOverride: 'Email address',
+                  descriptionOverride: null,
                 },
-                { name: 'yearsOfExperience', labelOverride: 'Years of experience' },
+                { name: 'yearsOfExperience', labelOverride: 'Years of experience', descriptionOverride: null },
               ],
             },
           ],
@@ -304,28 +312,26 @@ describe('output schema portability', () => {
     return schema!;
   }
 
-  it('sends a JSON schema without oneOf, which some providers (Anthropic) reject outright', async () => {
-    const jsonSchema = JSON.stringify(z.toJSONSchema(await capturedSchema()));
-
-    expect(jsonSchema).not.toContain('"oneOf"');
+  it('sends a JSON schema every supported provider accepts (no oneOf, no optional properties)', async () => {
+    expect(portabilityProblems(await capturedSchema())).toEqual([]);
   });
 
   it('CRITICAL: still rejects a field name that belongs to a different endpoint', async () => {
     const schema = await capturedSchema();
-    const output = (fieldsOfFirst: { name: string }[]) => ({
+    const output = (fieldsOfFirst: string[]) => ({
       flow: {
         id: 'job-application',
         title: 'Job Application',
         description: 'Apply for a role.',
         endpoints: [
-          { id: 'createCandidate', title: 'Your Details', fields: fieldsOfFirst },
-          { id: 'createReference', title: 'Reference', fields: [{ name: 'refereeName' }] },
+          { id: 'createCandidate', title: 'Your Details', description: null, fields: fieldsOfFirst.map(entry) },
+          { id: 'createReference', title: 'Reference', description: null, fields: [entry('refereeName')] },
         ],
       },
       ambiguousFields: [],
     });
 
-    expect(schema.safeParse(output([{ name: 'email' }, { name: 'yearsOfExperience' }])).success).toBe(true);
-    expect(schema.safeParse(output([{ name: 'email' }, { name: 'refereeName' }])).success).toBe(false);
+    expect(schema.safeParse(output(['email', 'yearsOfExperience'])).success).toBe(true);
+    expect(schema.safeParse(output(['email', 'refereeName'])).success).toBe(false);
   });
 });

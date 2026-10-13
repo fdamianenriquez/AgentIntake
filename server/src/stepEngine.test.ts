@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import type { FieldDef } from '../../packages/react-agent-intake/src/contracts.js';
 
 vi.mock('./llmClient.js', async (importOriginal) => ({
@@ -18,6 +19,7 @@ import {
   STEP_TIMEOUT_MS,
   validateStepSubmission,
 } from './stepEngine.js';
+import { portabilityProblems } from './__fixtures__/portableSchema.js';
 
 const mockedGenerateStructured = vi.mocked(generateStructured);
 
@@ -81,7 +83,7 @@ describe('selectStepFields', () => {
         { name: 'employmentStatus' },
         { name: 'email', descriptionOverride: 'We already have a hint this is your work email.' },
       ],
-      suggestedValues: { employmentStatus: 'employed' },
+      suggestedValues: [{ name: 'employmentStatus', value: 'employed' }],
     });
 
     const result = await selectStepFields({ endpoint });
@@ -101,7 +103,7 @@ describe('selectStepFields', () => {
     mockedGenerateStructured.mockImplementationOnce(async (_prompt, schema) => {
       return schema.parse({
         fields: [{ name: 'ssn' }], // not a real field on this endpoint
-        suggestedValues: {},
+        suggestedValues: [],
       });
     });
 
@@ -121,7 +123,7 @@ describe('selectStepFields', () => {
   });
 
   it('falls back to the full base list when the LLM returns a structurally valid but empty field list', async () => {
-    mockedGenerateStructured.mockResolvedValueOnce({ fields: [], suggestedValues: {} });
+    mockedGenerateStructured.mockResolvedValueOnce({ fields: [], suggestedValues: [] });
 
     const result = await selectStepFields({ endpoint });
 
@@ -229,7 +231,7 @@ describe('validateStepSubmission', () => {
 describe('step engine timeouts', () => {
   it('asks llmClient to abort both per-step calls after STEP_TIMEOUT_MS', async () => {
     mockedGenerateStructured
-      .mockResolvedValueOnce({ fields: [{ name: 'email' }], suggestedValues: {} })
+      .mockResolvedValueOnce({ fields: [{ name: 'email' }], suggestedValues: [] })
       .mockResolvedValueOnce({ valid: true, errors: [] });
 
     await selectStepFields({ endpoint });
@@ -470,7 +472,7 @@ describe('selectStepFields output hygiene', () => {
   it('renders a field once even if the model lists it several times', async () => {
     mockedGenerateStructured.mockResolvedValueOnce({
       fields: [{ name: 'email' }, { name: 'email', descriptionOverride: 'again' }, { name: 'yearsOfExperience' }, { name: 'email' }],
-      suggestedValues: {},
+      suggestedValues: [],
     });
 
     const result = await selectStepFields({ endpoint });
@@ -481,11 +483,45 @@ describe('selectStepFields output hygiene', () => {
   it('CRITICAL: drops suggested values for fields that are not shown, so nothing hidden is submitted', async () => {
     mockedGenerateStructured.mockResolvedValueOnce({
       fields: [{ name: 'email' }],
-      suggestedValues: { email: 'a@b.com', yearsOfExperience: 12, invented: 'x' },
+      suggestedValues: [
+        { name: 'email', value: 'a@b.com' },
+        { name: 'yearsOfExperience', value: 12 },
+        { name: 'invented', value: 'x' },
+      ],
     });
 
     const result = await selectStepFields({ endpoint });
 
     expect(result.suggestedValues).toEqual({ email: 'a@b.com' });
+  });
+});
+
+describe('output schema portability', () => {
+  // Captures the schema each call sends, then lets the call degrade.
+  async function schemaOf(call: () => Promise<unknown>): Promise<z.ZodType> {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let schema: z.ZodType | undefined;
+    mockedGenerateStructured.mockImplementationOnce(async (_prompt, s) => {
+      schema = s;
+      throw new Error('stop');
+    });
+    await call();
+    return schema!;
+  }
+  const later = { id: 'payout', title: 'Payout', fields: [{ name: 'holder', type: 'string' as const, label: 'Holder', required: true }] };
+
+  it.each([
+    ['selectStepFields', () => selectStepFields({ endpoint })],
+    ['validateStepSubmission', () => validateStepSubmission({ endpoint, data: { email: 'a@example.com' } })],
+    [
+      'checkInvalidation',
+      () => checkInvalidation({ editedEndpoint: endpoint, before: {}, after: { email: 'b@example.com' }, laterCompletedEndpoints: [later] }),
+    ],
+    [
+      'classifyFailure',
+      () => classifyFailure({ failedEndpoint: later, failure: { kind: 'http', status: 403 }, completedEndpoints: [endpoint] }),
+    ],
+  ])('%s sends a JSON schema every supported provider accepts', async (_name, call) => {
+    expect(portabilityProblems(await schemaOf(call))).toEqual([]);
   });
 });

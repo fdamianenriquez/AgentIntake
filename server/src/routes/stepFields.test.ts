@@ -37,7 +37,7 @@ describe('POST /api/step/fields', () => {
   it('returns the LLM-adapted fields and creates a session under the given id', async () => {
     mockedGenerateStructured.mockResolvedValueOnce({
       fields: [{ name: 'email' }],
-      suggestedValues: {},
+      suggestedValues: [],
     });
 
     const sessionId = 'route-test-session-1';
@@ -54,7 +54,7 @@ describe('POST /api/step/fields', () => {
   it('passes the session\'s previously collected data into the prompt', async () => {
     mockedGenerateStructured.mockResolvedValueOnce({
       fields: [{ name: 'email' }],
-      suggestedValues: {},
+      suggestedValues: [],
     });
 
     const sessionId = 'route-test-session-2';
@@ -99,7 +99,7 @@ describe('scoped context', () => {
     getOrCreateSession(sessionId);
     recordValidatedStep(sessionId, 'stepA', { a: 1 });
     recordValidatedStep(sessionId, 'stepC', { c: 3 }); // a later step, visited before going back
-    mockedGenerateStructured.mockResolvedValueOnce({ fields: [{ name: 'email' }], suggestedValues: {} });
+    mockedGenerateStructured.mockResolvedValueOnce({ fields: [{ name: 'email' }], suggestedValues: [] });
 
     await request(createApp())
       .post('/api/step/fields')
@@ -112,7 +112,7 @@ describe('scoped context', () => {
     const sessionId = 'unscoped-fields-session';
     getOrCreateSession(sessionId);
     recordValidatedStep(sessionId, 'stepA', { a: 1 });
-    mockedGenerateStructured.mockResolvedValueOnce({ fields: [{ name: 'email' }], suggestedValues: {} });
+    mockedGenerateStructured.mockResolvedValueOnce({ fields: [{ name: 'email' }], suggestedValues: [] });
 
     await request(createApp()).post('/api/step/fields').send({ sessionId, endpoint });
 

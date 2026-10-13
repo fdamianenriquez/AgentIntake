@@ -75,10 +75,17 @@ export async function selectStepFields(input: SelectStepFieldsInput): Promise<Se
       fields: z.array(
         z.object({
           name: fieldNameEnum(baseFields),
-          descriptionOverride: z.string().optional(),
+          descriptionOverride: z.string().nullable(),
         })
       ),
-      suggestedValues: z.record(z.string(), z.unknown()).default({}),
+      // A list of name/value pairs rather than a map keyed by field name: an
+      // open-ended map is rejected by OpenAI's strict structured output.
+      suggestedValues: z.array(
+        z.object({
+          name: fieldNameEnum(baseFields),
+          value: z.union([z.string(), z.number(), z.boolean()]),
+        })
+      ),
     });
 
     const prompt = buildSelectFieldsPrompt(input.endpoint, baseFields, input.previouslyCollectedData ?? {});
@@ -102,7 +109,7 @@ export async function selectStepFields(input: SelectStepFieldsInput): Promise<Se
     // Suggestions only for fields actually shown: a value for a hidden or
     // unknown field would otherwise be submitted without the user seeing it.
     const suggestedValues = Object.fromEntries(
-      Object.entries(result.suggestedValues).filter(([name]) => seen.has(name))
+      result.suggestedValues.filter((entry) => seen.has(entry.name)).map((entry) => [entry.name, entry.value])
     );
 
     return { fields: adaptedFields, suggestedValues, degraded: false };
@@ -130,8 +137,8 @@ ${JSON.stringify(previouslyCollectedData, null, 2)}
 Task:
 1. Decide which of the base fields are relevant to show right now, given what's already been collected. You may omit a field that's clearly irrelevant given an earlier answer (e.g. a field only relevant to one branch of a status field). Include at least one field.
 2. Order "fields" in the most sensible order for the user to fill them out.
-3. Optionally set "descriptionOverride" on a field to add helpful context based on earlier answers (e.g. referencing what was already collected). Omit it to keep the field's original description.
-4. Optionally suggest confident pre-fill values in "suggestedValues", keyed by field name, only for fields you included in "fields" and only when already-collected data makes the value obvious.`;
+3. Optionally set "descriptionOverride" on a field to add helpful context based on earlier answers (e.g. referencing what was already collected). Set it to null to keep the field's original description.
+4. Optionally suggest confident pre-fill values in "suggestedValues", as one { "name", "value" } entry per field, only for fields you included in "fields" and only when already-collected data makes the value obvious. Leave the list empty otherwise.`;
 }
 
 // ---------------------------------------------------------------------------
