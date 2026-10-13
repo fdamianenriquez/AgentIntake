@@ -109,7 +109,7 @@ One `.env` at the project root is the source of truth. It is read from the direc
 | `AGENTINTAKE_STATIC_MODE` | Any value other than empty, `false` or `0` turns adaptivity off (see below) |
 | `PORT` | Port for the runtime server (`npm start`), default `3000` |
 
-Defaults: `anthropic` → `claude-sonnet-4-6`, `openai` → `gpt-4o-mini`, `google` → `gemini-1.5-flash`, `openrouter` → `openrouter/free`. `openrouter` is an extra fourth option (OpenAI-compatible API, reached through the same SDK); `openrouter/free` is OpenRouter's own router across whichever free models are currently available, so it costs nothing to try but can hand consecutive requests to different underlying models.
+Defaults: `anthropic` → `claude-haiku-5-5`, `openai` → `gpt-6-luna`, `google` → `gemini-3.8-flash`, `openrouter` → `openrouter/free`. Each is a fast, low-cost tier that did well in the comparison below; set `LLM_MODEL` to use a larger model. `openrouter` is an extra fourth option (OpenAI-compatible API, reached through the same SDK); `openrouter/free` is OpenRouter's own router across whichever free models are currently available, so it costs nothing to try but can hand consecutive requests to different underlying models.
 
 How each way of running it finds its provider:
 
@@ -117,7 +117,16 @@ How each way of running it finds its provider:
 - **Studio** — if no valid provider and key are configured, it shows a one-time setup screen in the browser: pick a provider, paste the key. It is written to `.env` in the directory you launched Studio from, so no text-file editing is needed and you aren't asked again next session.
 - **Runtime wizard server** (`npm start`) — reads `.env` like the CLI. This is a deployment-time concern of whoever hosts the wizard; the person filling out the form never sees or configures it.
 
-**Honest caveats.** Structured-output reliability varies by provider and by model tier. Anthropic is the default, and every provider goes through the same Vercel AI SDK `generateObject` interface, but no provider has been independently benchmarked here: the end-to-end verification during development was run through OpenRouter's free router. Adaptive selection and semantic validation need genuine reasoning, so a small or cheap model tier may do noticeably worse — and free-tier latency can push a call past its 15-second timeout, in which case the wizard degrades gracefully (below) rather than blocking. Use a capable model for anything beyond experimenting. Live calls against real providers are deliberately not part of the automated tests (they'd need funded keys for every provider on each CI run); provider wiring and the fail-fast errors are.
+**Honest caveats.** Structured-output reliability varies by provider and by model. Every provider goes through the same Vercel AI SDK `generateObject` interface, and every LLM output schema is kept to the subset all of them accept (no `oneOf`, no optional properties, no open-ended maps — a test checks this), but the models themselves differ. A comparison on the five LLM calls, using cases with a known correct answer and run through OpenRouter, gave:
+
+| Model | Correct | Typical latency |
+|---|---|---|
+| `anthropic/claude-haiku-5.5` | 54/54 | 2–4 s per step call, ~10 s generation |
+| `openai/gpt-6-luna` | 21/21 | 2–5 s per step call, ~12 s generation |
+| `google/gemini-3.8-flash` | 13/14 (one 15 s timeout) | 3–12 s per step call, ~10 s generation |
+| `openrouter/free` | 14/33 (mostly timeouts) | 4–30 s per step call, ~65 s generation |
+
+A small sample, not a benchmark suite, but the gap is clear: the free router is fine for trying the tool out, and most of the time the wizard runs on its fallback path with it. A call that runs past its timeout degrades gracefully (below) rather than blocking. Live calls against real providers are deliberately not part of the automated tests (they'd need funded keys for every provider on each CI run); provider wiring, schema compatibility and the fail-fast errors are.
 
 ### Running the demo
 
