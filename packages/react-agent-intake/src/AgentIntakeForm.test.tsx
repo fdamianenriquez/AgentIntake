@@ -231,6 +231,32 @@ describe('AgentIntakeForm', () => {
     expect(execute).toHaveBeenCalledTimes(2);
   });
 
+  it("doesn't repeat the failure message when the explanation already says it", async () => {
+    const execute = vi.fn().mockResolvedValueOnce({
+      success: false,
+      message: 'The service took too long to answer.',
+      failure: { kind: 'timeout' },
+    });
+    const flow: FlowDef = {
+      id: 'test-flow',
+      title: 'Test Flow',
+      description: 'A test flow.',
+      endpoints: [
+        { id: 'step1', title: 'Step One', fields: [{ name: 'name', type: 'string', label: 'Name', required: true }], execute },
+      ],
+    };
+    const user = userEvent.setup();
+    render(<AgentIntakeForm flow={flow} apiUrl="http://test.local" />);
+
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+    await user.type(screen.getByLabelText(/Name/), 'Jane');
+    await user.click(screen.getByRole('button', { name: /Continue/i }));
+
+    const alert = await screen.findByRole('alert');
+    await waitFor(() => expect(alert.textContent).toContain('Try again.'));
+    expect(alert.textContent!.split('The service took too long to answer.').length - 1).toBe(1);
+  });
+
   describe('revisiting completed steps', () => {
     function twoStepFlow(update?: ResourceOperations['update']): FlowDef {
       return {

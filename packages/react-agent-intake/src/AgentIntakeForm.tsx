@@ -167,7 +167,11 @@ export function AgentIntakeForm({ flow, apiUrl, getAuthHeaders, recovery, onReco
 
               {(form.currentStepStatus === 'executionFailed' || (form.isEditing && form.executionError)) && (
                 <div role="alert" className="agent-intake-execution-error">
-                  <p>{form.executionError}</p>
+                  {/* The operation's own message is often what the explanation
+                      starts with (a timeout, for one); say it once. */}
+                  {!(recoveryHere && form.executionError && rec.explanation?.includes(form.executionError.trim())) && (
+                    <p>{form.executionError}</p>
+                  )}
                   {recoveryHere && rec.phase === 'classifying' && (
                     <p className="agent-intake-recovery-status">Checking what went wrong…</p>
                   )}
