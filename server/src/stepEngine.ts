@@ -13,6 +13,18 @@ export const INVALIDATION_TIMEOUT_MS = 30_000;
 // answers; with 15s the free-tier model never answered in live runs.
 export const CLASSIFY_FAILURE_TIMEOUT_MS = 30_000;
 
+/** Longest user-facing text the invalidation check and failure classifier return. */
+export const MAX_REASON_LENGTH = 240;
+export const MAX_EXPLANATION_LENGTH = 300;
+
+// Providers drop maxLength from the JSON schema they enforce, so a model can
+// write past a z.string().max() -- and that alone used to fail validation and
+// throw away an otherwise correct answer. The prompt states the limit; text
+// that still runs over is cut here instead of rejected.
+function cappedText(max: number) {
+  return z.string().transform((text) => (text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`));
+}
+
 function isStaticMode(): boolean {
   const raw = process.env.AGENTINTAKE_STATIC_MODE;
   return raw !== undefined && raw !== '' && raw !== 'false' && raw !== '0';
@@ -265,7 +277,7 @@ export async function checkInvalidation(input: CheckInvalidationInput): Promise<
       affected: z.array(
         z.object({
           endpointId: z.enum(later.map((endpoint) => endpoint.id) as [string, ...string[]]),
-          reason: z.string().max(240),
+          reason: cappedText(MAX_REASON_LENGTH),
         })
       ),
     });
@@ -308,7 +320,7 @@ ${JSON.stringify(input.after, null, 2)}
 Later completed steps, with what was submitted for each (JSON):
 ${JSON.stringify(laterSteps, null, 2)}
 
-Task: list in "affected" only the later steps whose submitted data, or whose set of relevant fields, plausibly depends on what changed (for example a name that must match, or fields that only apply to one account type). For each, give its exact "id" as "endpointId" and a short, user-facing "reason". Return an empty list if the change doesn't affect any later step.`;
+Task: list in "affected" only the later steps whose submitted data, or whose set of relevant fields, plausibly depends on what changed (for example a name that must match, or fields that only apply to one account type). For each, give its exact "id" as "endpointId" and a short, user-facing "reason" (at most ${MAX_REASON_LENGTH} characters). Return an empty list if the change doesn't affect any later step.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -382,7 +394,7 @@ export async function classifyFailure(input: ClassifyFailureInput): Promise<Clas
     const outputSchema = z
       .object({
         classification: z.enum(['retryable', 'needs-edit', 'fundamental']),
-        explanation: z.string().max(300),
+        explanation: cappedText(MAX_EXPLANATION_LENGTH),
         rollbackFromEndpointId: rollbackFrom,
       })
       .refine((value) => value.classification === 'fundamental' || value.rollbackFromEndpointId === null, {
@@ -426,7 +438,7 @@ Classify as exactly one of:
 - "needs-edit": the user can fix it by changing their answers on the failed step (e.g. a duplicate or invalid value).
 - "fundamental": the flow can't succeed as set up (e.g. the account is on hold, or not eligible), so what earlier steps created may need to be undone.
 
-Write a short, user-facing "explanation". Only for "fundamental", set "rollbackFromEndpointId" to the EARLIEST completed step whose result should be undone (everything from it to the last completed step would be undone, after the user confirms), or null if nothing should be undone. For any other classification it must be null.`;
+Write a short, user-facing "explanation" (at most ${MAX_EXPLANATION_LENGTH} characters). Only for "fundamental", set "rollbackFromEndpointId" to the EARLIEST completed step whose result should be undone (everything from it to the last completed step would be undone, after the user confirms), or null if nothing should be undone. For any other classification it must be null.`;
 }
 
 function logDegradation(fn: string, endpointId: string, error: unknown): void {

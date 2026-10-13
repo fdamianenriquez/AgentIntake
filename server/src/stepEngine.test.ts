@@ -10,6 +10,8 @@ import { generateStructured, LlmTimeoutError } from './llmClient.js';
 import {
   checkInvalidation,
   CLASSIFY_FAILURE_TIMEOUT_MS,
+  MAX_EXPLANATION_LENGTH,
+  MAX_REASON_LENGTH,
   classifyFailure,
   INVALIDATION_TIMEOUT_MS,
   selectStepFields,
@@ -289,6 +291,22 @@ describe('checkInvalidation (LLM #5)', () => {
     expect(options).toEqual({ timeoutMs: INVALIDATION_TIMEOUT_MS });
   });
 
+  it('cuts an over-long reason instead of discarding a correct answer, and states the limit in the prompt', async () => {
+    // Providers drop maxLength from the schema they enforce, so a verbose
+    // model can write past it; that alone must not degrade the check.
+    mockedGenerateStructured.mockImplementationOnce(async (_prompt, schema) =>
+      schema.parse({ affected: [{ endpointId: 'verification', reason: 'x'.repeat(400) }] })
+    );
+
+    const result = await checkInvalidation(input);
+
+    expect(result.degraded).toBe(false);
+    expect(result.affected[0].endpointId).toBe('verification');
+    expect(result.affected[0].reason.length).toBeLessThanOrEqual(MAX_REASON_LENGTH);
+    expect(result.affected[0].reason.endsWith('…')).toBe(true);
+    expect(mockedGenerateStructured.mock.calls[0][0]).toContain(`at most ${MAX_REASON_LENGTH} characters`);
+  });
+
   it('CRITICAL: a response naming a step outside the later completed ones is rejected, and every later step is flagged', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     mockedGenerateStructured.mockImplementationOnce(async (_prompt, schema) =>
@@ -361,6 +379,19 @@ describe('classifyFailure (LLM #4)', () => {
     expect(prompt).toContain('HTTP status 403');
     expect(prompt).toContain('account on compliance hold');
     expect(options).toEqual({ timeoutMs: CLASSIFY_FAILURE_TIMEOUT_MS });
+  });
+
+  it('cuts an over-long explanation instead of discarding a correct classification, and states the limit in the prompt', async () => {
+    mockedGenerateStructured.mockImplementationOnce(async (_prompt, schema) =>
+      schema.parse({ classification: 'fundamental', explanation: 'y'.repeat(500), rollbackFromEndpointId: 'account' })
+    );
+
+    const result = await classifyFailure(input);
+
+    expect(result).toMatchObject({ classification: 'fundamental', rollbackFromEndpointId: 'account', degraded: false });
+    expect(result.explanation.length).toBeLessThanOrEqual(MAX_EXPLANATION_LENGTH);
+    expect(result.explanation.endsWith('…')).toBe(true);
+    expect(mockedGenerateStructured.mock.calls[0][0]).toContain(`at most ${MAX_EXPLANATION_LENGTH} characters`);
   });
 
   it('accepts as anchor any step the client sent as still owning a resource, including a stale one', async () => {
