@@ -31,6 +31,7 @@
     "server/src/providers.ts",
     "evals/",
     "schemas/",
+    "CHANGELOG.md",
     "!**/*.test.*",
     "!**/__snapshots__/",
     "!**/__fixtures__/"
