@@ -12,7 +12,16 @@ export interface ServerContext {
   trustedFlows?: Map<string, GeneratedFlow>;
   /** Flow ids already warned about, so each unknown id is reported once. */
   warnedFlowIds?: Set<string>;
+  /** Set once the cap is reached and the "not reported" message was logged. */
+  warnedFlowIdsFull?: boolean;
 }
+
+/**
+ * Unknown flow ids come from clients, so the set that remembers them is
+ * capped: past this many, one last message is logged and no more are kept --
+ * random ids can't grow memory or flood the log.
+ */
+export const MAX_WARNED_FLOW_IDS = 1000;
 
 export function serverContext(res: Response): ServerContext {
   return (res.locals.agentIntake as ServerContext | undefined) ?? {};
@@ -50,11 +59,19 @@ export function runtimeGuidance(
   }
 
   const id = wireFlow?.id ?? '(missing)';
-  if (!context.warnedFlowIds?.has(id)) {
-    context.warnedFlowIds?.add(id);
-    console.warn(
-      `AgentIntake: flow ${wireFlow ? `"${id}"` : id} is not in AGENTINTAKE_FLOWS_DIR; the client's flow and step guidance was ignored.`
-    );
+  const warned = context.warnedFlowIds;
+  if (warned && !warned.has(id) && !context.warnedFlowIdsFull) {
+    if (warned.size < MAX_WARNED_FLOW_IDS) {
+      warned.add(id);
+      console.warn(
+        `AgentIntake: flow ${wireFlow ? `"${id}"` : id} is not in AGENTINTAKE_FLOWS_DIR; the client's flow and step guidance was ignored.`
+      );
+    } else {
+      context.warnedFlowIdsFull = true;
+      console.warn(
+        `AgentIntake: ${MAX_WARNED_FLOW_IDS} unknown flow ids reported; further unknown flow ids are not reported (their guidance is still ignored).`
+      );
+    }
   }
   return guidanceFor(call, context.guidance, undefined, []);
 }
