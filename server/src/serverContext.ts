@@ -19,10 +19,12 @@ export function serverContext(res: Response): ServerContext {
 }
 
 /**
- * The guidance for one runtime call. With trusted flows on and a flow the
- * server knows, the flow's and the steps' guidance come from the server's copy
- * and whatever the client sent is ignored; otherwise the client's is used (an
- * unknown flow id is reported once).
+ * The guidance for one runtime call. With trusted flows off, the client's
+ * flow and step guidance is used. With them on, the client's is never used,
+ * whatever the request contains: a flow the server knows gets the server
+ * copy's flow and step guidance (and its step titles); an unknown or missing
+ * flow id gets the global guidance only, reported once per id -- otherwise
+ * changing or leaving out the id would bring the client's guidance back.
  */
 export function runtimeGuidance(
   res: Response,
@@ -31,23 +33,28 @@ export function runtimeGuidance(
   steps: { id: string; title: string; guidance?: string }[]
 ): PromptGuidance | undefined {
   const context = serverContext(res);
-  const trusted = wireFlow && context.trustedFlows?.get(wireFlow.id);
+  if (!context.trustedFlows) return guidanceFor(call, context.guidance, wireFlow, steps);
 
+  const trusted = wireFlow && context.trustedFlows.get(wireFlow.id);
   if (trusted) {
-    const trustedSteps = new Map(trusted.endpoints.map((endpoint) => [endpoint.id, endpoint.guidance]));
+    const trustedSteps = new Map(trusted.endpoints.map((endpoint) => [endpoint.id, endpoint]));
     return guidanceFor(
       call,
       context.guidance,
       { guidance: trusted.guidance, outputLanguage: trusted.outputLanguage },
-      steps.map((step) => ({ title: step.title, guidance: trustedSteps.get(step.id) }))
+      steps.map((step) => {
+        const own = trustedSteps.get(step.id);
+        return { title: own?.title ?? step.title, guidance: own?.guidance };
+      })
     );
   }
 
-  if (context.trustedFlows && wireFlow && !context.warnedFlowIds?.has(wireFlow.id)) {
-    context.warnedFlowIds?.add(wireFlow.id);
+  const id = wireFlow?.id ?? '(missing)';
+  if (!context.warnedFlowIds?.has(id)) {
+    context.warnedFlowIds?.add(id);
     console.warn(
-      `AgentIntake: flow "${wireFlow.id}" is not in AGENTINTAKE_FLOWS_DIR; using the guidance the client sent.`
+      `AgentIntake: flow ${wireFlow ? `"${id}"` : id} is not in AGENTINTAKE_FLOWS_DIR; the client's flow and step guidance was ignored.`
     );
   }
-  return guidanceFor(call, context.guidance, wireFlow, steps);
+  return guidanceFor(call, context.guidance, undefined, []);
 }
