@@ -99,3 +99,56 @@ describe('browser code never reaches llmClient.ts or a provider SDK', () => {
     expect(runtimeSpecifiers("import { type Foo, bar } from './llmClient.js';")).toEqual(['./llmClient.js']);
   });
 });
+
+// The prompt modules build text and nothing else: no LLM client, no provider
+// SDK, no file system, no environment -- anything they read has to come in
+// as an argument, so a prompt can be rendered (and snapshot-tested) anywhere.
+const IMPURE_SPECIFIER = /^(node:)?fs(\/promises)?$/;
+
+/** Every source file reachable from `entry` through runtime imports. */
+function reachableFiles(entry: string): string[] {
+  const seen = new Set<string>();
+  const visit = (file: string) => {
+    if (seen.has(file) || !/\.(ts|tsx)$/.test(file)) return;
+    seen.add(file);
+    for (const specifier of runtimeSpecifiers(readFileSync(file, 'utf-8'))) {
+      if (!specifier.startsWith('.')) continue;
+      const resolved = resolveRelative(file, specifier);
+      if (resolved) visit(resolved);
+    }
+  };
+  visit(entry);
+  return [...seen];
+}
+
+function impurities(entry: string): string[] {
+  const found = [...findForbiddenImports(entry)];
+  for (const file of reachableFiles(entry)) {
+    const source = readFileSync(file, 'utf-8');
+    const label = path.relative(repoRoot, file);
+    if (runtimeSpecifiers(source).some((specifier) => IMPURE_SPECIFIER.test(specifier))) found.push(`${label}: imports fs`);
+    if (/process\.env/.test(source)) found.push(`${label}: reads process.env`);
+  }
+  return found;
+}
+
+describe('prompt modules stay pure', () => {
+  const promptsDir = path.join(repoRoot, 'server/src/prompts');
+  const modules = readdirSync(promptsDir)
+    .filter((name) => /\.ts$/.test(name) && !/\.test\.ts$/.test(name))
+    .map((name) => path.join(promptsDir, name));
+
+  it('finds the prompt modules', () => {
+    expect(modules.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it.each(modules.map((file) => [path.relative(repoRoot, file), file]))('%s', (_label, file) => {
+    expect(impurities(file)).toEqual([]);
+  });
+
+  it('control: the check does flag a module that reads the environment through llmClient', () => {
+    const found = impurities(path.join(repoRoot, 'server/src/flowGenerator.ts'));
+    expect(found).toContain('server/src/flowGenerator.ts -> server/src/llmClient.ts');
+    expect(found).toContain('server/src/llmClient.ts: reads process.env');
+  });
+});

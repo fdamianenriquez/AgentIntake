@@ -1,22 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import type { FieldDef, ParsedEndpoint } from '../../../packages/react-agent-intake/src/contracts.js';
-import { buildPrompt } from '../flowGenerator.js';
-import {
-  buildClassifyPrompt,
-  buildInvalidationPrompt,
-  buildSelectFieldsPrompt,
-  buildValidatePrompt,
-} from '../stepEngine.js';
+import * as classifyFailurePrompt from './classifyFailure.js';
+import * as generationPrompt from './generation.js';
+import * as invalidationPrompt from './invalidation.js';
+import * as selectFieldsPrompt from './selectFields.js';
+import * as validatePrompt from './validate.js';
 
 // Golden copies of every prompt the server sends. A change to any of them is
 // a change to what the model sees: it must be deliberate (and bump that
 // prompt's PROMPT_VERSION), never a side effect of moving code around.
 const build = {
-  generation: buildPrompt,
-  selectFields: buildSelectFieldsPrompt,
-  validate: buildValidatePrompt,
-  invalidation: buildInvalidationPrompt,
-  classifyFailure: buildClassifyPrompt,
+  generation: generationPrompt.build,
+  selectFields: (
+    endpoint: selectFieldsPrompt.SelectFieldsPromptInput['endpoint'],
+    baseFields: FieldDef[],
+    previouslyCollectedData: Record<string, Record<string, unknown>>
+  ) => selectFieldsPrompt.build({ endpoint, baseFields, previouslyCollectedData }),
+  validate: (
+    endpoint: validatePrompt.ValidatePromptInput['endpoint'],
+    data: Record<string, unknown>,
+    previouslyCollectedData: Record<string, Record<string, unknown>>
+  ) => validatePrompt.build({ endpoint, data, previouslyCollectedData }),
+  invalidation: invalidationPrompt.build,
+  classifyFailure: classifyFailurePrompt.build,
 };
 
 const accountFields: FieldDef[] = [

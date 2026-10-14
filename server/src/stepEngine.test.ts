@@ -11,16 +11,18 @@ import { generateStructured, LlmTimeoutError } from './llmClient.js';
 import {
   checkInvalidation,
   CLASSIFY_FAILURE_TIMEOUT_MS,
-  EXPLANATION_TARGET_LENGTH,
-  MAX_EXPLANATION_LENGTH,
-  MAX_REASON_LENGTH,
-  REASON_TARGET_LENGTH,
   classifyFailure,
   INVALIDATION_TIMEOUT_MS,
   selectStepFields,
   STEP_TIMEOUT_MS,
   validateStepSubmission,
 } from './stepEngine.js';
+import {
+  EXPLANATION_TARGET_LENGTH,
+  MAX_EXPLANATION_LENGTH,
+  MAX_REASON_LENGTH,
+  REASON_TARGET_LENGTH,
+} from './prompts/limits.js';
 import { portabilityProblems } from './__fixtures__/portableSchema.js';
 
 const mockedGenerateStructured = vi.mocked(generateStructured);
