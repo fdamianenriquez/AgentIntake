@@ -4,7 +4,13 @@ import type { Command } from 'commander';
 import { parseOpenApiFile } from '../../server/src/openapiParser.js';
 import { generateFlow } from '../../server/src/flowGenerator.js';
 import { resolveProvider, buildModel } from '../../server/src/llmClient.js';
-import { GeneratedFlowSchema, type GeneratedFlow } from '../../packages/react-agent-intake/src/contracts.js';
+import { z } from 'zod';
+import {
+  GeneratedFlowSchema,
+  GUIDANCE_LIMITS,
+  LanguageTagSchema,
+  type GeneratedFlow,
+} from '../../packages/react-agent-intake/src/contracts.js';
 import { loadConfig } from '../../server/src/config.js';
 import { guidanceFor } from '../../server/src/prompts/guidance.js';
 
@@ -49,6 +55,23 @@ async function existingGuidance(file: string): Promise<AuthorGuidance | null> {
   return Object.keys(found.flow).length > 0 || endpoints.size > 0 ? found : null;
 }
 
+// The same limits and language check as any flow.json, applied to what would
+// be carried over -- before the spec is parsed or the model is called, so an
+// already-invalid file doesn't cost a generation first.
+function checkKeptGuidance(file: string, kept: AuthorGuidance): void {
+  const problems: string[] = [];
+  const check = (where: string, schema: z.ZodType, value: unknown) => {
+    const result = schema.safeParse(value);
+    if (!result.success) problems.push(`  ${where}: ${result.error.issues[0].message}`);
+  };
+  if (kept.flow.guidance !== undefined) check('guidance', z.string().max(GUIDANCE_LIMITS.flowGuidance), kept.flow.guidance);
+  if (kept.flow.outputLanguage !== undefined) check('outputLanguage', LanguageTagSchema, kept.flow.outputLanguage);
+  for (const [id, guidance] of kept.endpoints) {
+    check(`endpoints[${id}].guidance`, z.string().max(GUIDANCE_LIMITS.endpointGuidance), guidance);
+  }
+  if (problems.length > 0) throw new Error(`${file}: the guidance to keep is invalid:\n${problems.join('\n')}`);
+}
+
 function withGuidance(flow: GeneratedFlow, kept: AuthorGuidance): { flow: GeneratedFlow; dropped: string[] } {
   const ids = new Set(flow.endpoints.map((endpoint) => endpoint.id));
   const { endpoints, ...head } = flow;
@@ -91,6 +114,7 @@ export async function runGenerate(options: GenerateOptions): Promise<void> {
         'Use --keep-guidance to carry it over by endpoint id, or --force to overwrite it.'
     );
   }
+  if (kept && options.keepGuidance) checkKeptGuidance(options.output, kept);
 
   const { endpoints, warnings } = await parseOpenApiFile(options.spec);
 

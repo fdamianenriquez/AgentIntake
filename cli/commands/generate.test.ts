@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { FlowGenerationResult } from '../../packages/react-agent-intake/src/contracts.js';
+import { GUIDANCE_LIMITS, type FlowGenerationResult } from '../../packages/react-agent-intake/src/contracts.js';
 
 vi.mock('../../server/src/llmClient.js', () => ({
   resolveProvider: vi.fn(() => 'anthropic'),
@@ -314,6 +314,28 @@ describe('regenerating over a flow.json with author guidance', () => {
     expect(written.endpoints.map((e: { id: string }) => e.id)).toEqual(['createWidget']);
     expect(warn.mock.calls.flat().join('\n')).toMatch(/removedStep/);
     warn.mockRestore();
+  });
+
+  it('--keep-guidance checks the kept guidance before parsing the spec or calling the model', async () => {
+    await writeExisting({
+      ...existing,
+      endpoints: [{ ...existing.endpoints[0], guidance: 'x'.repeat(GUIDANCE_LIMITS.endpointGuidance + 1) }],
+    });
+
+    const run = runGenerate({ spec: fixtureSpec, output: outputPath, keepGuidance: true });
+
+    await expect(run).rejects.toThrow(outputPath);
+    await expect(run).rejects.toThrow(/endpoints\[createWidget\]\.guidance: Too big: expected string to have <=500 characters/);
+    expect(mockedGenerateStructured).not.toHaveBeenCalled();
+  });
+
+  it('--keep-guidance rejects a kept language tag that is not valid', async () => {
+    await writeExisting({ ...existing, outputLanguage: 'not a language' });
+
+    await expect(runGenerate({ spec: fixtureSpec, output: outputPath, keepGuidance: true })).rejects.toThrow(
+      /outputLanguage: Must be a BCP-47 language tag/
+    );
+    expect(mockedGenerateStructured).not.toHaveBeenCalled();
   });
 
   it('refuses --keep-guidance together with --force', async () => {
