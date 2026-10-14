@@ -1,9 +1,10 @@
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Command } from 'commander';
 import { parseOpenApiFile } from '../../server/src/openapiParser.js';
 import { generateFlow } from '../../server/src/flowGenerator.js';
 import { resolveProvider, buildModel } from '../../server/src/llmClient.js';
+import { GeneratedFlowSchema, type GeneratedFlow } from '../../packages/react-agent-intake/src/contracts.js';
 import { loadConfig } from '../../server/src/config.js';
 import { guidanceFor } from '../../server/src/prompts/guidance.js';
 
@@ -12,6 +13,57 @@ export interface GenerateOptions {
   output: string;
   provider?: string;
   model?: string;
+  /** Carry the existing flow.json's author guidance over to the new one. */
+  keepGuidance?: boolean;
+  /** Overwrite an existing flow.json even if it has author guidance. */
+  force?: boolean;
+}
+
+interface AuthorGuidance {
+  flow: { guidance?: string; outputLanguage?: string };
+  endpoints: Map<string, string>;
+}
+
+// The author-owned parts of an existing flow.json, or null
+// when there is no file, it isn't JSON, or it has none.
+async function existingGuidance(file: string): Promise<AuthorGuidance | null> {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await readFile(file, 'utf-8'));
+  } catch {
+    return null;
+  }
+  if (typeof raw !== 'object' || raw === null) return null;
+  const flow = raw as { guidance?: unknown; outputLanguage?: unknown; endpoints?: unknown };
+  const endpoints = new Map<string, string>();
+  for (const endpoint of Array.isArray(flow.endpoints) ? flow.endpoints : []) {
+    if (typeof endpoint?.id === 'string' && typeof endpoint.guidance === 'string') endpoints.set(endpoint.id, endpoint.guidance);
+  }
+  const found: AuthorGuidance = {
+    flow: {
+      ...(typeof flow.guidance === 'string' ? { guidance: flow.guidance } : {}),
+      ...(typeof flow.outputLanguage === 'string' ? { outputLanguage: flow.outputLanguage } : {}),
+    },
+    endpoints,
+  };
+  return Object.keys(found.flow).length > 0 || endpoints.size > 0 ? found : null;
+}
+
+function withGuidance(flow: GeneratedFlow, kept: AuthorGuidance): { flow: GeneratedFlow; dropped: string[] } {
+  const ids = new Set(flow.endpoints.map((endpoint) => endpoint.id));
+  const { endpoints, ...head } = flow;
+  const merged = {
+    ...head,
+    ...kept.flow,
+    endpoints: endpoints.map((endpoint) =>
+      kept.endpoints.has(endpoint.id) ? { ...endpoint, guidance: kept.endpoints.get(endpoint.id) } : endpoint
+    ),
+  };
+  return {
+    // Checked like any flow.json: guidance carried over must still be valid.
+    flow: GeneratedFlowSchema.parse(merged),
+    dropped: [...kept.endpoints.keys()].filter((id) => !ids.has(id)),
+  };
 }
 
 export async function runGenerate(options: GenerateOptions): Promise<void> {
@@ -28,6 +80,18 @@ export async function runGenerate(options: GenerateOptions): Promise<void> {
   // Same for an invalid agentintake.config.json.
   const config = loadConfig();
 
+  // An author's guidance in the existing flow.json is never lost by accident.
+  if (options.keepGuidance && options.force) {
+    throw new Error('Pass either --keep-guidance or --force, not both.');
+  }
+  const kept = await existingGuidance(options.output);
+  if (kept && !options.keepGuidance && !options.force) {
+    throw new Error(
+      `${options.output} has author guidance (guidance/outputLanguage) that a new flow would lose. ` +
+        'Use --keep-guidance to carry it over by endpoint id, or --force to overwrite it.'
+    );
+  }
+
   const { endpoints, warnings } = await parseOpenApiFile(options.spec);
 
   if (endpoints.length === 0) {
@@ -36,7 +100,16 @@ export async function runGenerate(options: GenerateOptions): Promise<void> {
 
   for (const warning of warnings) console.warn(`Warning: ${warning}`);
 
-  const { flow, ambiguousFields } = await generateFlow({ endpoints, guidance: guidanceFor('generation', config?.guidance, undefined) });
+  const generated = await generateFlow({ endpoints, guidance: guidanceFor('generation', config?.guidance, undefined) });
+  const { ambiguousFields } = generated;
+  let flow = generated.flow;
+  if (kept && options.keepGuidance) {
+    const merged = withGuidance(flow, kept);
+    flow = merged.flow;
+    if (merged.dropped.length > 0) {
+      console.warn(`Guidance dropped for endpoint(s) no longer in the spec: ${merged.dropped.join(', ')}`);
+    }
+  }
 
   await writeFile(options.output, JSON.stringify(flow, null, 2) + '\n', 'utf-8');
 
@@ -78,6 +151,8 @@ export function registerGenerateCommand(program: Command): void {
     .option('--output <path>', 'Output path for the generated flow JSON', 'flow.json')
     .option('--provider <provider>', 'LLM provider to use (overrides LLM_PROVIDER)')
     .option('--model <model>', 'LLM model to use (overrides LLM_MODEL)')
+    .option('--keep-guidance', "Carry the existing output file's author guidance over, by endpoint id")
+    .option('--force', 'Overwrite an existing output file even if it has author guidance')
     .action(async (opts: GenerateOptions) => {
       await runGenerate(opts);
     });

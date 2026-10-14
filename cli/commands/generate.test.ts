@@ -259,3 +259,66 @@ paths:
     warn.mockRestore();
   });
 });
+
+describe('regenerating over a flow.json with author guidance', () => {
+  const existing = {
+    ...generatedResult.flow,
+    guidance: 'Most buyers are schools.',
+    outputLanguage: 'es-MX',
+    endpoints: [
+      { ...generatedResult.flow.endpoints[0], guidance: 'Quantities are whole boxes.' },
+      { id: 'removedStep', title: 'Removed', fields: [], guidance: 'This step is gone from the spec.' },
+    ],
+  };
+  const writeExisting = (content: unknown) => writeFile(outputPath, JSON.stringify(content, null, 2) + '\n');
+
+  it('refuses to overwrite it without --keep-guidance or --force, before calling the model', async () => {
+    await writeExisting(existing);
+
+    await expect(runGenerate({ spec: fixtureSpec, output: outputPath })).rejects.toThrow(/--keep-guidance.*--force/s);
+
+    expect(mockedGenerateStructured).not.toHaveBeenCalled();
+    expect(JSON.parse(await readFile(outputPath, 'utf-8'))).toEqual(existing);
+  });
+
+  it('overwrites a flow.json without guidance, as before', async () => {
+    await writeExisting(generatedResult.flow);
+    mockedGenerateStructured.mockResolvedValueOnce(generatedResult);
+
+    await runGenerate({ spec: fixtureSpec, output: outputPath });
+
+    expect(JSON.parse(await readFile(outputPath, 'utf-8'))).toEqual(generatedResult.flow);
+  });
+
+  it('--force overwrites it, guidance and all', async () => {
+    await writeExisting(existing);
+    mockedGenerateStructured.mockResolvedValueOnce(generatedResult);
+
+    await runGenerate({ spec: fixtureSpec, output: outputPath, force: true });
+
+    expect(JSON.parse(await readFile(outputPath, 'utf-8'))).toEqual(generatedResult.flow);
+  });
+
+  it('--keep-guidance carries the guidance over by endpoint id and reports what was dropped', async () => {
+    await writeExisting(existing);
+    mockedGenerateStructured.mockResolvedValueOnce(generatedResult);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runGenerate({ spec: fixtureSpec, output: outputPath, keepGuidance: true });
+
+    const written = JSON.parse(await readFile(outputPath, 'utf-8'));
+    expect(written.guidance).toBe('Most buyers are schools.');
+    expect(written.outputLanguage).toBe('es-MX');
+    expect(written.endpoints[0].guidance).toBe('Quantities are whole boxes.');
+    expect(written.endpoints.map((e: { id: string }) => e.id)).toEqual(['createWidget']);
+    expect(warn.mock.calls.flat().join('\n')).toMatch(/removedStep/);
+    warn.mockRestore();
+  });
+
+  it('refuses --keep-guidance together with --force', async () => {
+    await expect(runGenerate({ spec: fixtureSpec, output: outputPath, keepGuidance: true, force: true })).rejects.toThrow(
+      /either --keep-guidance or --force/
+    );
+  });
+});
