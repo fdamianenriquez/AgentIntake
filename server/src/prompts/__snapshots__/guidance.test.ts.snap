@@ -1,0 +1,17 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the guidance block's fixed text > renders one slot of each kind like this 1`] = `
+"Guidance from the author of this form. Follow it where it applies, unless it conflicts with the other instructions in this prompt, which always take precedence:
+<<<AUTHOR_GUIDANCE
+Business context: DOMAIN
+Tone: TONE
+Write all user-facing text in: LANG
+Rules for this call:
+- RULE 1
+- RULE 2
+About this form: FLOW
+Guidance for the step "STEP": STEP TEXT
+AUTHOR_GUIDANCE>>>
+
+"
+`;

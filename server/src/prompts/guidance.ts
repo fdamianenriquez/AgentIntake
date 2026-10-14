@@ -4,6 +4,11 @@
 // rules. With no guidance it renders as nothing, so the prompt is exactly
 // what it was without this feature. Pure: no I/O, no environment.
 
+// Bump whenever the block's fixed text (its framing, labels or delimiters)
+// changes: that text is part of every prompt that has guidance, so a change to
+// it must be deliberate and traceable, like a prompt's own PROMPT_VERSION.
+export const GUIDANCE_BLOCK_VERSION = 1;
+
 export type PromptCall = 'generation' | 'selectFields' | 'validate' | 'invalidation' | 'classifyFailure';
 
 /** Guidance as it reaches one prompt, already narrowed to that call. */

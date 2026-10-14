@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { guidanceFor, renderGuidance, sanitizeGuidanceText } from './guidance.js';
+import { GUIDANCE_BLOCK_VERSION, guidanceFor, renderGuidance, sanitizeGuidanceText } from './guidance.js';
 
 const global = {
   domainContext: 'Payouts for sellers.',
@@ -76,5 +76,26 @@ describe('guidance sanitisation', () => {
   it('drops slots that are empty once cleaned', () => {
     expect(renderGuidance({ tone: '\u0000 ', rules: ['  ', 'Real rule.'] })).toContain('Rules for this call:\n- Real rule.\nAUTHOR');
     expect(renderGuidance({ tone: '\u0000 ' + ' ' })).toBe('');
+  });
+});
+
+describe('the guidance block\'s fixed text', () => {
+  // The framing around the author's text is part of every prompt that has
+  // guidance. A change to it shows up here, and bumps GUIDANCE_BLOCK_VERSION.
+  it('is versioned', () => {
+    expect(GUIDANCE_BLOCK_VERSION).toBe(1);
+  });
+
+  it('renders one slot of each kind like this', () => {
+    expect(
+      renderGuidance({
+        domainContext: 'DOMAIN',
+        tone: 'TONE',
+        outputLanguage: 'LANG',
+        rules: ['RULE 1', 'RULE 2'],
+        flow: 'FLOW',
+        steps: [{ title: 'STEP', text: 'STEP TEXT' }],
+      })
+    ).toMatchSnapshot();
   });
 });
