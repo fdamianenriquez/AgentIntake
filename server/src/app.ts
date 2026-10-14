@@ -81,6 +81,11 @@ export interface CreateAppOptions {
   warnOpenCors?: boolean;
   /** Settings to use instead of loading agentintake.config.json (null: none). */
   config?: AgentIntakeConfig | null;
+  /**
+   * Read on every request instead of loading the config once: Studio holds
+   * the current config and swaps it after a save, with no restart.
+   */
+  getConfig?: () => AgentIntakeConfig | null;
   /** Trusted flows to use instead of loading AGENTINTAKE_FLOWS_DIR (null: off). */
   trustedFlows?: Map<string, GeneratedFlow> | null;
 }
@@ -88,11 +93,11 @@ export interface CreateAppOptions {
 // Separated from index.ts (not part of  sketch, but the standard
 // Express split) so tests can build and exercise the app -- routes, CORS,
 // JSON parsing -- without binding a real port.
-export function createApp({ warnOpenCors = true, config, trustedFlows }: CreateAppOptions = {}): Express {
+export function createApp({ warnOpenCors = true, config, getConfig, trustedFlows }: CreateAppOptions = {}): Express {
   const app = express();
   // Loaded once; an invalid file stops startup with the file, place and rule.
   const context: ServerContext = {
-    guidance: (config === undefined ? loadConfig() : config)?.guidance,
+    guidance: getConfig ? undefined : (config === undefined ? loadConfig() : config)?.guidance,
     trustedFlows: (trustedFlows === undefined ? loadTrustedFlows() : trustedFlows) ?? undefined,
     warnedFlowIds: new Set(),
   };
@@ -105,7 +110,7 @@ export function createApp({ warnOpenCors = true, config, trustedFlows }: CreateA
   }
   app.use(cors(origins ? { origin: origins } : {}));
   app.use((_req, res, next) => {
-    res.locals.agentIntake = context;
+    res.locals.agentIntake = getConfig ? { ...context, guidance: getConfig()?.guidance } : context;
     next();
   });
 

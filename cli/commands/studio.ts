@@ -6,6 +6,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import { createApp } from '../../server/src/app.js';
 import { localOnlyGuard } from '../localOnlyGuard.js';
+import { createStudioConfigStore, type StudioConfigStore } from '../studioConfig.js';
 import { registerStudioProviderRoutes } from '../studioProviderRoutes.js';
 
 export interface StudioOptions {
@@ -29,8 +30,10 @@ export async function runStudio(options: StudioOptions): Promise<void> {
   // The guard runs before everything else, including createApp()'s open CORS,
   // so another website can't reach Studio's routes from the user's browser.
   let api: ReturnType<typeof createApp>;
+  let configStore: StudioConfigStore;
   try {
-    api = createApp({ warnOpenCors: false });
+    configStore = createStudioConfigStore();
+    api = createApp({ warnOpenCors: false, getConfig: configStore.get });
   } catch (error) {
     // A configuration error (for example a bad AGENTINTAKE_CORS_ORIGINS entry):
     // say what is wrong, without a stack trace.

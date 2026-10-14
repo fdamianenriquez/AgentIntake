@@ -55,6 +55,11 @@ export function configJsonSchema(): Record<string, unknown> {
   return z.toJSONSchema(AgentIntakeConfigSchema, { io: 'input' }) as Record<string, unknown>;
 }
 
+/** Where the config file is (whether or not it exists): AGENTINTAKE_CONFIG, or the default name, from `cwd`. */
+export function resolveConfigPath(env: NodeJS.ProcessEnv = process.env, cwd: string = process.cwd()): string {
+  return path.resolve(cwd, env.AGENTINTAKE_CONFIG?.trim() || CONFIG_FILE_NAME);
+}
+
 /**
  * Loads the config file: AGENTINTAKE_CONFIG if set (relative to `cwd`),
  * otherwise agentintake.config.json in `cwd`. A missing default file means no
@@ -63,7 +68,7 @@ export function configJsonSchema(): Record<string, unknown> {
  */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env, cwd: string = process.cwd()): AgentIntakeConfig | null {
   const explicit = env.AGENTINTAKE_CONFIG?.trim();
-  const file = path.resolve(cwd, explicit || CONFIG_FILE_NAME);
+  const file = resolveConfigPath(env, cwd);
   if (!existsSync(file)) {
     if (explicit) throw new Error(`AGENTINTAKE_CONFIG: ${file} does not exist.`);
     return null;

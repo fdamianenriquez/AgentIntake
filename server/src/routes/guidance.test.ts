@@ -235,3 +235,21 @@ describe('trusted flows (AGENTINTAKE_FLOWS_DIR)', () => {
     expect(warn.mock.calls.filter(([message]) => String(message).includes('AGENTINTAKE_FLOWS_DIR'))).toEqual([]);
   });
 });
+
+describe('a config provider (Studio)', () => {
+  it('reads the config on every request, so a saved change applies without a restart', async () => {
+    let current: AgentIntakeConfig | null = { guidance: { tone: 'First tone.' } };
+    const app = createApp({ getConfig: () => current });
+    const send = (sessionId: string) => request(app).post('/api/step/fields').send({ sessionId, endpoint });
+
+    await send('p1');
+    current = { guidance: { tone: 'Second tone.' } };
+    await send('p2');
+    current = null;
+    await send('p3');
+
+    expect(mocked.mock.calls[0][0]).toContain('Tone: First tone.');
+    expect(mocked.mock.calls[1][0]).toContain('Tone: Second tone.');
+    expect(mocked.mock.calls[2][0]).not.toContain('AUTHOR_GUIDANCE');
+  });
+});
