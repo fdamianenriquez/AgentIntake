@@ -473,3 +473,38 @@ describe('useAgentForm operations', () => {
     expect(result.current.currentStepIndex).toBe(2);
   });
 });
+
+describe('useAgentForm sends the flow\'s author guidance', () => {
+  it('sends the flow id, flow guidance and language, and the step\'s guidance', async () => {
+    const fetchMock = mockFetch({});
+    vi.stubGlobal('fetch', fetchMock);
+    const flow: FlowDef = {
+      ...makeFlow(vi.fn().mockResolvedValue({ success: true })),
+      guidance: 'Small businesses.',
+      outputLanguage: 'es-MX',
+    };
+    flow.endpoints[0] = { ...flow.endpoints[0], guidance: 'Use the work email.' } as FlowDef['endpoints'][number];
+    const { result } = renderHook(() => useAgentForm(flow, { apiUrl: 'http://test.local' }));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.updateField('email', 'a@example.com'));
+    await act(() => result.current.submitStep());
+
+    for (const [url, init] of fetchMock.mock.calls) {
+      const body = JSON.parse(init.body as string);
+      expect(body.flow, url).toEqual({ id: 'test-flow', guidance: 'Small businesses.', outputLanguage: 'es-MX' });
+      expect(body.endpoint.guidance, url).toBe(body.endpoint.id === 'step1' ? 'Use the work email.' : undefined);
+    }
+    expect(fetchMock.mock.calls.map(([url]) => new URL(url).pathname)).toEqual(['/api/step/fields', '/api/step/validate', '/api/step/fields']);
+  });
+
+  it('a flow without guidance sends only its id', async () => {
+    const fetchMock = mockFetch({});
+    vi.stubGlobal('fetch', fetchMock);
+    const { result } = renderHook(() => useAgentForm(makeFlow(vi.fn()), { apiUrl: 'http://test.local' }));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).flow).toEqual({ id: 'test-flow' });
+  });
+});

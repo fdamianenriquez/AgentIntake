@@ -154,6 +154,9 @@ const EndpointBaseSchema = z.object({
   idParam: z.string().optional(),
   /** Path parameters of the create path, which the author fills from `ctx.results`. */
   pathParams: z.array(z.string()).optional(),
+  // Author-owned: never produced by the parser or the model.
+  /** Step-level guidance for the model, e.g. "the holder name must match the legal name exactly". */
+  guidance: z.string().max(GUIDANCE_LIMITS.endpointGuidance).optional(),
 });
 type EndpointBase = z.infer<typeof EndpointBaseSchema>;
 
@@ -168,18 +171,33 @@ export const EndpointDefSchema = EndpointBaseSchema.extend({
 export type EndpointDef = EndpointBase &
   ({ execute: ExecuteFn; operations?: undefined } | { operations: ResourceOperations; execute?: undefined });
 
+// Author-owned flow settings: never produced by the generator.
+const FlowGuidanceFields = {
+  /** Flow-level guidance for the model, sent with every runtime call. */
+  guidance: z.string().max(GUIDANCE_LIMITS.flowGuidance).optional(),
+  /** Language of the text the model writes for this flow (BCP-47); overrides the global setting. */
+  outputLanguage: LanguageTagSchema.optional(),
+};
+
 export const FlowDefSchema = z.object({
   id: z.string(),
   title: z.string(),
   description: z.string(),
   endpoints: z.array(EndpointDefSchema),
+  ...FlowGuidanceFields,
 });
 export interface FlowDef {
   id: string;
   title: string;
   description: string;
   endpoints: EndpointDef[];
+  guidance?: string;
+  outputLanguage?: string;
 }
+
+/** What the hook sends about the flow with each runtime call. */
+export const WireFlowSchema = z.object({ id: z.string().max(256), ...FlowGuidanceFields });
+export type WireFlow = z.infer<typeof WireFlowSchema>;
 
 // An endpoint without functions: shared by openapiParser.ts (mechanical
 // extraction never produces them) and flowGenerator.ts (an LLM can't return a

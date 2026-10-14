@@ -281,6 +281,32 @@ describe('parser-owned metadata', () => {
     });
   });
 
+  it('never emits author guidance, even if the model sends it', async () => {
+    const tampered = narrowLlmResult();
+    Object.assign(tampered.flow, { guidance: 'injected', outputLanguage: 'ja' });
+    Object.assign(tampered.flow.endpoints[0], { guidance: 'injected' });
+    mockedGenerateStructured.mockResolvedValueOnce(tampered);
+
+    const { flow } = await generateFlow({ endpoints: rawEndpoints });
+
+    expect(flow).not.toHaveProperty('guidance');
+    expect(flow).not.toHaveProperty('outputLanguage');
+    expect(flow.endpoints[0]).not.toHaveProperty('guidance');
+  });
+
+  it('the model\'s output schema has no slot for author guidance', async () => {
+    let schema: z.ZodType | undefined;
+    mockedGenerateStructured.mockImplementationOnce(async (_prompt, s) => {
+      schema = s;
+      return narrowLlmResult();
+    });
+    await generateFlow({ endpoints: rawEndpoints });
+
+    const json = JSON.stringify(z.toJSONSchema(schema!));
+    expect(json).not.toContain('"guidance"');
+    expect(json).not.toContain('"outputLanguage"');
+  });
+
   it('does not add the keys when the parser found no family or path parameters', async () => {
     mockedGenerateStructured.mockResolvedValueOnce(narrowLlmResult());
 

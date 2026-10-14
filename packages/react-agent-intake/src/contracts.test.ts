@@ -4,6 +4,8 @@ import {
   EndpointDefSchema,
   FieldDefSchema,
   FlowDefSchema,
+  GeneratedFlowSchema,
+  GUIDANCE_LIMITS,
 } from './contracts.js';
 import { exampleFlow } from '../../../server/src/exampleFlow.js';
 
@@ -149,5 +151,34 @@ describe('EndpointDefSchema: execute XOR operations', () => {
   it('rejects operations without create, or with a non-function operation', () => {
     expect(EndpointDefSchema.safeParse({ ...base, operations: { read: fn } }).success).toBe(false);
     expect(EndpointDefSchema.safeParse({ ...base, operations: { create: fn, undo: 'DELETE /x' } }).success).toBe(false);
+  });
+});
+
+describe('flow.json author guidance', () => {
+  const flow = {
+    id: 'onboarding',
+    title: 'Onboarding',
+    description: 'd',
+    guidance: 'Most sellers are small businesses.',
+    outputLanguage: 'es-MX',
+    endpoints: [{ id: 'createPayout', title: 'Payout', fields: [], guidance: 'Holder must match the legal name.' }],
+  };
+
+  it('accepts flow and step guidance and an output language', () => {
+    expect(GeneratedFlowSchema.parse(flow)).toEqual(flow);
+  });
+
+  it('still accepts a flow without any of them', () => {
+    const { guidance: _g, outputLanguage: _l, ...plain } = flow;
+    expect(GeneratedFlowSchema.safeParse({ ...plain, endpoints: [{ id: 'a', title: 'A', fields: [] }] }).success).toBe(true);
+  });
+
+  it('rejects over-limit guidance and an invalid language, never truncating', () => {
+    const issues = (value: unknown) => GeneratedFlowSchema.safeParse(value).error?.issues.map((issue) => issue.path.join('.'));
+    expect(issues({ ...flow, guidance: 'x'.repeat(GUIDANCE_LIMITS.flowGuidance + 1) })).toEqual(['guidance']);
+    expect(issues({ ...flow, outputLanguage: 'not a language' })).toEqual(['outputLanguage']);
+    expect(
+      issues({ ...flow, endpoints: [{ ...flow.endpoints[0], guidance: 'x'.repeat(GUIDANCE_LIMITS.endpointGuidance + 1) }] })
+    ).toEqual(['endpoints.0.guidance']);
   });
 });

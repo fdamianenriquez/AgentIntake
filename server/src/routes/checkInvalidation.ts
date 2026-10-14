@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { ParsedEndpointSchema } from '../../../packages/react-agent-intake/src/contracts.js';
+import { ParsedEndpointSchema, WireFlowSchema } from '../../../packages/react-agent-intake/src/contracts.js';
 import { checkInvalidation } from '../stepEngine.js';
 import { guidanceFor } from '../prompts/guidance.js';
 import { serverContext } from '../serverContext.js';
@@ -14,6 +14,8 @@ const RequestBodySchema = z.object({
   // Wire endpoints, not just ids: the server holds no flow
   // definitions, and the model needs titles and fields to judge dependence.
   laterCompletedEndpoints: z.array(ParsedEndpointSchema).max(200),
+  // The flow's id and author guidance; absent from older clients.
+  flow: WireFlowSchema.optional(),
 });
 
 export async function handleCheckInvalidation(req: Request, res: Response): Promise<void> {
@@ -26,10 +28,13 @@ export async function handleCheckInvalidation(req: Request, res: Response): Prom
     return;
   }
 
-  const { sessionId, editedEndpoint, before, after, laterCompletedEndpoints } = parsed.data;
+  const { sessionId, editedEndpoint, before, after, laterCompletedEndpoints, flow } = parsed.data;
   try {
     const laterData = getScopedData(sessionId, laterCompletedEndpoints.map((endpoint) => endpoint.id));
-    const guidance = guidanceFor('invalidation', serverContext(res).guidance, undefined);
+    const guidance = guidanceFor('invalidation', serverContext(res).guidance, flow, [
+      editedEndpoint,
+      ...laterCompletedEndpoints,
+    ]);
     const result = await checkInvalidation({ editedEndpoint, before, after, laterCompletedEndpoints, laterData, guidance });
     res.status(200).json(result);
   } catch (error) {

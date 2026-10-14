@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { ParsedEndpointSchema } from '../../../packages/react-agent-intake/src/contracts.js';
+import { ParsedEndpointSchema, WireFlowSchema } from '../../../packages/react-agent-intake/src/contracts.js';
 import { validateStepSubmission } from '../stepEngine.js';
 import { guidanceFor } from '../prompts/guidance.js';
 import { serverContext } from '../serverContext.js';
@@ -13,6 +13,8 @@ const RequestBodySchema = z.object({
   precedingEndpointIds: z.array(z.string().max(256)).max(200).optional(),
   endpoint: ParsedEndpointSchema,
   data: z.record(z.string(), z.unknown()),
+  // The flow's id and author guidance; absent from older clients.
+  flow: WireFlowSchema.optional(),
 });
 
 // Note: this route only reports the semantic-validation verdict -- it only
@@ -31,14 +33,14 @@ export async function handleStepValidate(req: Request, res: Response): Promise<v
     return;
   }
 
-  const { sessionId, endpoint, data, precedingEndpointIds } = parsed.data;
+  const { sessionId, endpoint, data, precedingEndpointIds, flow } = parsed.data;
   const session = getOrCreateSession(sessionId);
 
   try {
     const previouslyCollectedData = precedingEndpointIds
       ? getScopedData(sessionId, precedingEndpointIds)
       : session.collectedData;
-    const guidance = guidanceFor('validate', serverContext(res).guidance, undefined);
+    const guidance = guidanceFor('validate', serverContext(res).guidance, flow, [endpoint]);
     const result = await validateStepSubmission({ endpoint, data, previouslyCollectedData, guidance });
     if (result.valid) {
       recordValidatedStep(sessionId, endpoint.id, data);

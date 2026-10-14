@@ -143,6 +143,16 @@ interface StepValidateResponse {
 
 // Functions never go over the wire; the server only learns which operations
 // exist, as booleans.
+// The flow's id and author settings, sent with each runtime call (the server
+// holds no flow definitions of its own, unless it runs with trusted flows).
+function toWireFlow(flow: FlowDef) {
+  return {
+    id: flow.id,
+    ...(flow.guidance !== undefined ? { guidance: flow.guidance } : {}),
+    ...(flow.outputLanguage !== undefined ? { outputLanguage: flow.outputLanguage } : {}),
+  };
+}
+
 function toWireEndpoint(endpoint: EndpointDef) {
   const { execute: _execute, operations: _operations, ...rest } = endpoint;
   return { ...rest, capabilities: implementedCapabilities(endpoint) };
@@ -807,6 +817,10 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
   // recreated (and re-subscribed by the host) on every keystroke.
   const stateRef = useRef(state);
   stateRef.current = state;
+  // Read at call time, so a host that changes the flow's guidance is heard
+  // without re-creating every callback.
+  const wireFlowRef = useRef(toWireFlow(flow));
+  wireFlowRef.current = toWireFlow(flow);
 
   const isMountedRef = useRef(true);
   useEffect(() => {
@@ -874,6 +888,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
       `${options.apiUrl}/api/step/fields`,
       {
         sessionId: sessionIdRef.current,
+        flow: wireFlowRef.current,
         endpoint: toWireEndpoint(currentEndpoint),
         precedingEndpointIds: precedingIds(state.currentStepIndex),
       },
@@ -904,6 +919,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
       try {
         return await postJson<StepValidateResponse>(`${options.apiUrl}/api/step/validate`, {
           sessionId: sessionIdRef.current,
+          flow: wireFlowRef.current,
           endpoint: toWireEndpoint(endpoint),
           data,
           precedingEndpointIds: precedingIds(index),
@@ -964,6 +980,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
           `${options.apiUrl}/api/step/classify-failure`,
           {
             sessionId: sessionIdRef.current,
+            flow: wireFlowRef.current,
             failedEndpoint: toWireEndpoint(endpoint),
             failure: failure ?? { kind: 'other', message: result.message },
             completedEndpoints: completed.map(toWireEndpoint),
@@ -1153,6 +1170,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
           `${options.apiUrl}/api/step/check-invalidation`,
           {
             sessionId: sessionIdRef.current,
+            flow: wireFlowRef.current,
             editedEndpoint: toWireEndpoint(endpoint),
             before,
             after,

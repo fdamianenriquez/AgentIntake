@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { ParsedEndpointSchema } from '../../../packages/react-agent-intake/src/contracts.js';
+import { ParsedEndpointSchema, WireFlowSchema } from '../../../packages/react-agent-intake/src/contracts.js';
 import { selectStepFields } from '../stepEngine.js';
 import { guidanceFor } from '../prompts/guidance.js';
 import { serverContext } from '../serverContext.js';
@@ -12,6 +12,8 @@ const RequestBodySchema = z.object({
   // reaches the prompt; absent means all collected data.
   precedingEndpointIds: z.array(z.string().max(256)).max(200).optional(),
   endpoint: ParsedEndpointSchema,
+  // The flow's id and author guidance; absent from older clients.
+  flow: WireFlowSchema.optional(),
 });
 
 export async function handleStepFields(req: Request, res: Response): Promise<void> {
@@ -21,14 +23,14 @@ export async function handleStepFields(req: Request, res: Response): Promise<voi
     return;
   }
 
-  const { sessionId, endpoint, precedingEndpointIds } = parsed.data;
+  const { sessionId, endpoint, precedingEndpointIds, flow } = parsed.data;
   const session = getOrCreateSession(sessionId);
 
   try {
     const previouslyCollectedData = precedingEndpointIds
       ? getScopedData(sessionId, precedingEndpointIds)
       : session.collectedData;
-    const guidance = guidanceFor('selectFields', serverContext(res).guidance, undefined);
+    const guidance = guidanceFor('selectFields', serverContext(res).guidance, flow, [endpoint]);
     const result = await selectStepFields({ endpoint, previouslyCollectedData, guidance });
     res.status(200).json(result);
   } catch (error) {

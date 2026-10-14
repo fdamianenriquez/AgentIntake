@@ -98,3 +98,56 @@ describe('loading the config file', () => {
     expect(() => createApp()).toThrow(/guidance\.tone/);
   });
 });
+
+describe('flow.json guidance reaches the prompt (sent by the client)', () => {
+  const flow = { id: 'onboarding', guidance: 'Most sellers are small businesses.', outputLanguage: 'pt-BR' };
+  const guided = { ...endpoint, guidance: 'Holder must match the legal name.' };
+
+  it('flow and current-step guidance, with the flow\'s language over the global one', async () => {
+    await request(createApp({ config })).post('/api/step/validate').send({ sessionId: 's2', flow, endpoint: guided, data: { bank: 'B' } });
+
+    const prompt = mocked.mock.calls[0][0];
+    expect(prompt).toContain('About this form: Most sellers are small businesses.');
+    expect(prompt).toContain('Guidance for the step "Payout": Holder must match the legal name.');
+    expect(prompt).toContain('Write all user-facing text in: pt-BR');
+    expect(prompt).not.toContain('es-MX');
+  });
+
+  it('invalidation gets the edited step\'s guidance and each later step\'s, in order', async () => {
+    const later = { id: 'later', title: 'Verification', fields: [], guidance: 'Business accounts need a tax id.' };
+    await request(createApp({ config: null }))
+      .post('/api/step/check-invalidation')
+      .send({ sessionId: 's3', flow, editedEndpoint: guided, before: {}, after: { bank: 'C' }, laterCompletedEndpoints: [later] });
+
+    const prompt = mocked.mock.calls[0][0];
+    const edited = prompt.indexOf('Guidance for the step "Payout"');
+    const next = prompt.indexOf('Guidance for the step "Verification": Business accounts need a tax id.');
+    expect(edited).toBeGreaterThan(-1);
+    expect(next).toBeGreaterThan(edited);
+    expect(next).toBeLessThan(prompt.indexOf('AUTHOR_GUIDANCE>>>'));
+  });
+
+  it('classification gets the failed step\'s guidance, not the completed steps\'', async () => {
+    const completed = { ...endpoint, id: 'account', title: 'Account', guidance: 'Account guidance.' };
+    await request(createApp({ config: null }))
+      .post('/api/step/classify-failure')
+      .send({ sessionId: 's4', flow, failedEndpoint: guided, failure: { kind: 'http', status: 403 }, completedEndpoints: [completed] });
+
+    const prompt = mocked.mock.calls[0][0];
+    expect(prompt).toContain('Guidance for the step "Payout"');
+    expect(prompt).not.toContain('Account guidance.');
+  });
+
+  it('rejects over-limit or malformed guidance in the request', async () => {
+    const tooLong = await request(createApp({ config: null }))
+      .post('/api/step/fields')
+      .send({ sessionId: 's5', flow: { id: 'f', guidance: 'x'.repeat(1001) }, endpoint });
+    const badLanguage = await request(createApp({ config: null }))
+      .post('/api/step/fields')
+      .send({ sessionId: 's5', flow: { id: 'f', outputLanguage: '???' }, endpoint });
+
+    expect(tooLong.status).toBe(400);
+    expect(badLanguage.status).toBe(400);
+    expect(mocked).not.toHaveBeenCalled();
+  });
+});
