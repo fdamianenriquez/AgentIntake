@@ -1,0 +1,100 @@
+{
+  "call": "validate",
+  "name": "a business name as holder of an individual account is flagged",
+  "input": {
+    "endpoint": {
+      "id": "createPayoutMethod",
+      "title": "Add Payout Method",
+      "description": "Enter the bank account details where you want to receive payouts.",
+      "fields": [
+        {
+          "name": "bankName",
+          "type": "string",
+          "label": "Bank Name",
+          "description": "The name of the bank where you hold the account.",
+          "required": true
+        },
+        {
+          "name": "accountHolderName",
+          "type": "string",
+          "label": "Account Holder Name",
+          "description": "Name exactly as it appears on the bank account. Should match the name you provided earlier (individual full name or business legal name).",
+          "required": true
+        },
+        {
+          "name": "accountNumber",
+          "type": "string",
+          "label": "Account Number",
+          "description": "Your bank account number (4‑17 digits).",
+          "required": true,
+          "validation": {
+            "pattern": "^[0-9]{4,17}$"
+          }
+        },
+        {
+          "name": "routingNumber",
+          "type": "string",
+          "label": "Routing Number",
+          "description": "The 9‑digit routing number for your bank.",
+          "required": true,
+          "validation": {
+            "pattern": "^[0-9]{9}$"
+          }
+        },
+        {
+          "name": "payoutAccountType",
+          "type": "enum",
+          "label": "Account Type",
+          "description": "Select whether payouts should go to a checking or savings account.",
+          "required": true,
+          "enumValues": [
+            "checking",
+            "savings"
+          ]
+        }
+      ],
+      "auth": {
+        "type": "none"
+      },
+      "capabilities": {
+        "read": false,
+        "update": false,
+        "undo": true
+      },
+      "resourcePath": "/accounts/{accountId}/payout-methods",
+      "idParam": "payoutMethodId",
+      "pathParams": [
+        "accountId"
+      ]
+    },
+    "data": {
+      "bankName": "First Example Bank",
+      "accountHolderName": "Northwind Trading LLC",
+      "accountNumber": "000123456789",
+      "routingNumber": "110000000",
+      "payoutAccountType": "checking"
+    },
+    "previouslyCollectedData": {
+      "createAccount": {
+        "email": "jordan@example.com",
+        "fullName": "Jordan Rivera",
+        "accountType": "individual"
+      },
+      "createVerification": {
+        "dateOfBirth": "1990-04-12",
+        "governmentIdNumber": "ID-48213",
+        "residentialAddress": "12 Harbor Lane, Springfield, ST 12345"
+      }
+    }
+  },
+  "expect": {
+    "valid": false,
+    "errorFields": {
+      "fields": [
+        "accountHolderName"
+      ],
+      "mode": "subset"
+    }
+  },
+  "notes": "From the v1.5 model comparison."
+}

@@ -1,0 +1,204 @@
+{
+  "call": "generation",
+  "name": "the whole demo spec keeps all three steps",
+  "input": {
+    "endpoints": [
+      {
+        "id": "createAccount",
+        "title": "Create account",
+        "description": "Register a new payment account and choose its type.",
+        "fields": [
+          {
+            "name": "email",
+            "type": "string",
+            "label": "Email",
+            "description": "The account owner's email address.",
+            "required": true,
+            "validation": {
+              "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+            }
+          },
+          {
+            "name": "fullName",
+            "type": "string",
+            "label": "Full Name",
+            "description": "The account owner's full name.",
+            "required": true
+          },
+          {
+            "name": "accountType",
+            "type": "enum",
+            "label": "Account Type",
+            "description": "Whether this account belongs to an individual or a business.",
+            "required": true,
+            "enumValues": [
+              "individual",
+              "business"
+            ]
+          }
+        ],
+        "auth": {
+          "type": "none"
+        },
+        "resourcePath": "/accounts",
+        "idParam": "accountId",
+        "capabilities": {
+          "read": true,
+          "update": true,
+          "undo": true
+        }
+      },
+      {
+        "id": "createVerification",
+        "title": "Verify identity",
+        "description": "Submit identity verification details. Only the fields relevant to the account type chosen in the previous step apply -- OpenAPI has no clean way to express \"required only if accountType is X,\" so every field here is optional at the schema level; the adaptive step engine narrows this down to the right subset at runtime.",
+        "fields": [
+          {
+            "name": "dateOfBirth",
+            "type": "date",
+            "label": "Date Of Birth",
+            "description": "Individual accounts only. The account owner's date of birth.",
+            "required": false
+          },
+          {
+            "name": "governmentIdNumber",
+            "type": "string",
+            "label": "Government Id Number",
+            "description": "Individual accounts only. A government-issued identification number.",
+            "required": false
+          },
+          {
+            "name": "residentialAddress",
+            "type": "string",
+            "label": "Residential Address",
+            "description": "Individual accounts only. The account owner's residential address.",
+            "required": false
+          },
+          {
+            "name": "legalBusinessName",
+            "type": "string",
+            "label": "Legal Business Name",
+            "description": "Business accounts only. The registered legal name of the business.",
+            "required": false
+          },
+          {
+            "name": "taxIdNumber",
+            "type": "string",
+            "label": "Tax Id Number",
+            "description": "Business accounts only. The business's tax identification number.",
+            "required": false
+          },
+          {
+            "name": "businessRegistrationNumber",
+            "type": "string",
+            "label": "Business Registration Number",
+            "description": "Business accounts only. The business's registration number.",
+            "required": false
+          },
+          {
+            "name": "businessAddress",
+            "type": "string",
+            "label": "Business Address",
+            "description": "Business accounts only. The business's registered address.",
+            "required": false
+          },
+          {
+            "name": "industryCategory",
+            "type": "enum",
+            "label": "Industry Category",
+            "description": "Business accounts only. The industry the business operates in.",
+            "required": false,
+            "enumValues": [
+              "retail",
+              "technology",
+              "healthcare",
+              "finance",
+              "other"
+            ]
+          }
+        ],
+        "auth": {
+          "type": "none"
+        },
+        "pathParams": [
+          "accountId"
+        ],
+        "resourcePath": "/accounts/{accountId}/verifications",
+        "idParam": "verificationId",
+        "capabilities": {
+          "read": true,
+          "update": true,
+          "undo": true
+        }
+      },
+      {
+        "id": "createPayoutMethod",
+        "title": "Add payout method",
+        "description": "Add a bank account to receive payouts.",
+        "fields": [
+          {
+            "name": "bankName",
+            "type": "string",
+            "label": "Bank Name",
+            "description": "The name of the bank.",
+            "required": true
+          },
+          {
+            "name": "accountHolderName",
+            "type": "string",
+            "label": "Account Holder Name",
+            "description": "The name on the bank account. Should plausibly match the account owner's full name (for an individual account) or legal business name (for a business account) already collected earlier in this flow -- flag it if it looks inconsistent.",
+            "required": true
+          },
+          {
+            "name": "accountNumber",
+            "type": "string",
+            "label": "Account Number",
+            "description": "The bank account number.",
+            "required": true,
+            "validation": {
+              "pattern": "^[0-9]{4,17}$"
+            }
+          },
+          {
+            "name": "routingNumber",
+            "type": "string",
+            "label": "Routing Number",
+            "description": "The bank's 9-digit routing number.",
+            "required": true,
+            "validation": {
+              "pattern": "^[0-9]{9}$"
+            }
+          },
+          {
+            "name": "payoutAccountType",
+            "type": "enum",
+            "label": "Payout Account Type",
+            "description": "The type of bank account payouts will be sent to.",
+            "required": true,
+            "enumValues": [
+              "checking",
+              "savings"
+            ]
+          }
+        ],
+        "auth": {
+          "type": "none"
+        },
+        "pathParams": [
+          "accountId"
+        ],
+        "resourcePath": "/accounts/{accountId}/payout-methods",
+        "idParam": "payoutMethodId",
+        "capabilities": {
+          "read": false,
+          "update": false,
+          "undo": true
+        }
+      }
+    ],
+    "specTitle": "Payment Onboarding API"
+  },
+  "expect": {},
+  "notes": "From the v1.5 model comparison."
+}

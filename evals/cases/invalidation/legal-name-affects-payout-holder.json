@@ -1,0 +1,184 @@
+{
+  "call": "invalidation",
+  "name": "changing the legal business name affects the payout holder name",
+  "input": {
+    "editedEndpoint": {
+      "id": "createVerification",
+      "title": "Verify Identity",
+      "description": "Provide the verification details that apply to the account type you selected. Fields that do not apply to your account type will be hidden automatically.",
+      "fields": [
+        {
+          "name": "dateOfBirth",
+          "type": "date",
+          "label": "Date of Birth",
+          "description": "Required for individual accounts. Format: YYYY-MM-DD.",
+          "required": false
+        },
+        {
+          "name": "governmentIdNumber",
+          "type": "string",
+          "label": "Government ID Number",
+          "description": "Required for individual accounts. Enter your passport, driver’s license, or national ID number.",
+          "required": false
+        },
+        {
+          "name": "residentialAddress",
+          "type": "string",
+          "label": "Residential Address",
+          "description": "Required for individual accounts. Your home address (street, city, state, ZIP/postal code).",
+          "required": false
+        },
+        {
+          "name": "legalBusinessName",
+          "type": "string",
+          "label": "Legal Business Name",
+          "description": "Required for business accounts. The exact legal name registered with the government.",
+          "required": false
+        },
+        {
+          "name": "taxIdNumber",
+          "type": "string",
+          "label": "Tax ID Number",
+          "description": "Required for business accounts. Enter your business's tax identification number.",
+          "required": false
+        },
+        {
+          "name": "businessRegistrationNumber",
+          "type": "string",
+          "label": "Business Registration Number",
+          "description": "Required for business accounts. The identifier issued when your business was registered (e.g., company number).",
+          "required": false
+        },
+        {
+          "name": "businessAddress",
+          "type": "string",
+          "label": "Business Address",
+          "description": "Required for business accounts. The registered office address of your business.",
+          "required": false
+        },
+        {
+          "name": "industryCategory",
+          "type": "enum",
+          "label": "Industry Category",
+          "description": "Required for business accounts. Choose the sector that best describes your business.",
+          "required": false,
+          "enumValues": [
+            "retail",
+            "technology",
+            "healthcare",
+            "finance",
+            "other"
+          ]
+        }
+      ],
+      "auth": {
+        "type": "none"
+      },
+      "capabilities": {
+        "read": true,
+        "update": true,
+        "undo": true
+      },
+      "resourcePath": "/accounts/{accountId}/verifications",
+      "idParam": "verificationId",
+      "pathParams": [
+        "accountId"
+      ]
+    },
+    "before": {
+      "legalBusinessName": "Northwind Trading LLC",
+      "taxIdNumber": "TX-552190",
+      "businessRegistrationNumber": "BRN-77120",
+      "businessAddress": "400 Market Street, Springfield, ST 12345",
+      "industryCategory": "retail"
+    },
+    "after": {
+      "legalBusinessName": "Northwind Holdings Inc.",
+      "taxIdNumber": "TX-552190",
+      "businessRegistrationNumber": "BRN-77120",
+      "businessAddress": "400 Market Street, Springfield, ST 12345",
+      "industryCategory": "retail"
+    },
+    "laterCompletedEndpoints": [
+      {
+        "id": "createPayoutMethod",
+        "title": "Add Payout Method",
+        "description": "Enter the bank account details where you want to receive payouts.",
+        "fields": [
+          {
+            "name": "bankName",
+            "type": "string",
+            "label": "Bank Name",
+            "description": "The name of the bank where you hold the account.",
+            "required": true
+          },
+          {
+            "name": "accountHolderName",
+            "type": "string",
+            "label": "Account Holder Name",
+            "description": "Name exactly as it appears on the bank account. Should match the name you provided earlier (individual full name or business legal name).",
+            "required": true
+          },
+          {
+            "name": "accountNumber",
+            "type": "string",
+            "label": "Account Number",
+            "description": "Your bank account number (4‑17 digits).",
+            "required": true,
+            "validation": {
+              "pattern": "^[0-9]{4,17}$"
+            }
+          },
+          {
+            "name": "routingNumber",
+            "type": "string",
+            "label": "Routing Number",
+            "description": "The 9‑digit routing number for your bank.",
+            "required": true,
+            "validation": {
+              "pattern": "^[0-9]{9}$"
+            }
+          },
+          {
+            "name": "payoutAccountType",
+            "type": "enum",
+            "label": "Account Type",
+            "description": "Select whether payouts should go to a checking or savings account.",
+            "required": true,
+            "enumValues": [
+              "checking",
+              "savings"
+            ]
+          }
+        ],
+        "auth": {
+          "type": "none"
+        },
+        "capabilities": {
+          "read": false,
+          "update": false,
+          "undo": true
+        },
+        "resourcePath": "/accounts/{accountId}/payout-methods",
+        "idParam": "payoutMethodId",
+        "pathParams": [
+          "accountId"
+        ]
+      }
+    ],
+    "laterData": {
+      "createPayoutMethod": {
+        "bankName": "First Example Bank",
+        "accountHolderName": "Northwind Trading LLC",
+        "accountNumber": "000123456789",
+        "routingNumber": "110000000",
+        "payoutAccountType": "checking"
+      }
+    }
+  },
+  "expect": {
+    "mustInclude": [
+      "createPayoutMethod"
+    ]
+  }
+}

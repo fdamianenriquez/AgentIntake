@@ -1,0 +1,60 @@
+{
+  "call": "validate",
+  "name": "a plausible first step is valid",
+  "input": {
+    "endpoint": {
+      "id": "createAccount",
+      "title": "Create Account",
+      "description": "Register your account and choose whether it is for an individual or a business.",
+      "fields": [
+        {
+          "name": "email",
+          "type": "string",
+          "label": "Email Address",
+          "description": "We'll use this to contact you and verify your account.",
+          "required": true,
+          "validation": {
+            "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+          }
+        },
+        {
+          "name": "fullName",
+          "type": "string",
+          "label": "Full Name",
+          "description": "As it appears on your government ID.",
+          "required": true
+        },
+        {
+          "name": "accountType",
+          "type": "enum",
+          "label": "Account Type",
+          "description": "Select whether you're signing up as an individual or a business.",
+          "required": true,
+          "enumValues": [
+            "individual",
+            "business"
+          ]
+        }
+      ],
+      "auth": {
+        "type": "none"
+      },
+      "capabilities": {
+        "read": true,
+        "update": true,
+        "undo": true
+      },
+      "resourcePath": "/accounts",
+      "idParam": "accountId"
+    },
+    "data": {
+      "email": "jordan@example.com",
+      "fullName": "Jordan Rivera",
+      "accountType": "individual"
+    },
+    "previouslyCollectedData": {}
+  },
+  "expect": {
+    "valid": true
+  }
+}

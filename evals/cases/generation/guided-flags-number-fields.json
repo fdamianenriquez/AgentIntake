@@ -1,0 +1,85 @@
+{
+  "call": "generation",
+  "name": "with an extra rule, the routing and account numbers are flagged as ambiguous",
+  "input": {
+    "endpoints": [
+      {
+        "id": "createPayoutMethod",
+        "title": "Add payout method",
+        "description": "Add a bank account to receive payouts.",
+        "fields": [
+          {
+            "name": "bankName",
+            "type": "string",
+            "label": "Bank Name",
+            "description": "The name of the bank.",
+            "required": true
+          },
+          {
+            "name": "accountHolderName",
+            "type": "string",
+            "label": "Account Holder Name",
+            "description": "The name on the bank account. Should plausibly match the account owner's full name (for an individual account) or legal business name (for a business account) already collected earlier in this flow -- flag it if it looks inconsistent.",
+            "required": true
+          },
+          {
+            "name": "accountNumber",
+            "type": "string",
+            "label": "Account Number",
+            "description": "The bank account number.",
+            "required": true,
+            "validation": {
+              "pattern": "^[0-9]{4,17}$"
+            }
+          },
+          {
+            "name": "routingNumber",
+            "type": "string",
+            "label": "Routing Number",
+            "description": "The bank's 9-digit routing number.",
+            "required": true,
+            "validation": {
+              "pattern": "^[0-9]{9}$"
+            }
+          },
+          {
+            "name": "payoutAccountType",
+            "type": "enum",
+            "label": "Payout Account Type",
+            "description": "The type of bank account payouts will be sent to.",
+            "required": true,
+            "enumValues": [
+              "checking",
+              "savings"
+            ]
+          }
+        ],
+        "auth": {
+          "type": "none"
+        },
+        "pathParams": [
+          "accountId"
+        ],
+        "resourcePath": "/accounts/{accountId}/payout-methods",
+        "idParam": "payoutMethodId",
+        "capabilities": {
+          "read": false,
+          "update": false,
+          "undo": true
+        }
+      }
+    ]
+  },
+  "expect": {
+    "ambiguousFields": {
+      "mustInclude": [
+        "accountNumber",
+        "routingNumber"
+      ]
+    }
+  },
+  "notes": "Guidance-dependent: these fields are not normally flagged.",
+  "fixtures": {
+    "config": "../../fixtures/guided.config.json"
+  }
+}

@@ -1,0 +1,234 @@
+{
+  "call": "invalidation",
+  "name": "with step guidance, an email change affects the payout step",
+  "input": {
+    "editedEndpoint": {
+      "id": "createAccount",
+      "title": "Create Account",
+      "description": "Register your account and choose whether it is for an individual or a business.",
+      "fields": [
+        {
+          "name": "email",
+          "type": "string",
+          "label": "Email Address",
+          "description": "We'll use this to contact you and verify your account.",
+          "required": true,
+          "validation": {
+            "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+          }
+        },
+        {
+          "name": "fullName",
+          "type": "string",
+          "label": "Full Name",
+          "description": "As it appears on your government ID.",
+          "required": true
+        },
+        {
+          "name": "accountType",
+          "type": "enum",
+          "label": "Account Type",
+          "description": "Select whether you're signing up as an individual or a business.",
+          "required": true,
+          "enumValues": [
+            "individual",
+            "business"
+          ]
+        }
+      ],
+      "auth": {
+        "type": "none"
+      },
+      "capabilities": {
+        "read": true,
+        "update": true,
+        "undo": true
+      },
+      "resourcePath": "/accounts",
+      "idParam": "accountId"
+    },
+    "before": {
+      "email": "jordan@example.com",
+      "fullName": "Jordan Rivera",
+      "accountType": "individual"
+    },
+    "after": {
+      "email": "jordan.rivera@example.com",
+      "fullName": "Jordan Rivera",
+      "accountType": "individual"
+    },
+    "laterCompletedEndpoints": [
+      {
+        "id": "createVerification",
+        "title": "Verify Identity",
+        "description": "Provide the verification details that apply to the account type you selected. Fields that do not apply to your account type will be hidden automatically.",
+        "fields": [
+          {
+            "name": "dateOfBirth",
+            "type": "date",
+            "label": "Date of Birth",
+            "description": "Required for individual accounts. Format: YYYY-MM-DD.",
+            "required": false
+          },
+          {
+            "name": "governmentIdNumber",
+            "type": "string",
+            "label": "Government ID Number",
+            "description": "Required for individual accounts. Enter your passport, driver’s license, or national ID number.",
+            "required": false
+          },
+          {
+            "name": "residentialAddress",
+            "type": "string",
+            "label": "Residential Address",
+            "description": "Required for individual accounts. Your home address (street, city, state, ZIP/postal code).",
+            "required": false
+          },
+          {
+            "name": "legalBusinessName",
+            "type": "string",
+            "label": "Legal Business Name",
+            "description": "Required for business accounts. The exact legal name registered with the government.",
+            "required": false
+          },
+          {
+            "name": "taxIdNumber",
+            "type": "string",
+            "label": "Tax ID Number",
+            "description": "Required for business accounts. Enter your business's tax identification number.",
+            "required": false
+          },
+          {
+            "name": "businessRegistrationNumber",
+            "type": "string",
+            "label": "Business Registration Number",
+            "description": "Required for business accounts. The identifier issued when your business was registered (e.g., company number).",
+            "required": false
+          },
+          {
+            "name": "businessAddress",
+            "type": "string",
+            "label": "Business Address",
+            "description": "Required for business accounts. The registered office address of your business.",
+            "required": false
+          },
+          {
+            "name": "industryCategory",
+            "type": "enum",
+            "label": "Industry Category",
+            "description": "Required for business accounts. Choose the sector that best describes your business.",
+            "required": false,
+            "enumValues": [
+              "retail",
+              "technology",
+              "healthcare",
+              "finance",
+              "other"
+            ]
+          }
+        ],
+        "auth": {
+          "type": "none"
+        },
+        "capabilities": {
+          "read": true,
+          "update": true,
+          "undo": true
+        },
+        "resourcePath": "/accounts/{accountId}/verifications",
+        "idParam": "verificationId",
+        "pathParams": [
+          "accountId"
+        ]
+      },
+      {
+        "id": "createPayoutMethod",
+        "title": "Add Payout Method",
+        "description": "Enter the bank account details where you want to receive payouts.",
+        "fields": [
+          {
+            "name": "bankName",
+            "type": "string",
+            "label": "Bank Name",
+            "description": "The name of the bank where you hold the account.",
+            "required": true
+          },
+          {
+            "name": "accountHolderName",
+            "type": "string",
+            "label": "Account Holder Name",
+            "description": "Name exactly as it appears on the bank account. Should match the name you provided earlier (individual full name or business legal name).",
+            "required": true
+          },
+          {
+            "name": "accountNumber",
+            "type": "string",
+            "label": "Account Number",
+            "description": "Your bank account number (4‑17 digits).",
+            "required": true,
+            "validation": {
+              "pattern": "^[0-9]{4,17}$"
+            }
+          },
+          {
+            "name": "routingNumber",
+            "type": "string",
+            "label": "Routing Number",
+            "description": "The 9‑digit routing number for your bank.",
+            "required": true,
+            "validation": {
+              "pattern": "^[0-9]{9}$"
+            }
+          },
+          {
+            "name": "payoutAccountType",
+            "type": "enum",
+            "label": "Account Type",
+            "description": "Select whether payouts should go to a checking or savings account.",
+            "required": true,
+            "enumValues": [
+              "checking",
+              "savings"
+            ]
+          }
+        ],
+        "auth": {
+          "type": "none"
+        },
+        "capabilities": {
+          "read": false,
+          "update": false,
+          "undo": true
+        },
+        "resourcePath": "/accounts/{accountId}/payout-methods",
+        "idParam": "payoutMethodId",
+        "pathParams": [
+          "accountId"
+        ]
+      }
+    ],
+    "laterData": {
+      "createVerification": {
+        "dateOfBirth": "1990-04-12",
+        "governmentIdNumber": "ID-48213",
+        "residentialAddress": "12 Harbor Lane, Springfield, ST 12345"
+      },
+      "createPayoutMethod": {
+        "bankName": "First Example Bank",
+        "accountHolderName": "Jordan Rivera",
+        "accountNumber": "000123456789",
+        "routingNumber": "110000000",
+        "payoutAccountType": "checking"
+      }
+    }
+  },
+  "expect": {
+    "mustInclude": [
+      "createPayoutMethod"
+    ]
+  },
+  "notes": "Guidance-dependent: the same edit affects nothing without the flow fixture (see email-change-affects-nothing).",
+  "fixtures": {
+    "flow": "../../fixtures/guided.flow.json"
+  }
+}

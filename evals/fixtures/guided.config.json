@@ -1,0 +1,17 @@
+{
+  "$schema": "../../schemas/agentintake.config.schema.json",
+  "guidance": {
+    "domainContext": "Onboarding for sellers who want to receive payouts.",
+    "extraRules": {
+      "generation": [
+        "List every field whose name ends in \"Number\" in ambiguousFields, noting which format the API expects."
+      ],
+      "validate": [
+        "Account holder names must be written entirely in capital letters, exactly as the bank prints them."
+      ],
+      "classifyFailure": [
+        "A 409 whose message says the payout method is pending review is temporary: classify it as retryable."
+      ]
+    }
+  }
+}

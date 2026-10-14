@@ -1,0 +1,54 @@
+{
+  "call": "generation",
+  "name": "a single step is kept as is",
+  "input": {
+    "endpoints": [
+      {
+        "id": "createAccount",
+        "title": "Create account",
+        "description": "Register a new payment account and choose its type.",
+        "fields": [
+          {
+            "name": "email",
+            "type": "string",
+            "label": "Email",
+            "description": "The account owner's email address.",
+            "required": true,
+            "validation": {
+              "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+            }
+          },
+          {
+            "name": "fullName",
+            "type": "string",
+            "label": "Full Name",
+            "description": "The account owner's full name.",
+            "required": true
+          },
+          {
+            "name": "accountType",
+            "type": "enum",
+            "label": "Account Type",
+            "description": "Whether this account belongs to an individual or a business.",
+            "required": true,
+            "enumValues": [
+              "individual",
+              "business"
+            ]
+          }
+        ],
+        "auth": {
+          "type": "none"
+        },
+        "resourcePath": "/accounts",
+        "idParam": "accountId",
+        "capabilities": {
+          "read": true,
+          "update": true,
+          "undo": true
+        }
+      }
+    ]
+  },
+  "expect": {}
+}
