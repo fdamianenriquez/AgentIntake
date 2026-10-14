@@ -124,7 +124,7 @@ export async function generateFlow(input: GenerateFlowInput): Promise<FlowGenera
   }
 }
 
-function buildPrompt(input: GenerateFlowInput): string {
+export function buildPrompt(input: GenerateFlowInput): string {
   const context = [
     input.specTitle ? `Spec title: ${input.specTitle}` : null,
     input.specDescription ? `Spec description: ${input.specDescription}` : null,

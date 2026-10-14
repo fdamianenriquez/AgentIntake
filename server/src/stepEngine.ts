@@ -126,7 +126,7 @@ export async function selectStepFields(input: SelectStepFieldsInput): Promise<Se
   }
 }
 
-function buildSelectFieldsPrompt(
+export function buildSelectFieldsPrompt(
   endpoint: Pick<ParsedEndpoint, 'id' | 'title' | 'description'>,
   baseFields: FieldDef[],
   previouslyCollectedData: Record<string, Record<string, unknown>>
@@ -221,7 +221,7 @@ export async function validateStepSubmission(
   }
 }
 
-function buildValidatePrompt(
+export function buildValidatePrompt(
   endpoint: Pick<ParsedEndpoint, 'id' | 'title' | 'fields'>,
   data: Record<string, unknown>,
   previouslyCollectedData: Record<string, Record<string, unknown>>
@@ -312,7 +312,7 @@ export async function checkInvalidation(input: CheckInvalidationInput): Promise<
   }
 }
 
-function buildInvalidationPrompt(input: CheckInvalidationInput): string {
+export function buildInvalidationPrompt(input: CheckInvalidationInput): string {
   const laterSteps = input.laterCompletedEndpoints.map((endpoint) => ({
     id: endpoint.id,
     title: endpoint.title,
@@ -425,7 +425,7 @@ export async function classifyFailure(input: ClassifyFailureInput): Promise<Clas
   }
 }
 
-function buildClassifyPrompt(input: ClassifyFailureInput): string {
+export function buildClassifyPrompt(input: ClassifyFailureInput): string {
   const steps = [...input.completedEndpoints, input.failedEndpoint].map((endpoint) => ({
     id: endpoint.id,
     title: endpoint.title,
