@@ -8,6 +8,7 @@ import {
 } from '../packages/react-agent-intake/src/contracts.js';
 import { createMockApi, type MockApi, type MockApiCall, type Scenario } from './mockApi.js';
 import rawFlow from './flow.json' with { type: 'json' };
+import rawGuidedFlow from './flow.guided.json' with { type: 'json' };
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 
@@ -16,6 +17,15 @@ const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 // -- also gives properly-typed fields, which a raw JSON import loses (its
 // `type` fields infer as plain `string`, not the FieldDef literal union).
 const generatedFlow = GeneratedFlowSchema.parse(rawFlow);
+// The same flow with author guidance (README: "Author guidance"): flow and step guidance, and
+// es-MX as the language of everything the model writes.
+const guidedFlow = GeneratedFlowSchema.parse(rawGuidedFlow);
+
+const FLOWS = {
+  default: { flow: generatedFlow, label: 'Default flow' },
+  guided: { flow: guidedFlow, label: 'With author guidance (model-written text in es-MX)' },
+} as const;
+type FlowChoice = keyof typeof FLOWS;
 
 // Maps one HTTP call to an OperationResult -- the part every flow author
 // writes for their own API (AgentIntake never calls it or reads its responses).
@@ -116,15 +126,28 @@ const SCENARIOS: { value: Scenario; label: string; hint: string }[] = [
 export function App() {
   const [calls, setCalls] = useState<MockApiCall[]>([]);
   const [scenario, setScenario] = useState<Scenario>('normal');
-  const api = useMemo(() => createMockApi((entry) => setCalls((previous) => [...previous, entry])), []);
+  const [flowChoice, setFlowChoice] = useState<FlowChoice>('default');
+  // A fresh mock API per flow, so switching starts over cleanly.
+  const api = useMemo(() => {
+    const next = createMockApi((entry) => setCalls((previous) => [...previous, entry]));
+    next.setScenario(scenario);
+    return next;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flowChoice]);
 
   const flow: FlowDef = useMemo(() => {
     const operations = operationsFor(api);
+    const source = FLOWS[flowChoice].flow;
     return {
-      ...generatedFlow,
-      endpoints: generatedFlow.endpoints.map((endpoint) => ({ ...endpoint, operations: operations[endpoint.id] })),
+      ...source,
+      endpoints: source.endpoints.map((endpoint) => ({ ...endpoint, operations: operations[endpoint.id] })),
     };
-  }, [api]);
+  }, [api, flowChoice]);
+
+  const chooseFlow = (next: FlowChoice) => {
+    setCalls([]);
+    setFlowChoice(next);
+  };
 
   const chooseScenario = (next: Scenario) => {
     setScenario(next);
@@ -143,6 +166,23 @@ export function App() {
       </p>
 
       <fieldset className="demo-scenarios">
+        <legend>Flow</legend>
+        {(Object.keys(FLOWS) as FlowChoice[]).map((choice) => (
+          <label key={choice}>
+            <input type="radio" name="flow" value={choice} checked={flowChoice === choice} onChange={() => chooseFlow(choice)} />
+            {FLOWS[choice].label}
+          </label>
+        ))}
+        {flowChoice === 'guided' && (
+          <p className="demo-app-note">
+            The model writes field descriptions, validation messages and review reasons in Spanish (es-MX), and the payout
+            step's guidance requires the account holder name in capital letters. The form's own buttons and messages stay in
+            English: fixed UI strings aren't translated in this version.
+          </p>
+        )}
+      </fieldset>
+
+      <fieldset className="demo-scenarios">
         <legend>Simulate</legend>
         {SCENARIOS.map((option) => (
           <label key={option.value}>
@@ -159,7 +199,7 @@ export function App() {
         <p className="demo-app-note">{SCENARIOS.find((option) => option.value === scenario)?.hint}</p>
       </fieldset>
 
-      <AgentIntakeForm flow={flow} apiUrl={API_URL} />
+      <AgentIntakeForm key={flowChoice} flow={flow} apiUrl={API_URL} />
 
       <details className="demo-api-log" open={calls.length > 0}>
         <summary>Mock API calls ({calls.length})</summary>
