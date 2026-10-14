@@ -1,0 +1,157 @@
+{
+  "call": "classifyFailure",
+  "name": "a 422 for a malformed date of birth needs an edit",
+  "input": {
+    "failedEndpoint": {
+      "id": "createVerification",
+      "title": "Verify Identity",
+      "description": "Provide the verification details that apply to the account type you selected. Fields that do not apply to your account type will be hidden automatically.",
+      "fields": [
+        {
+          "name": "dateOfBirth",
+          "type": "date",
+          "label": "Date of Birth",
+          "description": "Required for individual accounts. Format: YYYY-MM-DD.",
+          "required": false
+        },
+        {
+          "name": "governmentIdNumber",
+          "type": "string",
+          "label": "Government ID Number",
+          "description": "Required for individual accounts. Enter your passport, driver\u2019s license, or national ID number.",
+          "required": false
+        },
+        {
+          "name": "residentialAddress",
+          "type": "string",
+          "label": "Residential Address",
+          "description": "Required for individual accounts. Your home address (street, city, state, ZIP/postal code).",
+          "required": false
+        },
+        {
+          "name": "legalBusinessName",
+          "type": "string",
+          "label": "Legal Business Name",
+          "description": "Required for business accounts. The exact legal name registered with the government.",
+          "required": false
+        },
+        {
+          "name": "taxIdNumber",
+          "type": "string",
+          "label": "Tax ID Number",
+          "description": "Required for business accounts. Enter your business's tax identification number.",
+          "required": false
+        },
+        {
+          "name": "businessRegistrationNumber",
+          "type": "string",
+          "label": "Business Registration Number",
+          "description": "Required for business accounts. The identifier issued when your business was registered (e.g., company number).",
+          "required": false
+        },
+        {
+          "name": "businessAddress",
+          "type": "string",
+          "label": "Business Address",
+          "description": "Required for business accounts. The registered office address of your business.",
+          "required": false
+        },
+        {
+          "name": "industryCategory",
+          "type": "enum",
+          "label": "Industry Category",
+          "description": "Required for business accounts. Choose the sector that best describes your business.",
+          "required": false,
+          "enumValues": [
+            "retail",
+            "technology",
+            "healthcare",
+            "finance",
+            "other"
+          ]
+        }
+      ],
+      "auth": {
+        "type": "none"
+      },
+      "capabilities": {
+        "read": true,
+        "update": true,
+        "undo": true
+      },
+      "resourcePath": "/accounts/{accountId}/verifications",
+      "idParam": "verificationId",
+      "pathParams": [
+        "accountId"
+      ]
+    },
+    "failure": {
+      "kind": "http",
+      "status": 422,
+      "message": "dateOfBirth: \"12/04/1990\" is not a valid date; use YYYY-MM-DD"
+    },
+    "completedEndpoints": [
+      {
+        "id": "createAccount",
+        "title": "Create Account",
+        "description": "Register your account and choose whether it is for an individual or a business.",
+        "fields": [
+          {
+            "name": "email",
+            "type": "string",
+            "label": "Email Address",
+            "description": "We'll use this to contact you and verify your account.",
+            "required": true,
+            "validation": {
+              "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+            }
+          },
+          {
+            "name": "fullName",
+            "type": "string",
+            "label": "Full Name",
+            "description": "As it appears on your government ID.",
+            "required": true
+          },
+          {
+            "name": "accountType",
+            "type": "enum",
+            "label": "Account Type",
+            "description": "Select whether you're signing up as an individual or a business.",
+            "required": true,
+            "enumValues": [
+              "individual",
+              "business"
+            ]
+          }
+        ],
+        "auth": {
+          "type": "none"
+        },
+        "capabilities": {
+          "read": true,
+          "update": true,
+          "undo": true
+        },
+        "resourcePath": "/accounts",
+        "idParam": "accountId"
+      }
+    ],
+    "stepData": {
+      "createAccount": {
+        "email": "jordan@example.com",
+        "fullName": "Jordan Rivera",
+        "accountType": "individual"
+      },
+      "createVerification": {
+        "dateOfBirth": "12/04/1990",
+        "governmentIdNumber": "ID-48213",
+        "residentialAddress": "12 Harbor Lane, Springfield, ST 12345"
+      }
+    }
+  },
+  "expect": {
+    "classification": "needs-edit",
+    "rollbackFromEndpointId": null
+  }
+}

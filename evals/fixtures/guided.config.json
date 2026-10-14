@@ -7,10 +7,10 @@
         "List every field whose name ends in \"Number\" in ambiguousFields, noting which format the API expects."
       ],
       "validate": [
-        "Account holder names must be written entirely in capital letters, exactly as the bank prints them."
+        "Many sellers live in rural areas without street delivery: accept a P.O. box as a valid residential address."
       ],
       "classifyFailure": [
-        "A 409 whose message says the payout method is pending review is temporary: classify it as retryable."
+        "Error code PX-17 means compliance has closed the account for good: it can never receive payouts, so everything created for it should be undone from the account step."
       ]
     }
   }

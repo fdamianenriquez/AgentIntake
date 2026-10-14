@@ -1,6 +1,6 @@
 {
   "call": "classifyFailure",
-  "name": "with an extra rule, a 409 pending review is retryable",
+  "name": "with an extra rule, an opaque error code is known to be fundamental",
   "input": {
     "failedEndpoint": {
       "id": "createPayoutMethod",
@@ -25,7 +25,7 @@
           "name": "accountNumber",
           "type": "string",
           "label": "Account Number",
-          "description": "Your bank account number (4‑17 digits).",
+          "description": "Your bank account number (4\u201117 digits).",
           "required": true,
           "validation": {
             "pattern": "^[0-9]{4,17}$"
@@ -35,7 +35,7 @@
           "name": "routingNumber",
           "type": "string",
           "label": "Routing Number",
-          "description": "The 9‑digit routing number for your bank.",
+          "description": "The 9\u2011digit routing number for your bank.",
           "required": true,
           "validation": {
             "pattern": "^[0-9]{9}$"
@@ -69,8 +69,8 @@
     },
     "failure": {
       "kind": "http",
-      "status": 409,
-      "message": "this payout method is pending review"
+      "status": 400,
+      "message": "request rejected (error code PX-17)"
     },
     "completedEndpoints": [
       {
@@ -134,7 +134,7 @@
             "name": "governmentIdNumber",
             "type": "string",
             "label": "Government ID Number",
-            "description": "Required for individual accounts. Enter your passport, driver’s license, or national ID number.",
+            "description": "Required for individual accounts. Enter your passport, driver\u2019s license, or national ID number.",
             "required": false
           },
           {
@@ -223,10 +223,10 @@
     }
   },
   "expect": {
-    "classification": "retryable",
-    "rollbackFromEndpointId": null
+    "classification": "fundamental",
+    "rollbackFromEndpointId": "createAccount"
   },
-  "notes": "Guidance-dependent: without the config fixture a 409 is usually classified as needs-edit.",
+  "notes": "Guidance-dependent: the error code means nothing without the config fixture, which says what it is.",
   "fixtures": {
     "config": "../../fixtures/guided.config.json"
   }

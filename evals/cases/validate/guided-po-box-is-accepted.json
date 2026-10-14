@@ -1,8 +1,8 @@
 {
-  "call": "classifyFailure",
-  "name": "a 422 for an underage date of birth needs an edit",
+  "call": "validate",
+  "name": "with an extra rule, a P.O. box is accepted as a residential address",
   "input": {
-    "failedEndpoint": {
+    "endpoint": {
       "id": "createVerification",
       "title": "Verify Identity",
       "description": "Provide the verification details that apply to the account type you selected. Fields that do not apply to your account type will be hidden automatically.",
@@ -18,7 +18,7 @@
           "name": "governmentIdNumber",
           "type": "string",
           "label": "Government ID Number",
-          "description": "Required for individual accounts. Enter your passport, driver’s license, or national ID number.",
+          "description": "Required for individual accounts. Enter your passport, driver\u2019s license, or national ID number.",
           "required": false
         },
         {
@@ -85,73 +85,24 @@
         "accountId"
       ]
     },
-    "failure": {
-      "kind": "http",
-      "status": 422,
-      "message": "dateOfBirth: the account holder must be at least 18 years old"
+    "data": {
+      "dateOfBirth": "1990-04-12",
+      "governmentIdNumber": "ID-48213",
+      "residentialAddress": "P.O. Box 1234, Springfield, ST 12345"
     },
-    "completedEndpoints": [
-      {
-        "id": "createAccount",
-        "title": "Create Account",
-        "description": "Register your account and choose whether it is for an individual or a business.",
-        "fields": [
-          {
-            "name": "email",
-            "type": "string",
-            "label": "Email Address",
-            "description": "We'll use this to contact you and verify your account.",
-            "required": true,
-            "validation": {
-              "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
-            }
-          },
-          {
-            "name": "fullName",
-            "type": "string",
-            "label": "Full Name",
-            "description": "As it appears on your government ID.",
-            "required": true
-          },
-          {
-            "name": "accountType",
-            "type": "enum",
-            "label": "Account Type",
-            "description": "Select whether you're signing up as an individual or a business.",
-            "required": true,
-            "enumValues": [
-              "individual",
-              "business"
-            ]
-          }
-        ],
-        "auth": {
-          "type": "none"
-        },
-        "capabilities": {
-          "read": true,
-          "update": true,
-          "undo": true
-        },
-        "resourcePath": "/accounts",
-        "idParam": "accountId"
-      }
-    ],
-    "stepData": {
+    "previouslyCollectedData": {
       "createAccount": {
         "email": "jordan@example.com",
         "fullName": "Jordan Rivera",
         "accountType": "individual"
-      },
-      "createVerification": {
-        "dateOfBirth": "2012-04-12",
-        "governmentIdNumber": "ID-48213",
-        "residentialAddress": "12 Harbor Lane, Springfield, ST 12345"
       }
     }
   },
   "expect": {
-    "classification": "needs-edit",
-    "rollbackFromEndpointId": null
+    "valid": true
+  },
+  "notes": "Guidance-dependent: without the config fixture a P.O. box is flagged as a residential address. Guidance can relax validation; it cannot reliably make it stricter than the field descriptions, since the prompt tells the model not to invent stricter rules and that instruction takes precedence.",
+  "fixtures": {
+    "config": "../../fixtures/guided.config.json"
   }
 }
