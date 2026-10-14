@@ -236,12 +236,37 @@ function isUnchanged(
   return Object.entries(previous).every(([name, value]) => visible.has(name) || isEmptyValue(value));
 }
 
-function ownFields(endpoint: EndpointDef, data: Record<string, unknown>): Record<string, unknown> {
-  const own: Record<string, unknown> = {};
+// Read data merged over the local record, field by field: a field read
+// provides wins, a field it doesn't (a write-only secret, something the API
+// omits) keeps its local value. Only the step's own fields count -- all of
+// them, shown or not -- so read's metadata (id, status, timestamps...) never
+// gets in.
+function readOverLocal(
+  endpoint: EndpointDef,
+  local: Record<string, unknown>,
+  data: Record<string, unknown>
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = {};
   for (const field of endpoint.fields) {
-    if (field.name in data) own[field.name] = data[field.name];
+    const found = valueAt(data, field.name);
+    if (found.present) merged[field.name] = found.value;
+    else if (field.name in local) merged[field.name] = local[field.name];
   }
-  return own;
+  return merged;
+}
+
+// The parser flattens request bodies to dotted names ("address.city"), while
+// a GET usually answers { address: { city } }. A flat key wins if both exist.
+function valueAt(data: Record<string, unknown>, name: string): { present: boolean; value?: unknown } {
+  if (Object.prototype.hasOwnProperty.call(data, name)) return { present: true, value: data[name] };
+  if (!name.includes('.')) return { present: false };
+  let current: unknown = data;
+  for (const part of name.split('.')) {
+    if (current === null || typeof current !== 'object' || Array.isArray(current)) return { present: false };
+    if (!Object.prototype.hasOwnProperty.call(current, part)) return { present: false };
+    current = (current as Record<string, unknown>)[part];
+  }
+  return { present: true, value: current };
 }
 
 function sameValues(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
@@ -1332,12 +1357,9 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
             dispatch({ type: 'resourceMissing', endpointId, targetIndex: index, endpointIds, draft });
             return;
           }
-          // The server's current state wins over the local record -- but only
-          // the step's own fields: an API's read also returns its metadata (id,
-          // status, timestamps...), which isn't form data and would otherwise
-          // make an untouched form look changed and reach the record and the
-          // session. All of the step's fields, not just the ones shown now.
-          prefill = ownFields(endpoint, found.data);
+          // The server's current state wins over the local record, for the
+          // fields it actually returns (see readOverLocal).
+          prefill = readOverLocal(endpoint, record.values ?? {}, found.data);
         } catch (err) {
           if (!isMountedRef.current) return;
           const message = err instanceof Error ? err.message : String(err);

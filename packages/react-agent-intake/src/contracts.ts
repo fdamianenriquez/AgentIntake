@@ -66,6 +66,15 @@ export type ExecuteFn = (data: Record<string, unknown>, context: ExecContext) =>
 
 export interface ResourceOperations {
   create: ExecuteFn;
+  /**
+   * Returns the resource's current values in the form's shape: field names as
+   * in the flow ("address.city" may also come back nested, as
+   * { address: { city } }). Each field it returns replaces the local value;
+   * leave out fields you don't return (write-only values, for instance) and
+   * they keep what the user entered. Never return masked values such as
+   * "***1234": the form would show the mask, and a later update would send it
+   * as the real value. Extra keys (id, status...) are ignored.
+   */
   read?: (
     context: ExecContext & { resourceId: string }
   ) => Promise<{ found: true; data: Record<string, unknown> } | { found: false }>;

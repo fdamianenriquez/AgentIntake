@@ -488,6 +488,85 @@ describe('edit-mode baseline: only the step\'s own fields', () => {
   });
 });
 
+describe('edit-mode baseline: read data merged over the local record', () => {
+  const extra = (name: string): FieldDef => ({ name, type: 'string', label: name, required: false });
+
+  // The account step with extra fields; created with every field filled in.
+  async function openAccountWith(fields: FieldDef[], created: Record<string, unknown>, readData: Record<string, unknown>) {
+    const server = stubServer();
+    const update = vi.fn().mockResolvedValue({ success: true });
+    const read = vi.fn().mockResolvedValue({ found: true, data: readData });
+    const { flow } = threeStepFlow({ read, update });
+    flow.endpoints[0].fields = [...accountFields, ...fields];
+    const result = render(flow);
+    await fill(result, { name: 'Jordan', type: 'individual', ...created });
+    await fill(result, { detail: 'd1' });
+    await act(() => result.current.goToStep('account'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    server.calls.length = 0;
+    return { result, update, calls: server.calls };
+  }
+
+  it('a field read does not return keeps its local value, and an untouched save never drops it', async () => {
+    const { result, update, calls } = await openAccountWith([extra('taxId')], { taxId: 'T-1' }, {
+      id: 'acct_1',
+      name: 'Jordan (server)',
+      type: 'individual',
+    });
+    expect(result.current.values).toEqual({ name: 'Jordan (server)', type: 'individual', taxId: 'T-1' });
+
+    await act(() => result.current.submitStep());
+    await waitFor(() => expect(result.current.isEditing).toBe(false));
+
+    expect(update).not.toHaveBeenCalled();
+    expect(calls.map((c) => c.path)).not.toContain('/api/step/check-invalidation');
+    expect(result.current.stepRecords.account.values).toEqual({ name: 'Jordan (server)', type: 'individual', taxId: 'T-1' });
+    const sync = calls.find((c) => c.path === '/api/session/sync')!;
+    expect(sync.body.steps).toEqual([{ endpointId: 'account', data: { name: 'Jordan (server)', type: 'individual', taxId: 'T-1' } }]);
+  });
+
+  it('resolves a dotted field name against the nested object read returns', async () => {
+    const { result, update } = await openAccountWith([extra('address.city')], { 'address.city': 'Cusco' }, {
+      name: 'Jordan',
+      type: 'individual',
+      address: { city: 'Lima' },
+    });
+    expect(result.current.values['address.city']).toBe('Lima');
+
+    act(() => result.current.updateField('type', 'business'));
+    await act(() => result.current.submitStep());
+    await waitFor(() => expect(update).toHaveBeenCalled());
+
+    expect(update.mock.calls[0][1].previousValues).toEqual({ name: 'Jordan', type: 'individual', 'address.city': 'Lima' });
+  });
+
+  it('a flat dotted key wins over the nested value', async () => {
+    const { result } = await openAccountWith([extra('address.city')], { 'address.city': 'Cusco' }, {
+      name: 'Jordan',
+      type: 'individual',
+      'address.city': 'Arequipa',
+      address: { city: 'Lima' },
+    });
+
+    expect(result.current.values['address.city']).toBe('Arequipa');
+  });
+
+  it('shows the server value where read provides one and the local value elsewhere; the baseline is what is shown', async () => {
+    const { result, update, calls } = await openAccountWith([extra('taxId')], { taxId: 'T-1' }, {
+      name: 'Jordan',
+      type: 'business',
+    });
+    expect(result.current.values).toEqual({ name: 'Jordan', type: 'business', taxId: 'T-1' });
+
+    // Saving exactly what is shown is not a change.
+    await act(() => result.current.submitStep());
+    await waitFor(() => expect(result.current.isEditing).toBe(false));
+    expect(update).not.toHaveBeenCalled();
+    expect(calls.map((c) => c.path)).not.toContain('/api/step/check-invalidation');
+    expect(result.current.stepRecords.account.values).toEqual({ name: 'Jordan', type: 'business', taxId: 'T-1' });
+  });
+});
+
 describe('cancelEdit', () => {
   it('returns to the step the user was on, restores what they had typed there, and re-syncs the session', async () => {
     const { calls } = stubServer();
