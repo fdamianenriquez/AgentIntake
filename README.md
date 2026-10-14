@@ -71,6 +71,8 @@ node dist/cli/index.js generate \
 
 The output is a `FlowDef` **without** `execute` functions. Review it, then add each endpoint's `execute` by hand — AgentIntake never generates that part (see [Authentication model](#authentication-model)).
 
+If the output file already exists and has [author guidance](#author-guidance) in it, `generate` refuses to overwrite it, before calling the model: pass `--keep-guidance` to carry the flow's guidance and each step's guidance over to the new flow by endpoint id (it lists the steps whose guidance was dropped because they are no longer in the spec, and checks the kept guidance against the limits first), or `--force` to overwrite it. A flow without guidance is overwritten as before. Generation also uses the global guidance in `agentintake.config.json` (for example its output language, for the labels and descriptions it writes).
+
 ### How the spec becomes steps
 
 Each write operation becomes one step, with two refinements:
@@ -95,6 +97,15 @@ Paste raw spec text, upload a file, or paste a URL. Studio validates that the in
 
 The preview runs in **Preview mode**: adaptive fields and semantic validation are real LLM calls, but each step's `execute()` is simulated — it logs what it *would* call to the browser console instead of hitting any API. A notice in the UI says so.
 
+Next to the preview, the **Instructions** tab edits [author guidance](#author-guidance) without touching a file by hand:
+
+- **Global guidance** — one control per slot, with a character counter and its limit. **Save** writes `agentintake.config.json` (the path is shown) and Studio uses it at once, without a restart; validation errors appear next to the field.
+- **Flow and step guidance** — flow guidance, the flow's output language, and one field per step. They live in the flow: the preview uses them immediately, and the downloaded `flow.json` includes them.
+- **What the model receives** — the prompt for a chosen call and step, built by the same code the server uses, with your guidance block highlighted and everything else shown as fixed text. There is no free-text prompt editor.
+- **Test** — runs the [built-in eval cases](#checking-guidance-with-eval-prompts) for the calls whose guidance changed (or the ones you pick) against your configured model, after showing how many runs it will make and with which model, then shows a table per call and the failing runs. The built-in cases use an example payment-onboarding flow, so your global and flow guidance applies to them, but step guidance only reaches a case through a step with the same id; Studio says so, and warns when none of your guided steps match. Use `eval-prompts --cases` for cases built on your own flow.
+
+Regenerating a flow in the same Studio session keeps its flow and step guidance by endpoint id and lists any steps whose guidance was dropped.
+
 Studio itself resolves a pasted URL or uploaded file to spec *content* in your browser first. Fetching a URL from the browser is subject to that host's CORS policy, so some URLs will fail there; pasting the spec text always works.
 
 ### Choosing an LLM provider
@@ -109,6 +120,9 @@ One `.env` at the project root is the source of truth. It is read from the direc
 | `AGENTINTAKE_STATIC_MODE` | Any value other than empty, `false` or `0` turns adaptivity off (see below) |
 | `PORT` | Port for the runtime server (`npm start`), default `3000` |
 | `AGENTINTAKE_CORS_ORIGINS` | Comma-separated origins allowed to call the runtime server from a browser (e.g. `https://app.example.com`). Unset, every origin is allowed and the server logs a warning at startup — see [Deploying the runtime server](#deploying-the-runtime-server) |
+| `AGENTINTAKE_CONFIG` | Path of the [author guidance](#author-guidance) config file, instead of `agentintake.config.json` in the working directory. A missing file at this path is an error |
+| `AGENTINTAKE_FLOWS_DIR` | Directory of `flow.json` files the runtime server trusts for guidance — see [Trust model](#trust-model-and-trusted-flows) |
+| `AGENTINTAKE_LOG_LEVEL` | `error`, `warn` (default), `info` or `debug` — see [Logging](#logging). Any other value stops startup |
 
 Defaults: `anthropic` → `claude-haiku-5-5`, `openai` → `gpt-6-luna`, `google` → `gemini-3.8-flash`, `openrouter` → `openrouter/free`. Each is a fast, low-cost tier that did well in the comparison below; set `LLM_MODEL` to use a larger model. `openrouter` is an extra fourth option (OpenAI-compatible API, reached through the same SDK); `openrouter/free` is OpenRouter's own router across whichever free models are currently available, so it costs nothing to try but can hand consecutive requests to different underlying models.
 
@@ -118,16 +132,14 @@ How each way of running it finds its provider:
 - **Studio** — if no valid provider and key are configured, it shows a one-time setup screen in the browser: pick a provider, paste the key. It is written to `.env` in the directory you launched Studio from, so no text-file editing is needed and you aren't asked again next session.
 - **Runtime wizard server** (`npm start`) — reads `.env` like the CLI. This is a deployment-time concern of whoever hosts the wizard; the person filling out the form never sees or configures it.
 
-**Honest caveats.** Structured-output reliability varies by provider and by model. Every provider goes through the same Vercel AI SDK `generateObject` interface, and every LLM output schema is kept to the subset all of them accept (no `oneOf`, no optional properties, no open-ended maps — a test checks this), but the models themselves differ. A comparison on the five LLM calls, using cases with a known correct answer and run through OpenRouter, gave:
+**Honest caveats.** Structured-output reliability varies by provider and by model. Every provider goes through the same Vercel AI SDK `generateObject` interface, and every LLM output schema is kept to the subset all of them accept (no `oneOf`, no optional properties, no open-ended maps — a test checks this), but the models themselves differ. The [built-in eval suite](#checking-guidance-with-eval-prompts) — 33 cases with a known correct answer across the five LLM calls, run twice each (66 runs), through OpenRouter — gave:
 
-| Model | Correct | Typical latency |
-|---|---|---|
-| `anthropic/claude-haiku-5.5` | 54/54 | 2–4 s per step call, ~10 s generation |
-| `openai/gpt-6-luna` | 21/21 | 2–5 s per step call, ~12 s generation |
-| `google/gemini-3.8-flash` | 13/14 (one 15 s timeout) | 3–12 s per step call, ~10 s generation |
-| `openrouter/free` | 14/33 (mostly timeouts) | 4–30 s per step call, ~65 s generation |
+| Model | Passed | Fell back | generation p50 / p95 | step calls p50 / p95 |
+|---|---|---|---|---|
+| `anthropic/claude-haiku-5.5` | 66/66 (100%) | 0 | 6.4 s / 7.8 s | 2.2–2.6 s / 2.9–3.8 s |
+| `openrouter/free` | 40/66 (61%) | 26 | 27.6 s / 90.8 s | 6.7–10.3 s / 15.0–30.0 s |
 
-A small sample, not a benchmark suite, but the gap is clear: the free router is fine for trying the tool out, and most of the time the wizard runs on its fallback path with it. A call that runs past its timeout degrades gracefully (below) rather than blocking. Live calls against real providers are deliberately not part of the automated tests (they'd need funded keys for every provider on each CI run); provider wiring, schema compatibility and the fail-fast errors are.
+Per call for `openrouter/free`: generation 7/8, adaptive fields 6/14, semantic validation 5/16, later-step review 11/14, failure classification 11/14 — and every one of its failures was a fallback (mostly timeouts), not a wrong answer. A small sample, not a benchmark suite, but the gap is clear: the free router is fine for trying the tool out, and much of the time the wizard runs on its fallback path with it. A call that runs past its timeout degrades gracefully (below) rather than blocking. Run `eval-prompts` yourself to measure the model you configure. Live calls against real providers are deliberately not part of the automated tests (they'd need funded keys for every provider on each CI run); provider wiring, schema compatibility and the fail-fast errors are.
 
 ### Running the demo
 
@@ -155,6 +167,8 @@ The demo's operations call an in-browser mock of that API (`demo/mockApi.ts`), s
 - **A — payout request times out once:** the first attempt does create the payout method, but the response never arrives. The timeout is classified as retryable without an LLM call; Retry sends the same idempotency key, so the mock returns the payout method it already created instead of a second one (the log shows the timed-out POST, then a 201 with the same id).
 - **B — account on compliance hold:** adding a payout method fails with a 403; the model classifies it as fundamental and the form proposes undoing the verification and the account. After you confirm, the mock receives the two `DELETE`s in reverse order and the form starts again at the first step.
 - **C — change an earlier answer:** complete the flow, go back to the account, and switch `individual` → `business`. The account is updated with `PATCH`; the model flags the later steps, and verification, whose questions changed, has to be updated with the business fields before the flow is complete again. The payout method, which can't be changed here, can only be kept.
+
+- **With author guidance:** a "Flow" switch picks the same flow with [author guidance](#author-guidance) (`demo/flow.guided.json`): flow guidance, guidance on the account and payout steps, and `outputLanguage: "es-MX"`. The model's field descriptions, validation messages and review reasons come out in Spanish, and the payout step's guidance (the account holder name in capital letters) is enforced by semantic validation. The form's own buttons and messages, and the labels already in `flow.json`, stay in English — see [Languages](#languages).
 
 Live runs depend on the configured model: with a slow or unreliable one, a call may time out and the form falls back as described above (full field list, everything marked for review, no undo proposed). Field names are deliberately generic and fictional; the demo illustrates the mechanism and is **not** guidance on the KYC/KYB requirements of any jurisdiction.
 
@@ -340,11 +354,13 @@ The routes are mounted by `createApp()` in `server/src/app.ts`. The form calls a
 | Route | Body | Returns |
 |---|---|---|
 | `POST /api/generate-flow` | `{ specContent }` — raw JSON or YAML text | `{ flow, ambiguousFields, warnings }` |
-| `POST /api/step/fields` | `{ sessionId, endpoint, precedingEndpointIds? }` | `{ fields, suggestedValues, degraded }` |
-| `POST /api/step/validate` | `{ sessionId, endpoint, data, precedingEndpointIds? }` | `{ valid, errors, degraded }` |
+| `POST /api/step/fields` | `{ sessionId, flow?, endpoint, precedingEndpointIds? }` | `{ fields, suggestedValues, degraded }` |
+| `POST /api/step/validate` | `{ sessionId, flow?, endpoint, data, precedingEndpointIds? }` | `{ valid, errors, degraded }` |
 | `POST /api/session/sync` | `{ sessionId, steps: [{ endpointId, data \| null }] }` — replaces (or, with `null`, clears) what the session holds for those steps | `{ ok: true }` |
-| `POST /api/step/check-invalidation` | `{ sessionId, editedEndpoint, before, after, laterCompletedEndpoints }` | `{ affected: [{ endpointId, reason }], degraded }` |
-| `POST /api/step/classify-failure` | `{ sessionId, failedEndpoint, failure: { kind, status?, message? }, completedEndpoints }` | `{ classification, explanation, rollbackFromEndpointId, degraded }` |
+| `POST /api/step/check-invalidation` | `{ sessionId, flow?, editedEndpoint, before, after, laterCompletedEndpoints }` | `{ affected: [{ endpointId, reason }], degraded }` |
+| `POST /api/step/classify-failure` | `{ sessionId, flow?, failedEndpoint, failure: { kind, status?, message? }, completedEndpoints }` | `{ classification, explanation, rollbackFromEndpointId, degraded }` |
+
+`flow` is `{ id, guidance?, outputLanguage? }`: the flow's id and its [author guidance](#author-guidance); each `endpoint` can carry its step's `guidance`.
 
 ## What is sent to the LLM provider
 
@@ -354,8 +370,112 @@ AgentIntake calls the provider you configure, from your server, with:
 - **Each wizard step:** that step's field definitions, **the answers the user has given so far in this session**, and, on submit, the answers for the step being validated.
 - **After a completed step is edited:** that step's values before and after the edit, plus the definitions and submitted answers of the later completed steps, to decide which of them need review.
 - **When a step fails with an unclear error:** the failure (status and up to 500 characters of the API's error message), plus the definitions and submitted answers of the failed and completed steps.
+- **With every call that has [author guidance](#author-guidance):** the guidance text — the config file's slots and, at runtime, the flow's and the relevant steps' guidance.
 
 So end users' form answers leave your infrastructure and reach the LLM provider under that provider's data policy. If your intake collects personal or regulated data, check that policy before deploying, or turn the per-step calls off with `AGENTINTAKE_STATIC_MODE` (below). The API key itself never reaches the browser.
+
+## Author guidance
+
+A flow author can tell the model about their domain without touching code: what the business is, the voice of the text it writes, the language to write in, and extra rules — per LLM call globally, and per flow and step in `flow.json`. Guidance only ever *adds* text to one marked block of each prompt; it can't change the prompt's own instructions, the output schemas or the guardrails.
+
+### Slots
+
+| Slot | Set in | Limit | Reaches |
+|---|---|---|---|
+| `domainContext` — what the business or process is | `agentintake.config.json` | 1,000 characters | every call |
+| `tone` — voice of the text the model writes | `agentintake.config.json` | 200 characters | every call |
+| `outputLanguage` — BCP-47 tag, e.g. `es-MX` | `agentintake.config.json`, and `flow.json` (flow level) | valid tag | every call (generation: the config's only) |
+| `extraRules.<call>` — extra rules for one call | `agentintake.config.json` | 10 rules × 300 characters | that call only |
+| flow `guidance` | `flow.json` | 1,000 characters | every runtime call |
+| step `guidance` | `flow.json`, per endpoint | 500 characters | field selection and validation of that step; the review after an edit (the edited step and each later one); failure classification of the failed step |
+
+The calls are `generation`, `selectFields` (adaptive fields), `validate` (semantic validation), `invalidation` (which later steps an edit affects) and `classifyFailure`. Everything applicable is combined, global first, then flow, then step, so the most specific text reads last; a flow's `outputLanguage` overrides the global one. Over-limit text, an invalid language tag or an unknown key is an error that names the file, the place and the rule — never silently truncated or ignored. The runtime server, Studio and the CLI read the config once at startup (Studio again after each save); a bad file stops them.
+
+`agentintake.config.json`, in the directory you run from (or wherever `AGENTINTAKE_CONFIG` points):
+
+```json
+{
+  "$schema": "./schemas/agentintake.config.schema.json",
+  "guidance": {
+    "domainContext": "Onboarding for sellers who want to receive payouts.",
+    "tone": "Friendly, concise, second person.",
+    "outputLanguage": "es-MX",
+    "extraRules": {
+      "validate": ["Accept a P.O. box as a valid residential address."],
+      "classifyFailure": ["Error code PX-17 means compliance has closed the account for good."]
+    }
+  }
+}
+```
+
+The `$schema` line is optional: it points editors at the JSON Schema shipped in `schemas/agentintake.config.schema.json` (adjust the relative path to where your config file is) for completion and inline checks. In `flow.json`, `guidance` and `outputLanguage` sit next to the flow's `title`, and `guidance` next to each endpoint's `title`. Generation never writes them; they are yours.
+
+### What guidance can and cannot do
+
+Each prompt has the same layout: the task, then your guidance block, then the data, then the output rules. The block is introduced as lower priority than the rest of the prompt **by design**: guidance that would contradict one of the prompt's own definitions loses.
+
+- **It works well when it adds knowledge** the model can't have (what an internal error code means, that a name must match a legal name, that most users are small businesses), **relaxes a check** (accept a P.O. box), or **tightens validation** (a name in capital letters — semantic validation treats your guidance as a source of rules, alongside the field descriptions).
+- **It cannot** change the output schemas, enums or refinements, add or rename fields, change what generation rehydrates from the spec, or override the safety rules (the model can only name real fields and completed steps; the API's error text stays untrusted data; nothing is undone without the user's confirmation).
+
+Check a guidance change with [`eval-prompts`](#checking-guidance-with-eval-prompts) or Studio's Test before shipping it.
+
+### Languages
+
+`outputLanguage` sets the language of **text the model writes**: at runtime, field descriptions it rewrites, validation messages, review reasons and failure explanations; at generation, the titles, labels and descriptions it writes into `flow.json`. Labels already in a `flow.json` stay as they were generated, so generate with the language set if you want them translated. The hook's and component's own strings ("Continue", "Checking what went wrong…") and the deterministic retry explanations stay in English in this version.
+
+### Trust model and trusted flows
+
+The server holds no flow definitions of its own: the browser sends each step's definition with every call, and with it the flow's and the steps' guidance. So, by default, an end user can change the guidance they send — just as they can already change the field definitions and data in those requests. That is acceptable because what guidance steers (adaptive fields, semantic validation, review and failure explanations) is user experience, not security: your API must validate its own input, and nothing destructive happens without the user's click.
+
+For deployments that want guidance to be authoritative, set `AGENTINTAKE_FLOWS_DIR` to a directory of `flow.json` files. The server loads and validates every `*.json` there at startup (an invalid file or a repeated flow id stops it), keyed by flow `id`. While it is set, **client-sent flow and step guidance is never used**: for a flow the server knows, it uses its own copy's guidance, output language and step titles; for an unknown or missing flow id, only the global config's guidance, with one warning per id (the first 1,000 ids; then one note that further ids aren't reported). Field definitions still come from the client.
+
+## Checking guidance with eval-prompts
+
+`eval-prompts` runs eval cases — inputs with a known correct answer — against the configured provider and model, with your guidance applied, through the same engine functions the server uses. It is how you check that a guidance change (or a model change) still gets the right answers before it ships. It spends real model calls, so it is never part of `npm test`.
+
+```bash
+node dist/cli/index.js eval-prompts                                  # the built-in suite, asks before running
+node dist/cli/index.js eval-prompts --calls validate,classifyFailure --repeat 3
+node dist/cli/index.js eval-prompts --config evals/fixtures/guided.config.json --flow demo/flow.guided.json --yes
+node dist/cli/index.js eval-prompts --cases evals/cases --no-builtin --calls generation --json --yes
+```
+
+| Flag | Meaning |
+|---|---|
+| `--config <path>` | Global guidance to apply (default: `agentintake.config.json` or `AGENTINTAKE_CONFIG`) |
+| `--flow <path>` | A `flow.json` whose flow guidance applies to every case, and whose step guidance applies to case steps with the same endpoint id |
+| `--cases <dir>` | Your own cases, run with the built-in ones (`--no-builtin` for yours only) |
+| `--calls <list>` | Only these calls (comma-separated) |
+| `--repeat <n>` | Runs per case (overrides a case's own `repeat`) |
+| `--concurrency <n>` | Cases at once, 1–4 (default 1) |
+| `--min-pass <rate>` | Exit with code 1 if any call passes less than this (default `0.9`) |
+| `--json` | Print only the report, as JSON |
+| `--yes` | Don't ask for confirmation |
+
+Before running it prints how many runs it will make and with which provider and model, and asks; without a terminal to ask and without `--yes` it refuses instead of waiting. The report shows, per call, the pass rate, how many runs fell back (timeout, invalid output, provider error — always counted as failures), p50/p95 latency and each failing run with what came back, plus every prompt version and the guidance hash each run used. Exit codes: `0` all calls at or above `--min-pass`, `1` some call below it, `2` a usage or configuration error (bad option, invalid config, flow or case file, static mode, missing key) — reported before any model call.
+
+Guidance that changes what a correct answer is makes the built-in cases that assume otherwise fail — with the guided demo flow's capital-letters rule, the plausible payout cases are flagged, as they should be. That is the report doing its job: write your own cases for your rules.
+
+The built-in suite (`evals/cases/`, 33 cases) covers the example payment-onboarding flow: narrowing fields for an individual vs a business account, a payout holder that doesn't match the earlier name next to plausible submissions, edits that affect one later step or none, and failures from a compliance-hold 403, a duplicate-value 409, a bad routing number and a timeout-shaped error. One case per call only passes with guidance; it carries its own fixture config or flow (`evals/fixtures/`).
+
+To add your own, create `<dir>/<call>/<name>.json`, one case per file:
+
+```json
+{
+  "call": "classifyFailure",
+  "name": "a compliance hold is fundamental, undone from the account",
+  "input": {
+    "failedEndpoint": { "id": "createPayoutMethod", "title": "Payout", "fields": [] },
+    "failure": { "kind": "http", "status": 403, "message": "account on compliance hold" },
+    "completedEndpoints": [{ "id": "createAccount", "title": "Account", "fields": [] }]
+  },
+  "expect": { "classification": "fundamental", "rollbackFromEndpointId": "createAccount" },
+  "notes": "Optional.",
+  "repeat": 2
+}
+```
+
+`input` is what that call's engine function takes (endpoint definitions as in `flow.json`). Expectations per call: `generation` — every input endpoint present, and optionally `ambiguousFields: { mustInclude, mustExclude }`; `selectFields` — `mustInclude` / `mustExclude` field names; `validate` — `valid`, and optionally `errorFields: { fields, mode: "exact" | "subset" }`; `invalidation` — `affected` (exact set of step ids) or `mustInclude` / `mustExclude`; `classifyFailure` — `classification`, and optionally `rollbackFromEndpointId` (a step id or `null`). A case that needs particular guidance can carry `fixtures: { config, flow }` (paths relative to the case file), which replace `--config` / `--flow` for that case. Every case is checked strictly when loaded — an unknown key or a `call` that doesn't match its directory is an error naming the file.
 
 ## Resilience: graceful degradation
 
@@ -365,6 +485,22 @@ For deployments that would rather trade adaptivity for cost, set `AGENTINTAKE_ST
 
 Flow generation has no fallback to degrade to, so it is bounded differently: the request is cancelled after 120 seconds and the CLI or Studio reports that the model didn't respond, rather than waiting indefinitely.
 
+## Logging
+
+`AGENTINTAKE_LOG_LEVEL` sets what the server, Studio and the CLI print: `error`, `warn` (the default), `info` or `debug`. When an LLM call falls back, a warning says which call, why, and which versions it ran with:
+
+```
+stepEngine: validateStepSubmission("createPayoutMethod") degraded to the fallback path -- The model did not respond within 15 seconds. [call=validate prompt=v2 guidanceBlock=v1 guidance=3f9a1c0b7e24]
+```
+
+At `debug`, every LLM call logs one line:
+
+```
+llm call=validate prompt=v2 guidanceBlock=v1 guidance=3f9a1c0b7e24 outcome=ok duration=2318ms
+```
+
+`prompt` is that call's prompt version, `guidanceBlock` the version of the guidance block's own text, and `guidance` the first 12 hex characters of the SHA-256 of the rendered guidance block (`none` without guidance) — enough to tie a rise in fallbacks to a guidance or prompt change. Log lines never contain the guidance text, the prompt, the submitted data or any field value.
+
 ## Deploying the runtime server
 
 `npm start` runs the routes from `createApp()`: the per-step calls the form makes, and `/api/generate-flow`. They are meant to sit next to your own application, not on the open internet:
@@ -373,7 +509,8 @@ Flow generation has no fallback to degrade to, so it is bounded differently: the
 - **Every call can spend LLM quota.** Rate-limit the routes, per user or per IP, at the proxy or with middleware. An open public endpoint is a free LLM proxy for anyone who finds it.
 - **Session ids come from the client.** A `sessionId` only groups one wizard's calls; it isn't proof of who the caller is. Don't treat it as an identity.
 - **Restrict CORS to your app's origin.** Set `AGENTINTAKE_CORS_ORIGINS` (comma-separated, each `scheme://host[:port]`; a trailing slash is ignored, and an entry with a path or query stops the server at startup) and only those origins get CORS headers. Unset, every origin is allowed, which keeps the local demo working out of the box, and the server logs a warning at startup. CORS only limits which web pages a browser lets call the server: curl, scripts and other servers ignore it, so it doesn't replace authentication or rate limiting.
-- **Studio is not part of this server.** Its provider-setup routes, which write an API key to `.env`, are mounted only by the local `studio` command.
+- **Decide whether guidance must be authoritative.** By default the browser sends a flow's guidance; set `AGENTINTAKE_FLOWS_DIR` to make the server use its own copies — see [Trust model](#trust-model-and-trusted-flows).
+- **Studio is not part of this server.** Its routes — provider setup, which writes an API key to `.env`, and the Instructions tab's routes, which write the config file and start eval runs — are mounted only by the local `studio` command.
 
 ## Known operational boundaries
 
@@ -396,6 +533,8 @@ One thing that is a fix, not a boundary, but worth being visible about: **`/api/
 
 **v1.5 — Smart Recovery** is in place: resource families in the parser, the operations contract, revisiting completed steps with `read`/`update`, an LLM check that narrows down which later steps an edit affects, and recovery from a failed step with a confirmed undo. The demo shows each of them.
 
+**v1.6 — Author guidance** is in place: guidance slots in a config file and in `flow.json`, trusted flows, `eval-prompts` with a built-in suite, Studio's Instructions tab, and per-call debug logging. See [CHANGELOG.md](CHANGELOG.md). Translating the form's own UI strings is planned next.
+
 Smaller stretch goals, roughly in priority order: dynamic enum options, chunked generation for large specs, rate-limiting middleware, free-text bulk fill, hosted Studio with shareable links, multi-spec cross-service flows, an explicit LangGraph state graph for the step engine, session persistence, and a visual `FlowDef` editor.
 
 ## Development
@@ -406,6 +545,8 @@ npm run test:watch
 npx vitest run --coverage
 npm run build          # tsc -> dist/
 ```
+
+`npm test` makes no real model calls. To measure prompts against a real model, use [`eval-prompts`](#checking-guidance-with-eval-prompts).
 
 ## License
 
