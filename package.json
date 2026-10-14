@@ -1,6 +1,6 @@
 {
   "name": "agent-intake",
-  "version": "0.1.0",
+  "version": "1.6.0",
   "description": "Turns an OpenAPI spec into a single, AI-orchestrated, multi-step form wizard.",
   "license": "MIT",
   "keywords": [
@@ -22,6 +22,19 @@
   },
   "private": true,
   "type": "module",
+  "files": [
+    "dist/cli/",
+    "dist/server/",
+    "dist/packages/",
+    "studio/",
+    "packages/react-agent-intake/src/",
+    "server/src/providers.ts",
+    "evals/",
+    "schemas/",
+    "!**/*.test.*",
+    "!**/__snapshots__/",
+    "!**/__fixtures__/"
+  ],
   "bin": {
     "agent-intake": "./dist/cli/index.js"
   },

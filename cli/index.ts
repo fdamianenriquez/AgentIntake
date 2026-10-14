@@ -29,7 +29,7 @@ const program = new Command();
 program
   .name('agent-intake')
   .description('Turns an OpenAPI spec into a single, AI-orchestrated, multi-step form wizard.')
-  .version('0.1.0');
+  .version('1.6.0');
 
 registerGenerateCommand(program);
 registerStudioCommand(program);
