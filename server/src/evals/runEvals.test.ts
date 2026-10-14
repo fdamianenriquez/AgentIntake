@@ -149,6 +149,32 @@ describe('degraded runs', () => {
   });
 });
 
+describe('overlapping runs', () => {
+  it('each keeps its own fallback reasons, and console.warn is left untouched', async () => {
+    const originalWarn = console.warn;
+    const releases: Array<() => void> = [];
+    mocked.mockImplementation(async (prompt) => {
+      await new Promise<void>((resolve) => releases.push(resolve));
+      throw new Error(prompt.includes('"A"') ? 'reason A' : 'reason B');
+    });
+    const caseFor = (title: string) =>
+      kase('selectFields', { endpoint: { ...verification, title } }, { mustInclude: ['dob'] }, { name: title });
+
+    const first = runEvals({ cases: [caseFor('A')] });
+    await vi.waitFor(() => expect(releases).toHaveLength(1));
+    const second = runEvals({ cases: [caseFor('B')] });
+    await vi.waitFor(() => expect(releases).toHaveLength(2));
+    releases[0](); // the first ends while the second is still running
+    const firstReport = await first;
+    releases[1]();
+    const secondReport = await second;
+
+    expect(firstReport.calls.selectFields!.failures[0].degradedReason).toBe('reason A');
+    expect(secondReport.calls.selectFields!.failures[0].degradedReason).toBe('reason B');
+    expect(console.warn).toBe(originalWarn);
+  });
+});
+
 describe('repeat and concurrency', () => {
   const c = kase('selectFields', { endpoint: verification }, { mustInclude: ['dob'] }, { repeat: 3 });
 

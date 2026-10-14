@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { FieldDef, ParsedEndpoint } from '../../packages/react-agent-intake/src/contracts.js';
+import { reportDegradation } from './degradation.js';
 import { generateStructured } from './llmClient.js';
 import * as classifyFailurePrompt from './prompts/classifyFailure.js';
 import type { PromptGuidance } from './prompts/guidance.js';
@@ -99,6 +100,7 @@ export async function selectStepFields(input: SelectStepFieldsInput): Promise<Se
     const result = await generateStructured(prompt, outputSchema, { timeoutMs: STEP_TIMEOUT_MS });
 
     if (result.fields.length === 0) {
+      reportDegradation('selectStepFields', input.endpoint.id, 'the model chose no fields');
       return { fields: baseFields, suggestedValues: {}, degraded: true };
     }
 
@@ -348,7 +350,10 @@ export async function classifyFailure(input: ClassifyFailureInput): Promise<Clas
   }
 }
 
+// A capture (the eval runner) records the reason instead; otherwise it is
+// logged, as for every runtime request.
 function logDegradation(fn: string, endpointId: string, error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
+  if (reportDegradation(fn, endpointId, message)) return;
   console.warn(`stepEngine: ${fn}("${endpointId}") degraded to the fallback path -- ${message}`);
 }

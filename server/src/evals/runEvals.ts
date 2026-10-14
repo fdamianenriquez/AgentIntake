@@ -1,6 +1,6 @@
-import { AsyncLocalStorage } from 'node:async_hooks';
 import type { GeneratedFlow } from '../../../packages/react-agent-intake/src/contracts.js';
 import type { AgentIntakeConfig } from '../config.js';
+import { withDegradationCapture } from '../degradation.js';
 import { generateFlow } from '../flowGenerator.js';
 import { resolveModelId, resolveProvider } from '../llmClient.js';
 import * as classifyFailurePrompt from '../prompts/classifyFailure.js';
@@ -194,27 +194,25 @@ async function runOne(c: EvalCase, guidance: PromptGuidance | undefined): Promis
   }
 }
 
-// The engine reports why it fell back through console.warn. Each run gets its
-// own async context, so its messages are attributed to it even when several
-// run at once, and they don't clutter the output.
-const runContext = new AsyncLocalStorage<{ warnings: string[] }>();
-
 async function timedRun(c: EvalCase, run: number, options: RunEvalsOptions): Promise<EvalRun> {
-  const context = { warnings: [] as string[] };
   const started = performance.now();
   let outcome: Outcome;
+  let reasons: string[] = [];
   try {
-    outcome = await runContext.run(context, () => runOne(c, guidanceForCase(c, options)));
+    // The engine reports why it fell back to this run's own capture, so
+    // overlapping runs (or eval jobs) never mix their reasons.
+    const captured = await withDegradationCapture(() => runOne(c, guidanceForCase(c, options)));
+    outcome = captured.result;
+    reasons = captured.degradations.map((degradation) => degradation.message);
   } catch (error) {
     // Generation has no fallback: a failure throws.
     outcome = { degraded: true, got: undefined };
-    context.warnings.push(error instanceof Error ? error.message : String(error));
+    reasons = [error instanceof Error ? error.message : String(error)];
   }
   const latencyMs = Math.round(performance.now() - started);
   const base = { call: c.call, name: c.name, file: c.file, run, latencyMs };
   if (outcome.degraded) {
-    const reason = context.warnings.at(-1)?.replace(/^stepEngine: \S+ degraded to the fallback path -- /, '');
-    return { ...base, passed: false, degraded: true, degradedReason: reason ?? 'the engine fell back', got: outcome.got };
+    return { ...base, passed: false, degraded: true, degradedReason: reasons.at(-1) ?? 'the engine fell back', got: outcome.got };
   }
   if (outcome.mismatch) return { ...base, passed: false, degraded: false, reason: outcome.mismatch, got: outcome.got };
   return { ...base, passed: true, degraded: false };
@@ -261,25 +259,15 @@ export async function runEvals(options: RunEvalsOptions): Promise<EvalReport> {
   );
   const runs: EvalRun[] = new Array(tasks.length);
 
-  const originalWarn = console.warn;
-  console.warn = (...args: unknown[]) => {
-    const context = runContext.getStore();
-    if (context) context.warnings.push(args.map(String).join(' '));
-    else originalWarn(...args);
+  let next = 0;
+  const worker = async () => {
+    while (next < tasks.length) {
+      const index = next++;
+      runs[index] = await timedRun(tasks[index].c, tasks[index].run, options);
+      options.onRun?.(runs[index]);
+    }
   };
-  try {
-    let next = 0;
-    const worker = async () => {
-      while (next < tasks.length) {
-        const index = next++;
-        runs[index] = await timedRun(tasks[index].c, tasks[index].run, options);
-        options.onRun?.(runs[index]);
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, worker));
-  } finally {
-    console.warn = originalWarn;
-  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, worker));
 
   const calls: Partial<Record<EvalCall, CallSummary>> = {};
   for (const call of EVAL_CALLS) {
