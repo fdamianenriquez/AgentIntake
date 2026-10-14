@@ -7,6 +7,8 @@ import { handleSessionSync } from './routes/sessionSync.js';
 import { handleStepFields } from './routes/stepFields.js';
 import { handleStepValidate } from './routes/stepValidate.js';
 import { loadConfig, type AgentIntakeConfig } from './config.js';
+import { loadTrustedFlows } from './trustedFlows.js';
+import type { GeneratedFlow } from '../../packages/react-agent-intake/src/contracts.js';
 import type { ServerContext } from './serverContext.js';
 
 // A real-world spec describes a whole API, even though only its write
@@ -79,15 +81,21 @@ export interface CreateAppOptions {
   warnOpenCors?: boolean;
   /** Settings to use instead of loading agentintake.config.json (null: none). */
   config?: AgentIntakeConfig | null;
+  /** Trusted flows to use instead of loading AGENTINTAKE_FLOWS_DIR (null: off). */
+  trustedFlows?: Map<string, GeneratedFlow> | null;
 }
 
 // Separated from index.ts (not part of  sketch, but the standard
 // Express split) so tests can build and exercise the app -- routes, CORS,
 // JSON parsing -- without binding a real port.
-export function createApp({ warnOpenCors = true, config }: CreateAppOptions = {}): Express {
+export function createApp({ warnOpenCors = true, config, trustedFlows }: CreateAppOptions = {}): Express {
   const app = express();
   // Loaded once; an invalid file stops startup with the file, place and rule.
-  const context: ServerContext = { guidance: (config === undefined ? loadConfig() : config)?.guidance };
+  const context: ServerContext = {
+    guidance: (config === undefined ? loadConfig() : config)?.guidance,
+    trustedFlows: (trustedFlows === undefined ? loadTrustedFlows() : trustedFlows) ?? undefined,
+    warnedFlowIds: new Set(),
+  };
   const origins = corsOriginsFromEnv();
   if (!origins && warnOpenCors && !warnedOpenCors) {
     warnedOpenCors = true;

@@ -151,3 +151,60 @@ describe('flow.json guidance reaches the prompt (sent by the client)', () => {
     expect(mocked).not.toHaveBeenCalled();
   });
 });
+
+describe('trusted flows (AGENTINTAKE_FLOWS_DIR)', () => {
+  const serverCopy = {
+    id: 'onboarding',
+    title: 'Onboarding',
+    description: 'd',
+    guidance: 'Server-side flow guidance.',
+    outputLanguage: 'ja',
+    endpoints: [{ id: 'createPayout', title: 'Payout', fields: [], guidance: 'Server-side step guidance.' }],
+  };
+  const trustedFlows = new Map([[serverCopy.id, serverCopy]]);
+  const clientFlow = { id: 'onboarding', guidance: 'Client flow guidance.', outputLanguage: 'pt-BR' };
+  const clientEndpoint = { ...endpoint, guidance: 'Client step guidance.' };
+
+  it('for a known flow, uses the server\'s guidance and ignores what the client sent', async () => {
+    await request(createApp({ config: null, trustedFlows }))
+      .post('/api/step/validate')
+      .send({ sessionId: 't1', flow: clientFlow, endpoint: clientEndpoint, data: { bank: 'B' } });
+
+    const prompt = mocked.mock.calls[0][0];
+    expect(prompt).toContain('About this form: Server-side flow guidance.');
+    expect(prompt).toContain('Guidance for the step "Payout": Server-side step guidance.');
+    expect(prompt).toContain('Write all user-facing text in: ja');
+    expect(prompt).not.toContain('Client');
+    expect(prompt).not.toContain('pt-BR');
+  });
+
+  it('a step the server copy gives no guidance gets none, whatever the client sent', async () => {
+    const other = { ...clientEndpoint, id: 'unknownStep' };
+    await request(createApp({ config: null, trustedFlows }))
+      .post('/api/step/fields')
+      .send({ sessionId: 't2', flow: clientFlow, endpoint: other });
+
+    expect(mocked.mock.calls[0][0]).not.toContain('Client step guidance.');
+  });
+
+  it('an unknown flow id falls back to the client\'s guidance, with one warning per id', async () => {
+    const warn = vi.mocked(console.warn);
+    const app = createApp({ config: null, trustedFlows });
+    const send = (sessionId: string) =>
+      request(app).post('/api/step/fields').send({ sessionId, flow: { ...clientFlow, id: 'elsewhere' }, endpoint: clientEndpoint });
+
+    await send('t3');
+    await send('t4');
+
+    expect(mocked.mock.calls[0][0]).toContain('About this form: Client flow guidance.');
+    const unknown = warn.mock.calls.filter(([message]) => String(message).includes('"elsewhere" is not in AGENTINTAKE_FLOWS_DIR'));
+    expect(unknown).toHaveLength(1);
+  });
+
+  it('with trusted flows off, never warns about flow ids', async () => {
+    const warn = vi.mocked(console.warn);
+    await request(createApp({ config: null, trustedFlows: null })).post('/api/step/fields').send({ sessionId: 't5', flow: clientFlow, endpoint });
+
+    expect(warn.mock.calls.filter(([message]) => String(message).includes('AGENTINTAKE_FLOWS_DIR'))).toEqual([]);
+  });
+});
