@@ -289,6 +289,21 @@ describe('the report', () => {
   });
 });
 
+describe('guidance hashes in the report', () => {
+  it('each failing run has its guidance hash, and each call lists the hashes it ran with', async () => {
+    const { guidanceHash } = await import('../llmLog.js');
+    const withTone = (tone: string) =>
+      kase('validate', { endpoint: payout, data: {} }, { valid: false }, { name: tone, fixtures: { config: { guidance: { tone } }, flow: null } });
+    const report = await runEvals({ cases: [withTone('A.'), withTone('B.'), kase('validate', { endpoint: payout, data: {} }, { valid: false })] });
+
+    const summary = report.calls.validate!;
+    expect(summary.failures.map((failure) => failure.guidanceHash).sort()).toEqual(
+      [guidanceHash({ tone: 'A.' }), guidanceHash({ tone: 'B.' }), 'none'].sort()
+    );
+    expect(summary.guidanceHashes).toEqual([guidanceHash({ tone: 'A.' }), guidanceHash({ tone: 'B.' }), 'none'].sort());
+  });
+});
+
 describe('static mode', () => {
   it('refuses to run, since every call would only take its fallback', async () => {
     vi.stubEnv('AGENTINTAKE_STATIC_MODE', '1');

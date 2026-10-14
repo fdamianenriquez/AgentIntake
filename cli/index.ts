@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import path from 'node:path';
 import { Command } from 'commander';
+import { resolveLogLevel } from '../server/src/logger.js';
 import { registerEvalPromptsCommand } from './commands/evalPrompts.js';
 import { registerGenerateCommand } from './commands/generate.js';
 import { registerStudioCommand } from './commands/studio.js';
@@ -13,6 +14,14 @@ try {
   process.loadEnvFile(path.resolve(process.cwd(), '.env'));
 } catch (error) {
   if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+}
+
+// An invalid AGENTINTAKE_LOG_LEVEL stops every command before it starts.
+try {
+  resolveLogLevel();
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(2);
 }
 
 const program = new Command();

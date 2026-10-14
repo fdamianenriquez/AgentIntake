@@ -8,6 +8,7 @@ import { handleStepFields } from './routes/stepFields.js';
 import { handleStepValidate } from './routes/stepValidate.js';
 import { loadConfig, type AgentIntakeConfig } from './config.js';
 import { loadTrustedFlows } from './trustedFlows.js';
+import { resolveLogLevel } from './logger.js';
 import type { GeneratedFlow } from '../../packages/react-agent-intake/src/contracts.js';
 import type { ServerContext } from './serverContext.js';
 
@@ -95,6 +96,8 @@ export interface CreateAppOptions {
 // JSON parsing -- without binding a real port.
 export function createApp({ warnOpenCors = true, config, getConfig, trustedFlows }: CreateAppOptions = {}): Express {
   const app = express();
+  // An invalid AGENTINTAKE_LOG_LEVEL stops startup, like an invalid config.
+  resolveLogLevel();
   // Loaded once; an invalid file stops startup with the file, place and rule.
   const context: ServerContext = {
     guidance: getConfig ? undefined : (config === undefined ? loadConfig() : config)?.guidance,

@@ -9,6 +9,7 @@ import { EVAL_CALLS, loadCases, type EvalCall, type EvalCase } from '../../serve
 import { countRuns, MAX_CONCURRENCY, runEvals, type EvalReport } from '../../server/src/evals/runEvals.js';
 import { buildModel, resolveModelId, resolveProvider } from '../../server/src/llmClient.js';
 import { isStaticMode } from '../../server/src/stepEngine.js';
+import { resolveLogLevel } from '../../server/src/logger.js';
 import { readFlowFile } from '../../server/src/trustedFlows.js';
 
 // `agent-intake eval-prompts` (README: "Checking guidance with eval-prompts"): runs eval cases against the
@@ -90,6 +91,11 @@ function prepare(options: EvalPromptsOptions): Prepared {
     }
   }
 
+  try {
+    resolveLogLevel();
+  } catch (error) {
+    throw new UsageError(error instanceof Error ? error.message : String(error));
+  }
   if (isStaticMode()) {
     throw new UsageError(
       'AGENTINTAKE_STATIC_MODE is on, so every call would take its fallback path and the evals would only measure that. Unset it to run them.'
@@ -137,7 +143,7 @@ function formatReport(report: EvalReport, minPass: number, root: string): string
     lines.push('', 'Failing runs:');
     for (const failure of failures) {
       const why = failure.degraded ? `fell back: ${failure.degradedReason}` : failure.reason;
-      lines.push(`  ${failure.call} > ${failure.name} (run ${failure.run}): ${why}`);
+      lines.push(`  ${failure.call} > ${failure.name} (run ${failure.run}, guidance ${failure.guidanceHash}): ${why}`);
       lines.push(`    ${path.relative(root, failure.file)}`);
       if (failure.got !== undefined) lines.push(`    got: ${JSON.stringify(failure.got)}`);
     }

@@ -119,7 +119,7 @@ describe('output and exit codes', () => {
 
     const text = t.out.join('\n');
     expect(text).toMatch(/validate\s+2\s+1\s+50%/);
-    expect(text).toMatch(/Failing runs:\n {2}validate > fails \(run 1\): valid was true, expected false/);
+    expect(text).toMatch(/Failing runs:\n {2}validate > fails \(run 1, guidance none\): valid was true, expected false/);
   });
 
   it('exits 1 when a call passes less than --min-pass, 0 otherwise', async () => {
@@ -163,6 +163,15 @@ describe('usage and configuration errors: exit 2, no model calls', () => {
 
     expect(code).toBe(EXIT_USAGE);
     expect(t.err.join('\n')).toMatch(message);
+    expect(mocked).not.toHaveBeenCalled();
+  });
+
+  it('an invalid AGENTINTAKE_LOG_LEVEL is refused', async () => {
+    vi.stubEnv('AGENTINTAKE_LOG_LEVEL', 'verbose');
+    const t = io();
+
+    expect(await runEvalPrompts({ ...dir(), yes: true }, t.io)).toBe(EXIT_USAGE);
+    expect(t.err.join('\n')).toMatch(/AGENTINTAKE_LOG_LEVEL must be one of/);
     expect(mocked).not.toHaveBeenCalled();
   });
 

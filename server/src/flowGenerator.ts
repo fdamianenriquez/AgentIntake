@@ -6,6 +6,7 @@ import {
   type ParsedEndpoint,
 } from '../../packages/react-agent-intake/src/contracts.js';
 import { generateStructured, LlmTimeoutError } from './llmClient.js';
+import { loggedLlmCall } from './llmLog.js';
 import * as generationPrompt from './prompts/generation.js';
 import type { PromptGuidance } from './prompts/guidance.js';
 
@@ -107,7 +108,10 @@ export async function generateFlow(input: GenerateFlowInput): Promise<FlowGenera
   const outputSchema = buildLlmOutputSchema(input.endpoints);
 
   const attempt = async (): Promise<FlowGenerationResult> => {
-    const raw = await generateStructured(prompt, outputSchema, { timeoutMs: GENERATION_TIMEOUT_MS });
+    const raw = await loggedLlmCall(
+      { call: 'generation', promptVersion: generationPrompt.PROMPT_VERSION, guidance: input.guidance },
+      () => generateStructured(prompt, outputSchema, { timeoutMs: GENERATION_TIMEOUT_MS })
+    );
     return expandLlmOutput(raw, input.endpoints);
   };
 

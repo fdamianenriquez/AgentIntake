@@ -24,7 +24,7 @@ describe('degradation reports', () => {
 
     expect(result.degraded).toBe(true);
     expect(warn).toHaveBeenCalledWith(
-      'stepEngine: validateStepSubmission("payout") degraded to the fallback path -- The model did not respond within 15 seconds.'
+      'stepEngine: validateStepSubmission("payout") degraded to the fallback path -- The model did not respond within 15 seconds. [call=validate prompt=v2 guidanceBlock=v1 guidance=none]'
     );
   });
 

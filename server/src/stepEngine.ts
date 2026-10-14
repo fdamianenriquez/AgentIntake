@@ -2,6 +2,8 @@ import { z } from 'zod';
 import type { FieldDef, ParsedEndpoint } from '../../packages/react-agent-intake/src/contracts.js';
 import { reportDegradation } from './degradation.js';
 import { generateStructured } from './llmClient.js';
+import { describeCall, loggedLlmCall, type LlmCallMeta } from './llmLog.js';
+import { logger } from './logger.js';
 import * as classifyFailurePrompt from './prompts/classifyFailure.js';
 import type { PromptGuidance } from './prompts/guidance.js';
 import * as invalidationPrompt from './prompts/invalidation.js';
@@ -75,6 +77,7 @@ export async function selectStepFields(input: SelectStepFieldsInput): Promise<Se
     return { fields: baseFields, suggestedValues: {}, degraded: true };
   }
 
+  const selectMeta: LlmCallMeta = { call: 'selectFields', promptVersion: selectFieldsPrompt.PROMPT_VERSION, guidance: input.guidance };
   try {
     const outputSchema = z.object({
       fields: z.array(
@@ -97,7 +100,7 @@ export async function selectStepFields(input: SelectStepFieldsInput): Promise<Se
       { endpoint: input.endpoint, baseFields, previouslyCollectedData: input.previouslyCollectedData ?? {} },
       input.guidance
     );
-    const result = await generateStructured(prompt, outputSchema, { timeoutMs: STEP_TIMEOUT_MS });
+    const result = await loggedLlmCall(selectMeta, () => generateStructured(prompt, outputSchema, { timeoutMs: STEP_TIMEOUT_MS }));
 
     if (result.fields.length === 0) {
       reportDegradation('selectStepFields', input.endpoint.id, 'the model chose no fields');
@@ -123,7 +126,7 @@ export async function selectStepFields(input: SelectStepFieldsInput): Promise<Se
 
     return { fields: adaptedFields, suggestedValues, degraded: false };
   } catch (error) {
-    logDegradation('selectStepFields', input.endpoint.id, error);
+    logDegradation('selectStepFields', input.endpoint.id, error, selectMeta);
     return { fields: baseFields, suggestedValues: {}, degraded: true };
   }
 }
@@ -175,6 +178,7 @@ export async function validateStepSubmission(
     return { valid: true, errors: {}, degraded: true };
   }
 
+  const validateMeta: LlmCallMeta = { call: 'validate', promptVersion: validatePrompt.PROMPT_VERSION, guidance: input.guidance };
   try {
     const outputSchema = z.object({
       valid: z.boolean(),
@@ -190,7 +194,7 @@ export async function validateStepSubmission(
       { endpoint, data, previouslyCollectedData: input.previouslyCollectedData ?? {} },
       input.guidance
     );
-    const result = await generateStructured(prompt, outputSchema, { timeoutMs: STEP_TIMEOUT_MS });
+    const result = await loggedLlmCall(validateMeta, () => generateStructured(prompt, outputSchema, { timeoutMs: STEP_TIMEOUT_MS }));
 
     if (!result.valid) {
       const errors = Object.fromEntries(result.errors.map((entry) => [entry.name, entry.message]));
@@ -199,7 +203,7 @@ export async function validateStepSubmission(
 
     return { valid: true, errors: {}, degraded: false };
   } catch (error) {
-    logDegradation('validateStepSubmission', endpoint.id, error);
+    logDegradation('validateStepSubmission', endpoint.id, error, validateMeta);
     // degraded means "skip the semantic check and accept the data by
     // default" -- it is not a rejection.
     return { valid: true, errors: {}, degraded: true };
@@ -250,6 +254,7 @@ export async function checkInvalidation(input: CheckInvalidationInput): Promise<
     return { affected: everyLaterStep(), degraded: true };
   }
 
+  const invalidationMeta: LlmCallMeta = { call: 'invalidation', promptVersion: invalidationPrompt.PROMPT_VERSION, guidance: input.guidance };
   try {
     const outputSchema = z.object({
       affected: z.array(
@@ -260,9 +265,9 @@ export async function checkInvalidation(input: CheckInvalidationInput): Promise<
       ),
     });
 
-    const result = await generateStructured(invalidationPrompt.build(input, input.guidance), outputSchema, {
-      timeoutMs: INVALIDATION_TIMEOUT_MS,
-    });
+    const result = await loggedLlmCall(invalidationMeta, () =>
+      generateStructured(invalidationPrompt.build(input, input.guidance), outputSchema, { timeoutMs: INVALIDATION_TIMEOUT_MS })
+    );
 
     // One entry per step, in flow order, whatever order the model used.
     const reasons = new Map(result.affected.map((entry) => [entry.endpointId, entry.reason]));
@@ -271,7 +276,7 @@ export async function checkInvalidation(input: CheckInvalidationInput): Promise<
       .map((endpoint) => ({ endpointId: endpoint.id, reason: reasons.get(endpoint.id)! }));
     return { affected, degraded: false };
   } catch (error) {
-    logDegradation('checkInvalidation', input.editedEndpoint.id, error);
+    logDegradation('checkInvalidation', input.editedEndpoint.id, error, invalidationMeta);
     return { affected: everyLaterStep(), degraded: true };
   }
 }
@@ -326,6 +331,7 @@ export async function classifyFailure(input: ClassifyFailureInput): Promise<Clas
     return fallback;
   }
 
+  const classifyMeta: LlmCallMeta = { call: 'classifyFailure', promptVersion: classifyFailurePrompt.PROMPT_VERSION, guidance: input.guidance };
   try {
     const completedIds = input.completedEndpoints.map((endpoint) => endpoint.id);
     const rollbackFrom =
@@ -340,20 +346,22 @@ export async function classifyFailure(input: ClassifyFailureInput): Promise<Clas
         error: 'Only a fundamental failure can propose an undo.',
       });
 
-    const result = await generateStructured(classifyFailurePrompt.build(input, input.guidance), outputSchema, {
-      timeoutMs: CLASSIFY_FAILURE_TIMEOUT_MS,
-    });
+    const result = await loggedLlmCall(classifyMeta, () =>
+      generateStructured(classifyFailurePrompt.build(input, input.guidance), outputSchema, {
+        timeoutMs: CLASSIFY_FAILURE_TIMEOUT_MS,
+      })
+    );
     return { ...result, degraded: false };
   } catch (error) {
-    logDegradation('classifyFailure', input.failedEndpoint.id, error);
+    logDegradation('classifyFailure', input.failedEndpoint.id, error, classifyMeta);
     return fallback;
   }
 }
 
 // A capture (the eval runner) records the reason instead; otherwise it is
 // logged, as for every runtime request.
-function logDegradation(fn: string, endpointId: string, error: unknown): void {
+function logDegradation(fn: string, endpointId: string, error: unknown, meta: LlmCallMeta): void {
   const message = error instanceof Error ? error.message : String(error);
   if (reportDegradation(fn, endpointId, message)) return;
-  console.warn(`stepEngine: ${fn}("${endpointId}") degraded to the fallback path -- ${message}`);
+  logger.warn(`stepEngine: ${fn}("${endpointId}") degraded to the fallback path -- ${message} [${describeCall(meta)}]`);
 }

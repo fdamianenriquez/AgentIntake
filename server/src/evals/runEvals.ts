@@ -1,6 +1,7 @@
 import type { GeneratedFlow } from '../../../packages/react-agent-intake/src/contracts.js';
 import type { AgentIntakeConfig } from '../config.js';
 import { withDegradationCapture } from '../degradation.js';
+import { guidanceHash } from '../llmLog.js';
 import { generateFlow } from '../flowGenerator.js';
 import { resolveModelId, resolveProvider } from '../llmClient.js';
 import * as classifyFailurePrompt from '../prompts/classifyFailure.js';
@@ -48,6 +49,8 @@ export interface EvalRun {
   /** Why the expectation wasn't met. */
   reason?: string;
   latencyMs: number;
+  /** Short hash of the guidance block the run used ("none" without guidance), as in the logs. */
+  guidanceHash: string;
   /** What came back, for failed runs. */
   got?: unknown;
 }
@@ -60,6 +63,8 @@ export interface CallSummary {
   passRate: number;
   p50Ms: number;
   p95Ms: number;
+  /** The guidance hashes this call ran with, so a result can be tied to a guidance version. */
+  guidanceHashes: string[];
   failures: Omit<EvalRun, 'call' | 'passed'>[];
 }
 
@@ -198,12 +203,13 @@ async function runOne(c: EvalCase, guidance: PromptGuidance | undefined): Promis
 
 async function timedRun(c: EvalCase, run: number, options: RunEvalsOptions): Promise<EvalRun> {
   const started = performance.now();
+  const guidance = guidanceForCase(c, options);
   let outcome: Outcome;
   let reasons: string[] = [];
   try {
     // The engine reports why it fell back to this run's own capture, so
     // overlapping runs (or eval jobs) never mix their reasons.
-    const captured = await withDegradationCapture(() => runOne(c, guidanceForCase(c, options)));
+    const captured = await withDegradationCapture(() => runOne(c, guidance));
     outcome = captured.result;
     reasons = captured.degradations.map((degradation) => degradation.message);
   } catch (error) {
@@ -212,7 +218,7 @@ async function timedRun(c: EvalCase, run: number, options: RunEvalsOptions): Pro
     reasons = [error instanceof Error ? error.message : String(error)];
   }
   const latencyMs = Math.round(performance.now() - started);
-  const base = { call: c.call, name: c.name, file: c.file, run, latencyMs };
+  const base = { call: c.call, name: c.name, file: c.file, run, latencyMs, guidanceHash: guidanceHash(guidance) };
   if (outcome.degraded) {
     return { ...base, passed: false, degraded: true, degradedReason: reasons.at(-1) ?? 'the engine fell back', got: outcome.got };
   }
@@ -240,6 +246,7 @@ function summarize(runs: EvalRun[]): CallSummary {
     passRate: runs.length ? passed / runs.length : 0,
     p50Ms: percentile(latencies, 50),
     p95Ms: percentile(latencies, 95),
+    guidanceHashes: [...new Set(runs.map((run) => run.guidanceHash))].sort(),
     failures: runs.filter((run) => !run.passed).map(({ call: _call, passed: _passed, ...rest }) => rest),
   };
 }
