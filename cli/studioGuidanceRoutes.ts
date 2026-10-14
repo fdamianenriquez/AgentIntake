@@ -227,6 +227,29 @@ export function registerStudioGuidanceRoutes(app: Express, { configStore, casesD
   const jobs = new Map<string, EvalJob>();
   const cases = () => loadCases(casesDir ?? builtinCasesDir());
 
+  // The step ids the built-in cases use: step guidance only reaches a case
+  // whose step has the same id, so the UI can say what a test covers.
+  app.get('/api/studio/evals/cases', (_req, res) => {
+    try {
+      const ids = new Set<string>();
+      for (const c of cases()) {
+        const input = c.input as Record<string, any>;
+        const endpoints = [
+          ...(input.endpoints ?? []),
+          input.endpoint,
+          input.editedEndpoint,
+          ...(input.laterCompletedEndpoints ?? []),
+          input.failedEndpoint,
+          ...(input.completedEndpoints ?? []),
+        ].filter(Boolean);
+        for (const endpoint of endpoints) ids.add(endpoint.id);
+      }
+      res.status(200).json({ stepIds: [...ids].sort() });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
   app.get('/api/studio/evals/plan', (req, res) => {
     const query = PlanQuerySchema.safeParse(req.query);
     if (!query.success) {

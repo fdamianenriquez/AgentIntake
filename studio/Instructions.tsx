@@ -435,6 +435,18 @@ function TestPanel({ flow, savedGlobal, pollMs }: { flow: GeneratedFlow; savedGl
   const [error, setError] = useState<string | null>(null);
   const testedSignatures = useRef<Partial<Record<Call, string>>>({});
   const running = job?.view.status === 'running';
+  // The built-in cases are an example flow; step guidance reaches a case only
+  // through a step with the same id.
+  const [caseStepIds, setCaseStepIds] = useState<string[] | null>(null);
+  useEffect(() => {
+    fetch('/api/studio/evals/cases')
+      .then((response) => response.json())
+      .then((body: { stepIds?: string[] }) => setCaseStepIds(body.stepIds ?? []))
+      .catch(() => setCaseStepIds(null));
+  }, []);
+  const guidedSteps = flow.endpoints.filter((endpoint) => endpoint.guidance?.trim());
+  const stepGuidanceUncovered =
+    caseStepIds !== null && guidedSteps.length > 0 && !guidedSteps.some((endpoint) => caseStepIds.includes(endpoint.id));
 
   useEffect(() => {
     if (!job || job.view.status !== 'running') return;
@@ -505,6 +517,17 @@ function TestPanel({ flow, savedGlobal, pollMs }: { flow: GeneratedFlow; savedGl
       <button type="button" onClick={() => void askToRun()} disabled={running || selected.length === 0 || plan !== null}>
         Test
       </button>
+      <p className="studio-field-hint">
+        The test uses AgentIntake's built-in example cases (a payment onboarding flow), not your own steps. Your global
+        and flow guidance applies to them; step guidance only applies to steps with the same id.
+      </p>
+      {stepGuidanceUncovered && (
+        <p role="note" className="studio-warnings">
+          Your step guidance isn't covered by this test: none of the steps you gave guidance to has the id of a step in the
+          built-in cases. Check it in "What the model receives" above, or with your own cases (agent-intake eval-prompts
+          --cases).
+        </p>
+      )}
 
       {plan && (
         <div role="dialog" aria-labelledby="test-confirm" className="studio-confirm">

@@ -53,6 +53,8 @@ function stubStudio(overrides: Partial<Record<string, (body: any) => { status?: 
             prompt: PROMPT_HEAD + BLOCK + PROMPT_TAIL,
             guidanceRange: { start: PROMPT_HEAD.length, end: PROMPT_HEAD.length + BLOCK.length },
           });
+        case 'GET /api/studio/evals/cases':
+          return reply(200, { stepIds: ['createAccount', 'createVerification', 'createPayoutMethod'] });
         case 'GET /api/studio/evals/plan':
           return reply(200, { runs: 4, provider: 'openrouter', model: 'some/model' });
         case 'POST /api/studio/evals':
@@ -352,5 +354,31 @@ describe('Test', () => {
     );
     await waitFor(() => expect(screen.getByRole('checkbox', { name: /Flow generation/ })).not.toBeChecked());
     expect(screen.getByRole('checkbox', { name: /Checking answers \(changed\)/ })).toBeChecked();
+  });
+});
+
+describe('what Test covers', () => {
+  it('says it uses the built-in example cases, and that step guidance needs matching step ids', async () => {
+    stubStudio();
+    renderTab();
+
+    expect(await screen.findByText(/uses AgentIntake's built-in example cases/)).toBeInTheDocument();
+    expect(screen.getByText(/step guidance only applies to steps with the same id/i)).toBeInTheDocument();
+    expect(screen.queryByText(/isn't covered by this test/)).not.toBeInTheDocument();
+  });
+
+  it('says so when this flow\'s step guidance can\'t reach any built-in case', async () => {
+    stubStudio();
+    renderTab(vi.fn(), { ...flow, endpoints: [{ ...flow.endpoints[0], guidance: 'Names have accents.' }, flow.endpoints[1]] });
+
+    expect(await screen.findByText(/Your step guidance isn't covered by this test/)).toHaveAttribute('role', 'note');
+  });
+
+  it('does not warn when a step with guidance has a built-in case\'s id', async () => {
+    stubStudio();
+    renderTab(vi.fn(), { ...flow, endpoints: [{ ...flow.endpoints[0], id: 'createAccount', guidance: 'G.' }, flow.endpoints[1]] });
+
+    await screen.findByText(/uses AgentIntake's built-in example cases/);
+    expect(screen.queryByText(/isn't covered by this test/)).not.toBeInTheDocument();
   });
 });

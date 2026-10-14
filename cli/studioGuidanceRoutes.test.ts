@@ -67,6 +67,7 @@ describe('every Studio guidance route is local-only', () => {
     ['post', '/api/studio/config'],
     ['post', '/api/studio/render-prompt'],
     ['get', '/api/studio/evals/plan'],
+    ['get', '/api/studio/evals/cases'],
     ['post', '/api/studio/evals'],
     ['get', '/api/studio/evals/some-id'],
     ['delete', '/api/studio/evals/some-id'],
@@ -211,6 +212,14 @@ describe('evals', () => {
     });
     return waiting;
   }
+
+  it('lists the step ids the built-in cases use, so the UI can say what a test covers', async () => {
+    const { app } = studio({}, casesDir(2));
+    const response = await request(app).get('/api/studio/evals/cases');
+
+    expect(response.body).toEqual({ stepIds: ['payout'] });
+    expect(mocked).not.toHaveBeenCalled();
+  });
 
   it('the plan says how many runs, with which provider and model', async () => {
     const { app } = studio({}, casesDir(3));
