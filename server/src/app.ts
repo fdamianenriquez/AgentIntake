@@ -99,7 +99,7 @@ export function createApp({ warnOpenCors = true, config, getConfig, trustedFlows
   const context: ServerContext = {
     guidance: getConfig ? undefined : (config === undefined ? loadConfig() : config)?.guidance,
     trustedFlows: (trustedFlows === undefined ? loadTrustedFlows() : trustedFlows) ?? undefined,
-    warnedFlowIds: new Set(),
+    unknownFlowIds: { seen: new Set(), full: false },
   };
   const origins = corsOriginsFromEnv();
   if (!origins && warnOpenCors && !warnedOpenCors) {

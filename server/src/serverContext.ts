@@ -10,10 +10,12 @@ export interface ServerContext {
   guidance?: GlobalGuidance;
   /** From AGENTINTAKE_FLOWS_DIR, keyed by flow id; undefined when trusted flows are off. */
   trustedFlows?: Map<string, GeneratedFlow>;
-  /** Flow ids already warned about, so each unknown id is reported once. */
-  warnedFlowIds?: Set<string>;
-  /** Set once the cap is reached and the "not reported" message was logged. */
-  warnedFlowIdsFull?: boolean;
+  /**
+   * Unknown flow ids already warned about, so each is reported once, and
+   * whether the cap was reached. One object, shared by reference, so it stays
+   * one record even when the context is copied per request (Studio).
+   */
+  unknownFlowIds?: { seen: Set<string>; full: boolean };
 }
 
 /**
@@ -59,15 +61,15 @@ export function runtimeGuidance(
   }
 
   const id = wireFlow?.id ?? '(missing)';
-  const warned = context.warnedFlowIds;
-  if (warned && !warned.has(id) && !context.warnedFlowIdsFull) {
-    if (warned.size < MAX_WARNED_FLOW_IDS) {
-      warned.add(id);
+  const unknown = context.unknownFlowIds;
+  if (unknown && !unknown.seen.has(id) && !unknown.full) {
+    if (unknown.seen.size < MAX_WARNED_FLOW_IDS) {
+      unknown.seen.add(id);
       console.warn(
         `AgentIntake: flow ${wireFlow ? `"${id}"` : id} is not in AGENTINTAKE_FLOWS_DIR; the client's flow and step guidance was ignored.`
       );
     } else {
-      context.warnedFlowIdsFull = true;
+      unknown.full = true;
       console.warn(
         `AgentIntake: ${MAX_WARNED_FLOW_IDS} unknown flow ids reported; further unknown flow ids are not reported (their guidance is still ignored).`
       );

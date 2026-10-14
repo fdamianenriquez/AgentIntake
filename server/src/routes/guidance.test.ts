@@ -253,3 +253,18 @@ describe('a config provider (Studio)', () => {
     expect(mocked.mock.calls[2][0]).not.toContain('AUTHOR_GUIDANCE');
   });
 });
+
+describe('unknown flow id warnings with a config provider (Studio)', () => {
+  it('stay capped across separate requests', async () => {
+    const warn = vi.mocked(console.warn);
+    warn.mockClear();
+    const app = createApp({ getConfig: () => null, trustedFlows: new Map() });
+
+    for (let i = 0; i < 1005; i++) {
+      await request(app).post('/api/step/fields').send({ sessionId: `cap-${i}`, flow: { id: `random-${i}` }, endpoint });
+    }
+
+    const flowWarnings = warn.mock.calls.filter(([message]) => /AGENTINTAKE_FLOWS_DIR|unknown flow ids/.test(String(message)));
+    expect(flowWarnings).toHaveLength(1001);
+  }, 60000);
+});
