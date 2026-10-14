@@ -30,21 +30,27 @@ export function loadTrustedFlows(
   const sources = new Map<string, string>();
   for (const name of readdirSync(dir).filter((entry) => entry.endsWith('.json')).sort()) {
     const file = path.join(dir, name);
-    let raw: unknown;
-    try {
-      raw = JSON.parse(readFileSync(file, 'utf-8'));
-    } catch (error) {
-      throw new Error(`${file}: not valid JSON (${error instanceof Error ? error.message : String(error)}).`);
-    }
-    const parsed = GeneratedFlowSchema.safeParse(raw);
-    if (!parsed.success) {
-      const problems = parsed.error.issues.map((issue) => `  ${issue.path.join('.') || '(top level)'}: ${issue.message}`);
-      throw new Error(`${file} is not a valid flow:\n${problems.join('\n')}`);
-    }
-    const previous = sources.get(parsed.data.id);
-    if (previous) throw new Error(`${file}: flow id "${parsed.data.id}" is also used by ${previous}.`);
-    flows.set(parsed.data.id, parsed.data);
-    sources.set(parsed.data.id, file);
+    const flow = readFlowFile(file);
+    const previous = sources.get(flow.id);
+    if (previous) throw new Error(`${file}: flow id "${flow.id}" is also used by ${previous}.`);
+    flows.set(flow.id, flow);
+    sources.set(flow.id, file);
   }
   return flows;
+}
+
+/** Reads and validates one flow.json; errors name the file, the place and the rule. */
+export function readFlowFile(file: string): GeneratedFlow {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(file, 'utf-8'));
+  } catch (error) {
+    throw new Error(`${file}: not valid JSON (${error instanceof Error ? error.message : String(error)}).`);
+  }
+  const parsed = GeneratedFlowSchema.safeParse(raw);
+  if (!parsed.success) {
+    const problems = parsed.error.issues.map((issue) => `  ${issue.path.join('.') || '(top level)'}: ${issue.message}`);
+    throw new Error(`${file} is not a valid flow:\n${problems.join('\n')}`);
+  }
+  return parsed.data;
 }

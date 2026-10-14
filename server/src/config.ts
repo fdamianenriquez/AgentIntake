@@ -69,6 +69,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, cwd: string = p
     return null;
   }
 
+  return readConfigFile(file);
+}
+
+/** Reads and validates one config file; errors name the file, the place and the rule. */
+export function readConfigFile(file: string): AgentIntakeConfig {
   let raw: unknown;
   try {
     raw = JSON.parse(readFileSync(file, 'utf-8'));
