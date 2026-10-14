@@ -257,7 +257,7 @@ describe('the report', () => {
     expect(report).toMatchObject({
       provider: 'openrouter',
       model: 'some/model',
-      promptVersions: { generation: 1, selectFields: 1, validate: 1, invalidation: 1, classifyFailure: 1, guidanceBlock: 1 },
+      promptVersions: { generation: 1, selectFields: 1, validate: 2, invalidation: 1, classifyFailure: 1, guidanceBlock: 1 },
       totals: { runs: 2, passed: 1, failed: 1, degraded: 0, passRate: 0.5 },
     });
     expect(Object.keys(report.calls)).toEqual(['selectFields', 'validate']);

@@ -1013,7 +1013,7 @@ Submitted data (JSON):
 Data already collected in earlier steps (JSON):
 {}
 
-Task: look for implausible values or inconsistencies a simple regex/range check can't catch (e.g. a start date far in the past for a new hire, a value inconsistent with an earlier answer). Only flag genuine problems -- do not invent stricter rules than the field descriptions imply.
+Task: look for implausible values or inconsistencies a simple regex/range check can't catch (e.g. a start date far in the past for a new hire, a value inconsistent with an earlier answer). Only flag genuine problems -- do not invent stricter rules than the field descriptions and the author's guidance imply.
 
 Return "valid: true" with an empty "errors" array if nothing looks wrong. Otherwise return "valid: false" and one entry per problem in "errors", each with the exact field "name" (from the fields list above) and a short, user-facing "message"."
 `;
@@ -1067,7 +1067,7 @@ Data already collected in earlier steps (JSON):
   }
 }
 
-Task: look for implausible values or inconsistencies a simple regex/range check can't catch (e.g. a start date far in the past for a new hire, a value inconsistent with an earlier answer). Only flag genuine problems -- do not invent stricter rules than the field descriptions imply.
+Task: look for implausible values or inconsistencies a simple regex/range check can't catch (e.g. a start date far in the past for a new hire, a value inconsistent with an earlier answer). Only flag genuine problems -- do not invent stricter rules than the field descriptions and the author's guidance imply.
 
 Return "valid: true" with an empty "errors" array if nothing looks wrong. Otherwise return "valid: false" and one entry per problem in "errors", each with the exact field "name" (from the fields list above) and a short, user-facing "message"."
 `;
@@ -1113,7 +1113,7 @@ Submitted data (JSON):
 Data already collected in earlier steps (JSON):
 {}
 
-Task: look for implausible values or inconsistencies a simple regex/range check can't catch (e.g. a start date far in the past for a new hire, a value inconsistent with an earlier answer). Only flag genuine problems -- do not invent stricter rules than the field descriptions imply.
+Task: look for implausible values or inconsistencies a simple regex/range check can't catch (e.g. a start date far in the past for a new hire, a value inconsistent with an earlier answer). Only flag genuine problems -- do not invent stricter rules than the field descriptions and the author's guidance imply.
 
 Return "valid: true" with an empty "errors" array if nothing looks wrong. Otherwise return "valid: false" and one entry per problem in "errors", each with the exact field "name" (from the fields list above) and a short, user-facing "message"."
 `;
@@ -1153,7 +1153,7 @@ Submitted data (JSON):
 Data already collected in earlier steps (JSON):
 {}
 
-Task: look for implausible values or inconsistencies a simple regex/range check can't catch (e.g. a start date far in the past for a new hire, a value inconsistent with an earlier answer). Only flag genuine problems -- do not invent stricter rules than the field descriptions imply.
+Task: look for implausible values or inconsistencies a simple regex/range check can't catch (e.g. a start date far in the past for a new hire, a value inconsistent with an earlier answer). Only flag genuine problems -- do not invent stricter rules than the field descriptions and the author's guidance imply.
 
 Return "valid: true" with an empty "errors" array if nothing looks wrong. Otherwise return "valid: false" and one entry per problem in "errors", each with the exact field "name" (from the fields list above) and a short, user-facing "message"."
 `;

@@ -101,7 +101,7 @@
   "expect": {
     "valid": true
   },
-  "notes": "Guidance-dependent: without the config fixture a P.O. box is flagged as a residential address. Guidance can relax validation; it cannot reliably make it stricter than the field descriptions, since the prompt tells the model not to invent stricter rules and that instruction takes precedence.",
+  "notes": "Guidance-dependent: without the config fixture a P.O. box is flagged as a residential address. Guidance that relaxes a check.",
   "fixtures": {
     "config": "../../fixtures/guided.config.json"
   }
