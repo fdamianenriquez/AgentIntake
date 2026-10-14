@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import path from 'node:path';
 import { Command } from 'commander';
+import { registerEvalPromptsCommand } from './commands/evalPrompts.js';
 import { registerGenerateCommand } from './commands/generate.js';
 import { registerStudioCommand } from './commands/studio.js';
 
@@ -23,6 +24,7 @@ program
 
 registerGenerateCommand(program);
 registerStudioCommand(program);
+registerEvalPromptsCommand(program);
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));
