@@ -28,9 +28,18 @@ export async function runStudio(options: StudioOptions): Promise<void> {
 
   // The guard runs before everything else, including createApp()'s open CORS,
   // so another website can't reach Studio's routes from the user's browser.
+  let api: ReturnType<typeof createApp>;
+  try {
+    api = createApp({ warnOpenCors: false });
+  } catch (error) {
+    // A configuration error (for example a bad AGENTINTAKE_CORS_ORIGINS entry):
+    // say what is wrong, without a stack trace.
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
   const app = express();
   app.use(localOnlyGuard());
-  app.use(createApp({ warnOpenCors: false }));
+  app.use(api);
   registerStudioProviderRoutes(app);
 
   // Vite's client always opens a socket for live reload. Attaching it to this
