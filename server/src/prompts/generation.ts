@@ -1,6 +1,7 @@
 // Prompt for flow generation (LLM #1): the parsed endpoints in, a flow
 // with clearer text out. Pure: no I/O, no environment, no LLM client.
 import type { ParsedEndpoint } from '../../../packages/react-agent-intake/src/contracts.js';
+import { renderGuidance, type PromptGuidance } from './guidance.js';
 
 // Bump whenever this module's prompt text changes, so a change in what the
 // model sees is deliberate and traceable (the snapshot test catches it).
@@ -12,7 +13,7 @@ export interface GenerationPromptInput {
   specDescription?: string;
 }
 
-export function build(input: GenerationPromptInput): string {
+export function build(input: GenerationPromptInput, guidance?: PromptGuidance): string {
   const context = [
     input.specTitle ? `Spec title: ${input.specTitle}` : null,
     input.specDescription ? `Spec description: ${input.specDescription}` : null,
@@ -25,7 +26,7 @@ export function build(input: GenerationPromptInput): string {
 
   return `You are helping build a multi-step intake wizard flow from an OpenAPI spec.
 
-Below is a raw, mechanically-extracted list of write-operation endpoints, as JSON. There are exactly ${endpointCount} endpoint(s), with these ids: ${endpointIds}. Each endpoint already has its final set of fields.
+${renderGuidance(guidance)}Below is a raw, mechanically-extracted list of write-operation endpoints, as JSON. There are exactly ${endpointCount} endpoint(s), with these ids: ${endpointIds}. Each endpoint already has its final set of fields.
 
 Rules:
 1. The output "flow.endpoints" array must contain exactly these ${endpointCount} endpoint(s) -- one object per input endpoint, each appearing exactly once, identified by its exact "id". Never split, duplicate, merge, or add an endpoint.

@@ -1,6 +1,7 @@
 // Prompt for adaptive field selection (LLM #2). Pure: no I/O,
 // no environment, no LLM client.
 import type { FieldDef, ParsedEndpoint } from '../../../packages/react-agent-intake/src/contracts.js';
+import { renderGuidance, type PromptGuidance } from './guidance.js';
 
 // Bump whenever this module's prompt text changes, so a change in what the
 // model sees is deliberate and traceable (the snapshot test catches it).
@@ -12,11 +13,11 @@ export interface SelectFieldsPromptInput {
   previouslyCollectedData: Record<string, Record<string, unknown>>;
 }
 
-export function build(input: SelectFieldsPromptInput): string {
+export function build(input: SelectFieldsPromptInput, guidance?: PromptGuidance): string {
   const { endpoint, baseFields, previouslyCollectedData } = input;
   return `You are choosing which fields to show for one step of a multi-step intake wizard.
 
-Step: "${endpoint.title}" (${endpoint.id})
+${renderGuidance(guidance)}Step: "${endpoint.title}" (${endpoint.id})
 ${endpoint.description ? `Description: ${endpoint.description}\n` : ''}
 Base fields for this step (JSON) -- you may only reference fields by the exact "name" values below, never invent a new one:
 ${JSON.stringify(baseFields, null, 2)}

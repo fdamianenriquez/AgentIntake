@@ -1,6 +1,7 @@
 // Prompt for semantic validation (LLM #3). Pure: no I/O, no
 // environment, no LLM client.
 import type { ParsedEndpoint } from '../../../packages/react-agent-intake/src/contracts.js';
+import { renderGuidance, type PromptGuidance } from './guidance.js';
 
 // Bump whenever this module's prompt text changes, so a change in what the
 // model sees is deliberate and traceable (the snapshot test catches it).
@@ -12,11 +13,11 @@ export interface ValidatePromptInput {
   previouslyCollectedData: Record<string, Record<string, unknown>>;
 }
 
-export function build(input: ValidatePromptInput): string {
+export function build(input: ValidatePromptInput, guidance?: PromptGuidance): string {
   const { endpoint, data, previouslyCollectedData } = input;
   return `You are validating one step's submitted data in a multi-step intake wizard, beyond basic client-side checks (format/range) that already passed before this was submitted.
 
-Step: "${endpoint.title}" (${endpoint.id})
+${renderGuidance(guidance)}Step: "${endpoint.title}" (${endpoint.id})
 
 Fields (JSON):
 ${JSON.stringify(endpoint.fields, null, 2)}

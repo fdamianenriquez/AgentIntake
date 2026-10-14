@@ -2,6 +2,7 @@
 // no environment, no LLM client.
 import type { ParsedEndpoint } from '../../../packages/react-agent-intake/src/contracts.js';
 import { REASON_TARGET_LENGTH } from './limits.js';
+import { renderGuidance, type PromptGuidance } from './guidance.js';
 
 // Bump whenever this module's prompt text changes, so a change in what the
 // model sees is deliberate and traceable (the snapshot test catches it).
@@ -17,7 +18,7 @@ export interface InvalidationPromptInput {
   laterData?: Record<string, Record<string, unknown>>;
 }
 
-export function build(input: InvalidationPromptInput): string {
+export function build(input: InvalidationPromptInput, guidance?: PromptGuidance): string {
   const laterSteps = input.laterCompletedEndpoints.map((endpoint) => ({
     id: endpoint.id,
     title: endpoint.title,
@@ -28,7 +29,7 @@ export function build(input: InvalidationPromptInput): string {
 
   return `In a multi-step intake wizard, the user went back and changed a step they had already completed. Decide which of the LATER completed steps may no longer be correct because of that change.
 
-Edited step: "${input.editedEndpoint.title}" (${input.editedEndpoint.id})
+${renderGuidance(guidance)}Edited step: "${input.editedEndpoint.title}" (${input.editedEndpoint.id})
 ${input.editedEndpoint.description ? `Description: ${input.editedEndpoint.description}\n` : ''}
 Values before the edit (JSON):
 ${JSON.stringify(input.before, null, 2)}

@@ -2,6 +2,7 @@
 // no environment, no LLM client.
 import type { ParsedEndpoint } from '../../../packages/react-agent-intake/src/contracts.js';
 import { EXPLANATION_TARGET_LENGTH } from './limits.js';
+import { renderGuidance, type PromptGuidance } from './guidance.js';
 
 // Bump whenever this module's prompt text changes, so a change in what the
 // model sees is deliberate and traceable (the snapshot test catches it).
@@ -32,7 +33,7 @@ export function sanitizeFailureMessage(message: string | undefined): string {
     .slice(0, MAX_FAILURE_MESSAGE);
 }
 
-export function build(input: ClassifyFailurePromptInput): string {
+export function build(input: ClassifyFailurePromptInput, guidance?: PromptGuidance): string {
   const steps = [...input.completedEndpoints, input.failedEndpoint].map((endpoint) => ({
     id: endpoint.id,
     title: endpoint.title,
@@ -43,7 +44,7 @@ export function build(input: ClassifyFailurePromptInput): string {
 
   return `A multi-step intake wizard submits each step to a different API operation. One step just failed. Classify the failure so the user knows what to do.
 
-Steps, in order (JSON):
+${renderGuidance(guidance)}Steps, in order (JSON):
 ${JSON.stringify(steps, null, 2)}
 
 Failed step: "${input.failedEndpoint.title}" (${input.failedEndpoint.id})

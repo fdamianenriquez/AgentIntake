@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { FieldDef, ParsedEndpoint } from '../../../packages/react-agent-intake/src/contracts.js';
 import * as classifyFailurePrompt from './classifyFailure.js';
 import * as generationPrompt from './generation.js';
+import type { PromptGuidance } from './guidance.js';
 import * as invalidationPrompt from './invalidation.js';
 import * as selectFieldsPrompt from './selectFields.js';
 import * as validatePrompt from './validate.js';
@@ -177,5 +178,70 @@ describe('failure classification prompt', () => {
         stepData,
       })
     ).toMatchSnapshot();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// With author guidance
+// ---------------------------------------------------------------------------
+
+const fullGuidance: PromptGuidance = {
+  domainContext: 'Onboarding for sellers who want to receive payouts.',
+  tone: 'Friendly, concise, second person.',
+  outputLanguage: 'es-MX',
+  rules: ['Accept P.O. boxes as valid addresses.', 'Never ask for a middle name.'],
+  flow: 'Most sellers are small businesses in Latin America.',
+};
+const stepGuidance = (title: string, text: string): PromptGuidance => ({ steps: [{ title, text }] });
+
+const withGuidance = {
+  generation: (guidance: PromptGuidance) =>
+    generationPrompt.build({ endpoints: [account, payout], specTitle: 'Payment Onboarding API' }, guidance),
+  selectFields: (guidance: PromptGuidance) =>
+    selectFieldsPrompt.build({ endpoint: account, baseFields: accountFields, previouslyCollectedData: {} }, guidance),
+  validate: (guidance: PromptGuidance) =>
+    validatePrompt.build({ endpoint: payout, data: { bankName: 'B', accountHolderName: 'J' }, previouslyCollectedData: {} }, guidance),
+  invalidation: (guidance: PromptGuidance) =>
+    invalidationPrompt.build(
+      {
+        editedEndpoint: account,
+        before: { accountType: 'individual' },
+        after: { accountType: 'business' },
+        laterCompletedEndpoints: [verification, payout],
+      },
+      guidance
+    ),
+  classifyFailure: (guidance: PromptGuidance) =>
+    classifyFailurePrompt.build(
+      { failedEndpoint: payout, failure: { kind: 'http', status: 403, message: 'on hold' }, completedEndpoints: [account] },
+      guidance
+    ),
+};
+
+describe.each(Object.entries(withGuidance))('%s prompt with guidance', (_call, render) => {
+  it('full global and flow guidance', () => {
+    expect(render(fullGuidance)).toMatchSnapshot();
+  });
+
+  it('step guidance only', () => {
+    expect(render(stepGuidance('Add Payout Method', 'The holder name must match the legal name exactly.'))).toMatchSnapshot();
+  });
+
+  it('places the guidance block after the task statement and before the data and the output rules', () => {
+    const prompt = render(fullGuidance);
+    const [taskStatement] = prompt.split('\n\n');
+    expect(prompt.indexOf('Guidance from the author')).toBe(taskStatement.length + 2);
+    // Every JSON data block and every rule list comes after the block.
+    const after = prompt.indexOf('AUTHOR_GUIDANCE>>>');
+    for (const marker of ['(JSON)', 'Rules:', 'Task', 'Classify as', '<<<API_ERROR_MESSAGE']) {
+      const at = prompt.indexOf(marker);
+      if (at !== -1) expect(at).toBeGreaterThan(after);
+    }
+  });
+
+  it('with no guidance, or empty guidance, is the prompt without the block', () => {
+    const plain = render({});
+    expect(plain).not.toContain('AUTHOR_GUIDANCE');
+    expect(render({ rules: [], steps: [], domainContext: '   ' })).toBe(plain);
   });
 });
