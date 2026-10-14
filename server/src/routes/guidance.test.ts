@@ -259,9 +259,23 @@ describe('unknown flow id warnings with a config provider (Studio)', () => {
     const warn = vi.mocked(console.warn);
     warn.mockClear();
     const app = createApp({ getConfig: () => null, trustedFlows: new Map() });
+    // One server and keep-alive connections: a thousand short-lived
+    // connections can run out of sockets on a busy machine.
+    const server = app.listen(0, '127.0.0.1');
+    await new Promise((resolve) => server.once('listening', resolve));
+    const { port } = server.address() as { port: number };
 
-    for (let i = 0; i < 1005; i++) {
-      await request(app).post('/api/step/fields').send({ sessionId: `cap-${i}`, flow: { id: `random-${i}` }, endpoint });
+    try {
+      for (let i = 0; i < 1005; i++) {
+        await fetch(`http://127.0.0.1:${port}/api/step/fields`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: `cap-${i}`, flow: { id: `random-${i}` }, endpoint }),
+        }).then((response) => response.arrayBuffer());
+      }
+    } finally {
+      server.closeAllConnections();
+      server.close();
     }
 
     const flowWarnings = warn.mock.calls.filter(([message]) => /AGENTINTAKE_FLOWS_DIR|unknown flow ids/.test(String(message)));
