@@ -154,3 +154,131 @@ body {
   border-radius: 4px;
   margin-bottom: 1rem;
 }
+
+/* Instructions tab */
+.studio-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.studio-tabs [role='tab'] {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid transparent;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.studio-tabs [role='tab'][aria-selected='true'] {
+  border-color: #e2e8f0 #e2e8f0 #fff;
+  border-radius: 4px 4px 0 0;
+  margin-bottom: -1px;
+  background: #fff;
+  font-weight: 600;
+}
+
+.studio-instructions-section {
+  margin-bottom: 2rem;
+}
+
+.studio-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.studio-field label {
+  font-weight: 600;
+}
+
+.studio-field input,
+.studio-field textarea,
+.studio-prompt-controls select {
+  padding: 0.4rem;
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+.studio-field-hint,
+.studio-counter {
+  color: #555;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.studio-success {
+  color: #1a7f37;
+}
+
+.studio-rules {
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 0.75rem;
+  margin: 0 0 0.75rem;
+}
+
+.studio-rule-list h4 {
+  margin: 0.75rem 0 0.25rem;
+}
+
+.studio-prompt-controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.studio-prompt {
+  white-space: pre-wrap;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 0.75rem;
+  font-size: 0.8rem;
+  max-height: 28rem;
+  overflow-y: auto;
+}
+
+.studio-locked,
+.studio-legend-locked {
+  color: #6b7280;
+}
+
+.studio-guidance {
+  background: #fef9c3;
+  color: #1a1a1a;
+}
+
+.studio-confirm {
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  padding: 0.75rem;
+  border-radius: 4px;
+  margin: 0.75rem 0;
+}
+
+.studio-checkbox {
+  display: block;
+}
+
+.studio-report {
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.9rem;
+}
+
+.studio-report th,
+.studio-report td {
+  border: 1px solid #e2e8f0;
+  padding: 0.3rem 0.6rem;
+  text-align: left;
+}
+
+.studio-failures pre {
+  font-size: 0.8rem;
+  background: #f8fafc;
+  padding: 0.5rem;
+  overflow-x: auto;
+}

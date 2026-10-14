@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { ProviderSetup } from './ProviderSetup.js';
 import { SpecInput, type GenerateResponse } from './SpecInput.js';
 import { FlowPreview } from './FlowPreview.js';
+import { carryOverGuidance } from './carryOver.js';
+import type { GeneratedFlow } from '../packages/react-agent-intake/src/contracts.js';
 
 type Screen = 'loading' | 'setup' | 'input' | 'preview';
 
@@ -12,6 +14,9 @@ interface ProviderStatusResponse {
 export function App() {
   const [screen, setScreen] = useState<Screen>('loading');
   const [generation, setGeneration] = useState<GenerateResponse | null>(null);
+  // The last flow of this session, as edited, so a regeneration keeps its guidance.
+  const [previousFlow, setPreviousFlow] = useState<GeneratedFlow | null>(null);
+  const [droppedGuidance, setDroppedGuidance] = useState<string[]>([]);
 
   useEffect(() => {
     fetch('/api/provider-status')
@@ -32,7 +37,14 @@ export function App() {
       {screen === 'input' && (
         <SpecInput
           onGenerated={(result) => {
-            setGeneration(result);
+            if (previousFlow) {
+              const { flow, droppedSteps } = carryOverGuidance(previousFlow, result.flow);
+              setGeneration({ ...result, flow });
+              setDroppedGuidance(droppedSteps);
+            } else {
+              setGeneration(result);
+              setDroppedGuidance([]);
+            }
             setScreen('preview');
           }}
         />
@@ -41,7 +53,9 @@ export function App() {
       {screen === 'preview' && generation && (
         <FlowPreview
           generation={generation}
-          onReset={() => {
+          droppedGuidance={droppedGuidance}
+          onReset={(edited) => {
+            setPreviousFlow(edited);
             setGeneration(null);
             setScreen('input');
           }}

@@ -1,11 +1,16 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { AgentIntakeForm } from '../packages/react-agent-intake/src/index.js';
-import type { FlowDef, ResourceOperations } from '../packages/react-agent-intake/src/contracts.js';
+import type { FlowDef, GeneratedFlow, ResourceOperations } from '../packages/react-agent-intake/src/contracts.js';
+import { cleanFlow, flowGuidanceProblems, Instructions, type InstructionsProps } from './Instructions.js';
 import type { GenerateResponse } from './SpecInput.js';
 
 export interface FlowPreviewProps {
   generation: GenerateResponse;
-  onReset: () => void;
+  /** Gets the flow as edited (with its guidance), so a regeneration can carry the guidance over. */
+  onReset: (flow: GeneratedFlow) => void;
+  /** Steps whose guidance a regeneration dropped, because they no longer exist. */
+  droppedGuidance?: string[];
+  timings?: InstructionsProps['timings'];
 }
 
 type GeneratedEndpoint = GenerateResponse['flow']['endpoints'][number];
@@ -72,17 +77,38 @@ import flow from './flow.json';
 
 <AgentIntakeForm flow={flow} apiUrl="http://localhost:3000" />`;
 
-export function FlowPreview({ generation, onReset }: FlowPreviewProps) {
+type Tab = 'preview' | 'instructions';
+
+export function FlowPreview({ generation, onReset, droppedGuidance = [], timings }: FlowPreviewProps) {
   const store = useRef(new Map<string, Record<string, unknown>>()).current;
+  // The flow as the author edits it in the Instructions tab (flow and step
+  // guidance); the preview and the download always use this version.
+  const [edited, setEdited] = useState<GeneratedFlow>(generation.flow);
+  const [tab, setTab] = useState<Tab>('preview');
+  const sent = useMemo(() => cleanFlow(edited), [edited]);
+  const problems = flowGuidanceProblems(edited);
   const flow: FlowDef = useMemo(
     () => ({
-      ...generation.flow,
-      endpoints: generation.flow.endpoints.map((endpoint) => ({
+      ...sent,
+      endpoints: sent.endpoints.map((endpoint) => ({
         ...endpoint,
         operations: makeSimulatedOperations(endpoint, store),
       })),
     }),
-    [generation.flow, store]
+    [sent, store]
+  );
+
+  const tabButton = (id: Tab, label: string) => (
+    <button
+      type="button"
+      role="tab"
+      id={`studio-tab-${id}`}
+      aria-selected={tab === id}
+      aria-controls={`studio-panel-${id}`}
+      onClick={() => setTab(id)}
+    >
+      {label}
+    </button>
   );
 
   return (
@@ -100,38 +126,60 @@ export function FlowPreview({ generation, onReset }: FlowPreviewProps) {
         </ul>
       )}
 
-      {/* apiUrl="" -- same origin: Studio's own server already mounts the
-          shared /api/step/* routes, so this preview exercises the real
-          adaptive-fields and semantic-validation calls, not just execute(). */}
-      <AgentIntakeForm flow={flow} apiUrl="" />
-
-      {generation.ambiguousFields.length > 0 && (
-        <div className="studio-ambiguous-fields">
-          <h3>Flagged for review</h3>
-          <ul>
-            {generation.ambiguousFields.map((note) => (
-              <li key={`${note.endpointId}.${note.fieldName}`}>
-                <strong>
-                  {note.endpointId}.{note.fieldName}:
-                </strong>{' '}
-                {note.note}
-              </li>
-            ))}
-          </ul>
-        </div>
+      {droppedGuidance.length > 0 && (
+        <p role="status" className="studio-warnings">
+          Guidance kept from the previous version of this flow, except for steps that no longer exist:{' '}
+          {droppedGuidance.join(', ')}.
+        </p>
       )}
 
+      <div role="tablist" aria-label="Flow" className="studio-tabs">
+        {tabButton('preview', 'Preview')}
+        {tabButton('instructions', 'Instructions')}
+      </div>
+
+      {/* Both panels stay mounted, so switching tabs keeps the preview's progress. */}
+      <div role="tabpanel" id="studio-panel-preview" aria-labelledby="studio-tab-preview" hidden={tab !== 'preview'}>
+        {/* apiUrl="" -- same origin: Studio's own server already mounts the
+            shared /api/step/* routes, so this preview exercises the real
+            adaptive-fields and semantic-validation calls, not just execute(). */}
+        <AgentIntakeForm flow={flow} apiUrl="" />
+
+        {generation.ambiguousFields.length > 0 && (
+          <div className="studio-ambiguous-fields">
+            <h3>Flagged for review</h3>
+            <ul>
+              {generation.ambiguousFields.map((note) => (
+                <li key={`${note.endpointId}.${note.fieldName}`}>
+                  <strong>
+                    {note.endpointId}.{note.fieldName}:
+                  </strong>{' '}
+                  {note.note}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      <div role="tabpanel" id="studio-panel-instructions" aria-labelledby="studio-tab-instructions" hidden={tab !== 'instructions'}>
+        <Instructions flow={edited} onFlowChange={setEdited} timings={timings} />
+      </div>
+
       <div className="studio-export">
-        <button type="button" onClick={() => downloadFlowJson(generation.flow)}>
+        <button type="button" onClick={() => downloadFlowJson(sent)} disabled={problems.length > 0}>
           Download flow.json
         </button>
+        {problems.length > 0 && (
+          <p className="studio-error">Fix the flow guidance before downloading: {problems.join(' ')}</p>
+        )}
         <details>
           <summary>Embed snippet</summary>
           <pre>{EMBED_SNIPPET}</pre>
         </details>
       </div>
 
-      <button type="button" onClick={onReset}>
+      <button type="button" onClick={() => onReset(edited)}>
         Start over
       </button>
     </section>
