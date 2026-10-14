@@ -204,6 +204,23 @@ describe('repeat and concurrency', () => {
     expect(most).toBe(1); // sequential by default
   });
 
+  it('stops scheduling new runs once its signal is aborted; runs in flight finish', async () => {
+    const controller = new AbortController();
+    let started = 0;
+    mocked.mockImplementation(async (prompt) => {
+      started++;
+      if (started === 2) controller.abort(); // during the second run
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return reply(prompt) as never;
+    });
+
+    const report = await runEvals({ cases: [c], repeat: 10, concurrency: 2, signal: controller.signal });
+
+    expect(started).toBe(2);
+    expect(report.totals.runs).toBe(2); // both in-flight runs finished and count
+    expect(report.totals.passed).toBe(2);
+  });
+
   it('refuses a concurrency outside 1 to 4', async () => {
     await expect(runEvals({ cases: [c], concurrency: 5 })).rejects.toThrow(/from 1 to 4/);
   });

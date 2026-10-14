@@ -31,6 +31,8 @@ export interface RunEvalsOptions {
   concurrency?: number;
   /** Called after each run, e.g. for progress output. */
   onRun?: (run: EvalRun) => void;
+  /** Once aborted, no new run starts; runs in flight finish and are reported. */
+  signal?: AbortSignal;
 }
 
 export interface EvalRun {
@@ -257,35 +259,36 @@ export async function runEvals(options: RunEvalsOptions): Promise<EvalReport> {
   const tasks = selectedCases(options).flatMap((c) =>
     Array.from({ length: options.repeat ?? c.repeat ?? 1 }, (_, i) => ({ c, run: i + 1 }))
   );
-  const runs: EvalRun[] = new Array(tasks.length);
+  const runs: (EvalRun | undefined)[] = new Array(tasks.length);
 
   let next = 0;
   const worker = async () => {
-    while (next < tasks.length) {
+    while (next < tasks.length && !options.signal?.aborted) {
       const index = next++;
       runs[index] = await timedRun(tasks[index].c, tasks[index].run, options);
       options.onRun?.(runs[index]);
     }
   };
   await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, worker));
+  const finished = runs.filter((run): run is EvalRun => run !== undefined);
 
   const calls: Partial<Record<EvalCall, CallSummary>> = {};
   for (const call of EVAL_CALLS) {
-    const ofCall = runs.filter((run) => run.call === call);
+    const ofCall = finished.filter((run) => run.call === call);
     if (ofCall.length > 0) calls[call] = summarize(ofCall);
   }
-  const passed = runs.filter((run) => run.passed).length;
+  const passed = finished.filter((run) => run.passed).length;
   return {
     provider,
     model: resolveModelId(provider),
     promptVersions: { ...PROMPT_VERSIONS, guidanceBlock: GUIDANCE_BLOCK_VERSION },
     calls,
     totals: {
-      runs: runs.length,
+      runs: finished.length,
       passed,
-      failed: runs.length - passed,
-      degraded: runs.filter((run) => run.degraded).length,
-      passRate: runs.length ? passed / runs.length : 0,
+      failed: finished.length - passed,
+      degraded: finished.filter((run) => run.degraded).length,
+      passRate: finished.length ? passed / finished.length : 0,
     },
   };
 }

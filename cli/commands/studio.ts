@@ -7,6 +7,7 @@ import { createServer as createViteServer } from 'vite';
 import { createApp } from '../../server/src/app.js';
 import { localOnlyGuard } from '../localOnlyGuard.js';
 import { createStudioConfigStore, type StudioConfigStore } from '../studioConfig.js';
+import { registerStudioGuidanceRoutes } from '../studioGuidanceRoutes.js';
 import { registerStudioProviderRoutes } from '../studioProviderRoutes.js';
 
 export interface StudioOptions {
@@ -44,6 +45,7 @@ export async function runStudio(options: StudioOptions): Promise<void> {
   app.use(localOnlyGuard());
   app.use(api);
   registerStudioProviderRoutes(app);
+  registerStudioGuidanceRoutes(app, { configStore });
 
   // Vite's client always opens a socket for live reload. Attaching it to this
   // same HTTP server keeps it on the loopback-only port instead of Vite's
