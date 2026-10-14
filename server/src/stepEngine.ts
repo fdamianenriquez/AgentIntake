@@ -27,7 +27,7 @@ function cappedText(max: number) {
   return z.string().transform((text) => (text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`));
 }
 
-function isStaticMode(): boolean {
+export function isStaticMode(): boolean {
   const raw = process.env.AGENTINTAKE_STATIC_MODE;
   return raw !== undefined && raw !== '' && raw !== 'false' && raw !== '0';
 }

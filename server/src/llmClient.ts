@@ -50,9 +50,14 @@ function requireApiKey(provider: LlmProvider): string {
   return key;
 }
 
+/** The model a call would use: LLM_MODEL, or the provider's default. */
+export function resolveModelId(provider: LlmProvider): string {
+  return process.env.LLM_MODEL ?? DEFAULT_MODELS[provider];
+}
+
 /** Constructs the configured provider's model. No network call happens here. */
 export function buildModel(provider: LlmProvider) {
-  const modelId = process.env.LLM_MODEL ?? DEFAULT_MODELS[provider];
+  const modelId = resolveModelId(provider);
 
   switch (provider) {
     case 'anthropic':
