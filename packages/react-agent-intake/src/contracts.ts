@@ -96,6 +96,29 @@ export const EndpointCapabilitiesSchema = z.object({
 });
 export type EndpointCapabilities = z.infer<typeof EndpointCapabilitiesSchema>;
 
+// Author guidance (README: "Author guidance"): text a flow author adds to what the model is
+// told. Limits are validation errors, never silent truncation, so an author
+// knows exactly what reaches the model.
+export const GUIDANCE_LIMITS = {
+  domainContext: 1000,
+  tone: 200,
+  extraRules: 10,
+  extraRule: 300,
+  flowGuidance: 1000,
+  endpointGuidance: 500,
+} as const;
+
+function isLanguageTag(tag: string): boolean {
+  try {
+    return Intl.getCanonicalLocales(tag).length === 1;
+  } catch {
+    return false;
+  }
+}
+
+/** A BCP-47 language tag, e.g. "es-MX" or "ja". */
+export const LanguageTagSchema = z.string().refine(isLanguageTag, { error: 'Must be a BCP-47 language tag, e.g. "es-MX".' });
+
 // Functions are written by the flow author, never produced by an LLM, so they
 // are checked as "is callable" rather than parsed like the rest of the schema.
 const ExecuteFnSchema = z.custom<ExecuteFn>((val) => typeof val === 'function', {

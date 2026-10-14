@@ -2,6 +2,8 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { ParsedEndpointSchema } from '../../../packages/react-agent-intake/src/contracts.js';
 import { classifyFailure } from '../stepEngine.js';
+import { guidanceFor } from '../prompts/guidance.js';
+import { serverContext } from '../serverContext.js';
 import { getScopedData } from '../sessionStore.js';
 
 const RequestBodySchema = z.object({
@@ -32,7 +34,8 @@ export async function handleClassifyFailure(req: Request, res: Response): Promis
     // the session already holds its data.
     const ids = [...completedEndpoints.map((endpoint) => endpoint.id), failedEndpoint.id];
     const stepData = getScopedData(sessionId, ids);
-    res.status(200).json(await classifyFailure({ failedEndpoint, failure, completedEndpoints, stepData }));
+    const guidance = guidanceFor('classifyFailure', serverContext(res).guidance, undefined);
+    res.status(200).json(await classifyFailure({ failedEndpoint, failure, completedEndpoints, stepData, guidance }));
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
   }

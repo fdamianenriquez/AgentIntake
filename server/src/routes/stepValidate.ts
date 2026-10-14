@@ -2,6 +2,8 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { ParsedEndpointSchema } from '../../../packages/react-agent-intake/src/contracts.js';
 import { validateStepSubmission } from '../stepEngine.js';
+import { guidanceFor } from '../prompts/guidance.js';
+import { serverContext } from '../serverContext.js';
 import { getOrCreateSession, getScopedData, recordValidatedStep } from '../sessionStore.js';
 
 const RequestBodySchema = z.object({
@@ -36,7 +38,8 @@ export async function handleStepValidate(req: Request, res: Response): Promise<v
     const previouslyCollectedData = precedingEndpointIds
       ? getScopedData(sessionId, precedingEndpointIds)
       : session.collectedData;
-    const result = await validateStepSubmission({ endpoint, data, previouslyCollectedData });
+    const guidance = guidanceFor('validate', serverContext(res).guidance, undefined);
+    const result = await validateStepSubmission({ endpoint, data, previouslyCollectedData, guidance });
     if (result.valid) {
       recordValidatedStep(sessionId, endpoint.id, data);
     }

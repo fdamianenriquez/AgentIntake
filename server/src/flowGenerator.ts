@@ -7,6 +7,7 @@ import {
 } from '../../packages/react-agent-intake/src/contracts.js';
 import { generateStructured, LlmTimeoutError } from './llmClient.js';
 import * as generationPrompt from './prompts/generation.js';
+import type { PromptGuidance } from './prompts/guidance.js';
 
 // Generation sends the whole spec in one prompt and returns the whole flow, so
 // it gets a much longer budget than the per-step calls in stepEngine.ts. Unlike
@@ -18,6 +19,8 @@ export interface GenerateFlowInput {
   endpoints: ParsedEndpoint[];
   specTitle?: string;
   specDescription?: string;
+  /** Author guidance for this call, already narrowed to it (see prompts/guidance.ts). */
+  guidance?: PromptGuidance;
 }
 
 // Structural guardrail, not a prompted promise (README: "The 'no invented
@@ -100,7 +103,7 @@ type LlmOutput = z.infer<ReturnType<typeof buildLlmOutputSchema>>;
  * from the raw input, never trusted from the model (see above).
  */
 export async function generateFlow(input: GenerateFlowInput): Promise<FlowGenerationResult> {
-  const prompt = generationPrompt.build(input);
+  const prompt = generationPrompt.build(input, input.guidance);
   const outputSchema = buildLlmOutputSchema(input.endpoints);
 
   const attempt = async (): Promise<FlowGenerationResult> => {

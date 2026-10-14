@@ -4,6 +4,8 @@ import type { Command } from 'commander';
 import { parseOpenApiFile } from '../../server/src/openapiParser.js';
 import { generateFlow } from '../../server/src/flowGenerator.js';
 import { resolveProvider, buildModel } from '../../server/src/llmClient.js';
+import { loadConfig } from '../../server/src/config.js';
+import { guidanceFor } from '../../server/src/prompts/guidance.js';
 
 export interface GenerateOptions {
   spec: string;
@@ -23,6 +25,8 @@ export async function runGenerate(options: GenerateOptions): Promise<void> {
   // before spending any time parsing the spec.
   const provider = resolveProvider();
   buildModel(provider);
+  // Same for an invalid agentintake.config.json.
+  const config = loadConfig();
 
   const { endpoints, warnings } = await parseOpenApiFile(options.spec);
 
@@ -32,7 +36,7 @@ export async function runGenerate(options: GenerateOptions): Promise<void> {
 
   for (const warning of warnings) console.warn(`Warning: ${warning}`);
 
-  const { flow, ambiguousFields } = await generateFlow({ endpoints });
+  const { flow, ambiguousFields } = await generateFlow({ endpoints, guidance: guidanceFor('generation', config?.guidance, undefined) });
 
   await writeFile(options.output, JSON.stringify(flow, null, 2) + '\n', 'utf-8');
 

@@ -6,6 +6,8 @@ import { handleGenerateFlow } from './routes/generateFlow.js';
 import { handleSessionSync } from './routes/sessionSync.js';
 import { handleStepFields } from './routes/stepFields.js';
 import { handleStepValidate } from './routes/stepValidate.js';
+import { loadConfig, type AgentIntakeConfig } from './config.js';
+import type { ServerContext } from './serverContext.js';
 
 // A real-world spec describes a whole API, even though only its write
 // operations are used, so it routinely exceeds express.json()'s 100kb default.
@@ -75,13 +77,17 @@ let warnedOpenCors = false;
 export interface CreateAppOptions {
   /** Studio turns this off: its own guard already rejects other origins. */
   warnOpenCors?: boolean;
+  /** Settings to use instead of loading agentintake.config.json (null: none). */
+  config?: AgentIntakeConfig | null;
 }
 
 // Separated from index.ts (not part of  sketch, but the standard
 // Express split) so tests can build and exercise the app -- routes, CORS,
 // JSON parsing -- without binding a real port.
-export function createApp({ warnOpenCors = true }: CreateAppOptions = {}): Express {
+export function createApp({ warnOpenCors = true, config }: CreateAppOptions = {}): Express {
   const app = express();
+  // Loaded once; an invalid file stops startup with the file, place and rule.
+  const context: ServerContext = { guidance: (config === undefined ? loadConfig() : config)?.guidance };
   const origins = corsOriginsFromEnv();
   if (!origins && warnOpenCors && !warnedOpenCors) {
     warnedOpenCors = true;
@@ -90,6 +96,10 @@ export function createApp({ warnOpenCors = true }: CreateAppOptions = {}): Expre
     );
   }
   app.use(cors(origins ? { origin: origins } : {}));
+  app.use((_req, res, next) => {
+    res.locals.agentIntake = context;
+    next();
+  });
 
   app.post('/api/generate-flow', express.json({ limit: SPEC_BODY_LIMIT }), handleGenerateFlow);
   app.post('/api/step/fields', express.json(), handleStepFields);

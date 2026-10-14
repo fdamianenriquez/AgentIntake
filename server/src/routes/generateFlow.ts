@@ -2,6 +2,8 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { parseOpenApiContent } from '../openapiParser.js';
 import { generateFlow } from '../flowGenerator.js';
+import { guidanceFor } from '../prompts/guidance.js';
+import { serverContext } from '../serverContext.js';
 
 // { specContent: string } -- the raw spec text (JSON or YAML), never a path
 // or URL. This route is reachable over a network, so it must never be the
@@ -37,7 +39,8 @@ export async function handleGenerateFlow(req: Request, res: Response): Promise<v
     // (large spec, ungrouped operations, required headers) travel in the
     // response body itself.
 
-    const { flow, ambiguousFields } = await generateFlow({ endpoints });
+    const guidance = guidanceFor('generation', serverContext(res).guidance, undefined);
+    const { flow, ambiguousFields } = await generateFlow({ endpoints, guidance });
     res.status(200).json({ flow, ambiguousFields, warnings });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });

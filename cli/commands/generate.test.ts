@@ -84,6 +84,36 @@ describe('runGenerate', () => {
     expect(prompt).toContain('"name": "name"');
   });
 
+  it('applies the guidance in agentintake.config.json (AGENTINTAKE_CONFIG) to generation', async () => {
+    const configPath = path.join(outputDir, 'agentintake.config.json');
+    await writeFile(configPath, JSON.stringify({ guidance: { outputLanguage: 'ja', extraRules: { generation: ['Keep titles short.'] } } }));
+    process.env.AGENTINTAKE_CONFIG = configPath;
+    mockedGenerateStructured.mockResolvedValueOnce(generatedResult);
+
+    try {
+      await runGenerate({ spec: fixtureSpec, output: outputPath });
+    } finally {
+      delete process.env.AGENTINTAKE_CONFIG;
+    }
+
+    const [prompt] = mockedGenerateStructured.mock.calls[0];
+    expect(prompt).toContain('Write all user-facing text in: ja');
+    expect(prompt).toContain('- Keep titles short.');
+  });
+
+  it('refuses to run with an invalid config, before calling the model', async () => {
+    const configPath = path.join(outputDir, 'agentintake.config.json');
+    await writeFile(configPath, JSON.stringify({ guidance: { outputLanguage: 'not a language' } }));
+    process.env.AGENTINTAKE_CONFIG = configPath;
+
+    try {
+      await expect(runGenerate({ spec: fixtureSpec, output: outputPath })).rejects.toThrow(/guidance\.outputLanguage/);
+    } finally {
+      delete process.env.AGENTINTAKE_CONFIG;
+    }
+    expect(mockedGenerateStructured).not.toHaveBeenCalled();
+  });
+
   it('sets LLM_PROVIDER/LLM_MODEL from --provider/--model flags before generating', async () => {
     mockedGenerateStructured.mockResolvedValueOnce(generatedResult);
 

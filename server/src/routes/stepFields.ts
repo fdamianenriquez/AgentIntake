@@ -2,6 +2,8 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { ParsedEndpointSchema } from '../../../packages/react-agent-intake/src/contracts.js';
 import { selectStepFields } from '../stepEngine.js';
+import { guidanceFor } from '../prompts/guidance.js';
+import { serverContext } from '../serverContext.js';
 import { getOrCreateSession, getScopedData } from '../sessionStore.js';
 
 const RequestBodySchema = z.object({
@@ -26,7 +28,8 @@ export async function handleStepFields(req: Request, res: Response): Promise<voi
     const previouslyCollectedData = precedingEndpointIds
       ? getScopedData(sessionId, precedingEndpointIds)
       : session.collectedData;
-    const result = await selectStepFields({ endpoint, previouslyCollectedData });
+    const guidance = guidanceFor('selectFields', serverContext(res).guidance, undefined);
+    const result = await selectStepFields({ endpoint, previouslyCollectedData, guidance });
     res.status(200).json(result);
   } catch (error) {
     // selectStepFields already degrades gracefully on its own;

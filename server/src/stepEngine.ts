@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { FieldDef, ParsedEndpoint } from '../../packages/react-agent-intake/src/contracts.js';
 import { generateStructured } from './llmClient.js';
 import * as classifyFailurePrompt from './prompts/classifyFailure.js';
+import type { PromptGuidance } from './prompts/guidance.js';
 import * as invalidationPrompt from './prompts/invalidation.js';
 import { MAX_EXPLANATION_LENGTH, MAX_REASON_LENGTH } from './prompts/limits.js';
 import * as selectFieldsPrompt from './prompts/selectFields.js';
@@ -50,6 +51,8 @@ function fieldNameEnum(fields: FieldDef[]) {
 export interface SelectStepFieldsInput {
   endpoint: Pick<ParsedEndpoint, 'id' | 'title' | 'description' | 'fields'>;
   previouslyCollectedData?: Record<string, Record<string, unknown>>;
+  /** Author guidance for this call, already narrowed to it (see prompts/guidance.ts). */
+  guidance?: PromptGuidance;
 }
 
 export interface SelectStepFieldsResult {
@@ -89,11 +92,10 @@ export async function selectStepFields(input: SelectStepFieldsInput): Promise<Se
       ),
     });
 
-    const prompt = selectFieldsPrompt.build({
-      endpoint: input.endpoint,
-      baseFields,
-      previouslyCollectedData: input.previouslyCollectedData ?? {},
-    });
+    const prompt = selectFieldsPrompt.build(
+      { endpoint: input.endpoint, baseFields, previouslyCollectedData: input.previouslyCollectedData ?? {} },
+      input.guidance
+    );
     const result = await generateStructured(prompt, outputSchema, { timeoutMs: STEP_TIMEOUT_MS });
 
     if (result.fields.length === 0) {
@@ -143,6 +145,8 @@ export interface ValidateStepSubmissionInput {
   endpoint: Pick<ParsedEndpoint, 'id' | 'title' | 'fields'>;
   data: Record<string, unknown>;
   previouslyCollectedData?: Record<string, Record<string, unknown>>;
+  /** Author guidance for this call, already narrowed to it (see prompts/guidance.ts). */
+  guidance?: PromptGuidance;
 }
 
 export interface ValidateStepSubmissionResult {
@@ -180,7 +184,10 @@ export async function validateStepSubmission(
       ),
     });
 
-    const prompt = validatePrompt.build({ endpoint, data, previouslyCollectedData: input.previouslyCollectedData ?? {} });
+    const prompt = validatePrompt.build(
+      { endpoint, data, previouslyCollectedData: input.previouslyCollectedData ?? {} },
+      input.guidance
+    );
     const result = await generateStructured(prompt, outputSchema, { timeoutMs: STEP_TIMEOUT_MS });
 
     if (!result.valid) {
@@ -211,6 +218,8 @@ export interface CheckInvalidationInput {
   laterCompletedEndpoints: StepSummary[];
   /** What was submitted for those later steps, by endpoint id. */
   laterData?: Record<string, Record<string, unknown>>;
+  /** Author guidance for this call, already narrowed to it (see prompts/guidance.ts). */
+  guidance?: PromptGuidance;
 }
 
 export interface CheckInvalidationResult {
@@ -249,7 +258,7 @@ export async function checkInvalidation(input: CheckInvalidationInput): Promise<
       ),
     });
 
-    const result = await generateStructured(invalidationPrompt.build(input), outputSchema, {
+    const result = await generateStructured(invalidationPrompt.build(input, input.guidance), outputSchema, {
       timeoutMs: INVALIDATION_TIMEOUT_MS,
     });
 
@@ -284,6 +293,8 @@ export interface ClassifyFailureInput {
   completedEndpoints: StepSummary[];
   /** What was submitted for the failed step and the completed ones, by endpoint id. */
   stepData?: Record<string, Record<string, unknown>>;
+  /** Author guidance for this call, already narrowed to it (see prompts/guidance.ts). */
+  guidance?: PromptGuidance;
 }
 
 export interface ClassifyFailureResult {
@@ -327,7 +338,7 @@ export async function classifyFailure(input: ClassifyFailureInput): Promise<Clas
         error: 'Only a fundamental failure can propose an undo.',
       });
 
-    const result = await generateStructured(classifyFailurePrompt.build(input), outputSchema, {
+    const result = await generateStructured(classifyFailurePrompt.build(input, input.guidance), outputSchema, {
       timeoutMs: CLASSIFY_FAILURE_TIMEOUT_MS,
     });
     return { ...result, degraded: false };

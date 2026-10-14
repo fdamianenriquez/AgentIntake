@@ -30,7 +30,7 @@ describe('guidanceFor', () => {
   });
 
   it('falls back to the global language when the flow sets none', () => {
-    expect(guidanceFor('selectFields', global, { guidance: 'x' }, []).outputLanguage).toBe('es-MX');
+    expect(guidanceFor('selectFields', global, { guidance: 'x' }, [])?.outputLanguage).toBe('es-MX');
   });
 
   it('gives generation only the global settings: there is no flow yet', () => {
@@ -44,8 +44,10 @@ describe('guidanceFor', () => {
     });
   });
 
-  it('with nothing configured, renders no block', () => {
-    expect(renderGuidance(guidanceFor('classifyFailure', undefined, undefined, [{ title: 'A' }]))).toBe('');
+  it('with nothing configured, there is no guidance at all', () => {
+    expect(guidanceFor('classifyFailure', undefined, undefined, [{ title: 'A' }])).toBeUndefined();
+    expect(guidanceFor('validate', { extraRules: { validate: [] } }, {}, [])).toBeUndefined();
+    expect(renderGuidance(undefined)).toBe('');
   });
 });
 

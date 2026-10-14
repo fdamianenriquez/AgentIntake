@@ -44,18 +44,21 @@ export function guidanceFor(
   global: GlobalGuidance | undefined,
   flow: FlowGuidance | undefined,
   steps: { title: string; guidance?: string }[] = []
-): PromptGuidance {
+): PromptGuidance | undefined {
   const withFlow = call !== 'generation';
-  return {
+  const stepGuidance = withFlow
+    ? steps.filter((step) => step.guidance).map((step) => ({ title: step.title, text: step.guidance! }))
+    : [];
+  const guidance: PromptGuidance = {
     domainContext: global?.domainContext,
     tone: global?.tone,
     outputLanguage: (withFlow ? flow?.outputLanguage : undefined) ?? global?.outputLanguage,
-    rules: global?.extraRules?.[call],
+    rules: global?.extraRules?.[call]?.length ? global.extraRules[call] : undefined,
     flow: withFlow ? flow?.guidance : undefined,
-    steps: withFlow
-      ? steps.filter((step) => step.guidance).map((step) => ({ title: step.title, text: step.guidance! }))
-      : undefined,
+    steps: stepGuidance.length > 0 ? stepGuidance : undefined,
   };
+  // Nothing set anywhere: no guidance at all, rather than an empty object.
+  return Object.values(guidance).some((value) => value !== undefined) ? guidance : undefined;
 }
 
 const DELIMITER = 'AUTHOR_GUIDANCE';

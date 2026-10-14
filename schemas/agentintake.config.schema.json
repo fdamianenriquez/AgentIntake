@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Editor hint pointing at this JSON Schema. Ignored at runtime."
+    },
+    "guidance": {
+      "type": "object",
+      "properties": {
+        "domainContext": {
+          "type": "string",
+          "maxLength": 1000,
+          "description": "What the business or process is, e.g. \"B2B payment onboarding for marketplaces\"."
+        },
+        "tone": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Voice of the text the model writes, e.g. \"formal, second person\"."
+        },
+        "outputLanguage": {
+          "type": "string",
+          "description": "BCP-47 language tag for every user-facing string the model writes. A flow can override it."
+        },
+        "extraRules": {
+          "type": "object",
+          "properties": {
+            "generation": {
+              "maxItems": 10,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 300
+              }
+            },
+            "selectFields": {
+              "maxItems": 10,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 300
+              }
+            },
+            "validate": {
+              "maxItems": 10,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 300
+              }
+            },
+            "invalidation": {
+              "maxItems": 10,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 300
+              }
+            },
+            "classifyFailure": {
+              "maxItems": 10,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 300
+              }
+            }
+          },
+          "additionalProperties": false,
+          "description": "Additional rules for one LLM call, at most 10 of up to 300 characters each."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Author guidance added to what the model is told, for every flow."
+    }
+  },
+  "additionalProperties": false
+}
