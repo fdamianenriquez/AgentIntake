@@ -1,0 +1,10 @@
+[
+  {
+    "name": "agent-intake (browser entry, minified + gzipped, React excluded)",
+    "path": "dist/packages/react-agent-intake/src/index.js",
+    "import": "*",
+    "ignore": ["react", "react-dom", "react/jsx-runtime"],
+    "limit": "10.2 kB",
+    "gzip": true
+  }
+]

@@ -77,6 +77,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run check:package
+      - run: npm run size
       - name: Pack
         run: |
           mkdir -p pack

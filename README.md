@@ -578,17 +578,18 @@ cp server/.env.example .env   # then add an API key (see "Choosing an LLM provid
 node dist/cli/index.js --help # or `npm link` once to get `agent-intake`
 ```
 
-| Script                                    | What it does                                                                                             |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `npm run build`                           | Removes `dist/` (`npm run clean`), then compiles with `tsc`                                              |
-| `npm test` / `npm run test:watch`         | Vitest suite; makes no real model calls                                                                  |
-| `npm run test:coverage`                   | The suite with coverage                                                                                  |
-| `npm run lint` / `npm run lint:fix`       | ESLint                                                                                                   |
-| `npm run format` / `npm run format:check` | Prettier                                                                                                 |
-| `npm run typecheck`                       | `tsc --noEmit`                                                                                           |
-| `npm run check:package`                   | `publint` and `arethetypeswrong` against the packed tarball                                              |
-| `npm run smoke-test`                      | Installs the packed tarball into a fresh project, runs the CLI, imports and type-checks the entry points |
-| `npm start`                               | The runtime server on `PORT` (default 3000), reading `.env`                                              |
+| Script                                    | What it does                                                                                                        |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `npm run build`                           | Removes `dist/` (`npm run clean`), then compiles with `tsc`                                                         |
+| `npm test` / `npm run test:watch`         | Vitest suite; makes no real model calls                                                                             |
+| `npm run test:coverage`                   | The suite with coverage                                                                                             |
+| `npm run lint` / `npm run lint:fix`       | ESLint                                                                                                              |
+| `npm run format` / `npm run format:check` | Prettier                                                                                                            |
+| `npm run typecheck`                       | `tsc --noEmit`                                                                                                      |
+| `npm run check:package`                   | `publint` and `arethetypeswrong` against the packed tarball                                                         |
+| `npm run size`                            | Size budget of the browser entry (minified and gzipped, React excluded), from `.size-limit.json`; run after a build |
+| `npm run smoke-test`                      | Installs the packed tarball into a fresh project, runs the CLI, imports and type-checks the entry points            |
+| `npm start`                               | The runtime server on `PORT` (default 3000), reading `.env`                                                         |
 
 To measure prompts against a real model, use [`eval-prompts`](#checking-guidance-with-eval-prompts). See [CONTRIBUTING.md](CONTRIBUTING.md) for the rest.
 

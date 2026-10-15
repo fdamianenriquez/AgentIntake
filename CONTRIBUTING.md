@@ -17,15 +17,16 @@ To try the CLI, Studio or the demo against a real model, copy `server/.env.examp
 
 ## Scripts
 
-| Script                                    | What it does                                                                                  |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `npm run lint` / `npm run lint:fix`       | ESLint (flat config in `eslint.config.js`)                                                    |
-| `npm run format` / `npm run format:check` | Prettier                                                                                      |
-| `npm run typecheck`                       | `tsc --noEmit` with TypeScript 7                                                              |
-| `npm test` / `npm run test:coverage`      | Vitest                                                                                        |
-| `npm run build`                           | Cleans `dist/` and compiles                                                                   |
-| `npm run check:package`                   | `publint` and `arethetypeswrong` against the packed tarball                                   |
-| `npm run smoke-test`                      | Packs the package, installs it into a fresh project, runs the CLI, imports and type-checks it |
+| Script                                    | What it does                                                                                                        |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `npm run lint` / `npm run lint:fix`       | ESLint (flat config in `eslint.config.js`)                                                                          |
+| `npm run format` / `npm run format:check` | Prettier                                                                                                            |
+| `npm run typecheck`                       | `tsc --noEmit` with TypeScript 7                                                                                    |
+| `npm test` / `npm run test:coverage`      | Vitest                                                                                                              |
+| `npm run build`                           | Cleans `dist/` and compiles                                                                                         |
+| `npm run check:package`                   | `publint` and `arethetypeswrong` against the packed tarball                                                         |
+| `npm run size`                            | Size budget of the browser entry (minified and gzipped, React excluded), from `.size-limit.json`; run after a build |
+| `npm run smoke-test`                      | Packs the package, installs it into a fresh project, runs the CLI, imports and type-checks it                       |
 
 TypeScript note: the project is compiled with TypeScript 7 (`@typescript/native`, which provides `tsc`). typescript-eslint needs the TypeScript compiler API, which 7.0 doesn't have, so the `typescript` dev dependency is an alias of the TypeScript 6 package (`@typescript/typescript6`), used only by the linter.
 

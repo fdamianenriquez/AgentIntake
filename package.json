@@ -82,6 +82,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "check:package": "publint --pack npm && attw --pack . --profile esm-only",
+    "size": "size-limit",
     "smoke-test": "node scripts/smoke-test-package.mjs"
   },
   "dependencies": {
@@ -103,6 +104,7 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
     "@eslint/js": "^10.0.1",
+    "@size-limit/preset-small-lib": "^14.2.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
@@ -123,6 +125,7 @@
     "publint": "^0.3.25",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "size-limit": "^14.2.0",
     "supertest": "^7.3.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-eslint": "^8.71.2",
