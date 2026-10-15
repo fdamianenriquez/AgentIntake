@@ -124,7 +124,7 @@ One `.env` at the project root is the source of truth. It is read from the direc
 | `AGENTINTAKE_FLOWS_DIR` | Directory of `flow.json` files the runtime server trusts for guidance — see [Trust model](#trust-model-and-trusted-flows) |
 | `AGENTINTAKE_LOG_LEVEL` | `error`, `warn` (default), `info` or `debug` — see [Logging](#logging). Any other value stops startup |
 
-Defaults: `anthropic` → `claude-haiku-5-5`, `openai` → `gpt-6-luna`, `google` → `gemini-3.8-flash`, `openrouter` → `openrouter/free`. Each is a fast, low-cost tier that did well in the comparison below; set `LLM_MODEL` to use a larger model. `openrouter` is an extra fourth option (OpenAI-compatible API, reached through the same SDK); `openrouter/free` is OpenRouter's own router across whichever free models are currently available, so it costs nothing to try but can hand consecutive requests to different underlying models.
+Defaults: `anthropic` → `claude-haiku-5-5`, `openai` → `gpt-6-luna`, `google` → `gemini-3.8-flash`, `openrouter` → `openrouter/free`. Each is a fast, low-cost tier that did well in the comparison below; set `LLM_MODEL` to use a larger model. `openrouter` is an extra fourth option (OpenAI-compatible API, reached through the same SDK); `openrouter/free` is OpenRouter's own router across whichever free models are currently available, so it costs nothing to try but can hand consecutive requests to different underlying models. The `anthropic`, `openai` and `google` defaults have so far been run only through OpenRouter (as `anthropic/claude-haiku-5.5`, `openai/gpt-6-luna` and `google/gemini-3.8-flash`), not yet with each provider's own key and model id; if a provider rejects its default, set `LLM_MODEL`.
 
 How each way of running it finds its provider:
 
