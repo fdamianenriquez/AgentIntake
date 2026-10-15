@@ -17,6 +17,9 @@ concurrency:
 
 jobs:
   analyze:
+    # Code scanning is free for public repositories; a private one needs it
+    # enabled separately, so the job is skipped there instead of failing.
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
