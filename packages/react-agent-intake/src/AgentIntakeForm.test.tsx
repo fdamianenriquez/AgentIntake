@@ -405,7 +405,8 @@ describe('AgentIntakeForm', () => {
       await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
       // Payout depends on the changed answer (says the check); it has no update, so it can only be kept.
       await waitFor(() => expect(screen.getByText(/The account holder name may need to match/)).toBeInTheDocument());
-      expect(screen.getByText(/keep it if it still applies/)).toBeInTheDocument();
+      // The hint depends on the step's adapted fields, which may still be loading.
+      await waitFor(() => expect(screen.getByText(/keep it if it still applies/)).toBeInTheDocument());
       expect(screen.getByRole('heading', { name: 'Payout' })).toBeInTheDocument();
       expect(screen.getByText(/needs review/)).toBeInTheDocument();
       await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
