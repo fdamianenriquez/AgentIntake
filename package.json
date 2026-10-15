@@ -56,7 +56,14 @@
     "!**/__snapshots__/",
     "!**/__fixtures__/",
     "!dist/cli/**/*.d.ts.map",
-    "!dist/server/**/*.d.ts.map"
+    "!dist/server/**/*.d.ts.map",
+    "!dist/cli/**/*.d.ts",
+    "!dist/server/**/*.d.ts",
+    "dist/server/src/public.d.ts",
+    "dist/server/src/app.d.ts",
+    "dist/server/src/config.d.ts",
+    "!dist/server/src/index.js",
+    "!dist/server/src/exampleFlow.js"
   ],
   "bin": {
     "agent-intake": "./dist/cli/index.js"
