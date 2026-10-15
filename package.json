@@ -54,7 +54,9 @@
     "CHANGELOG.md",
     "!**/*.test.*",
     "!**/__snapshots__/",
-    "!**/__fixtures__/"
+    "!**/__fixtures__/",
+    "!dist/cli/**/*.d.ts.map",
+    "!dist/server/**/*.d.ts.map"
   ],
   "bin": {
     "agent-intake": "./dist/cli/index.js"
