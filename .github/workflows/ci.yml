@@ -8,21 +8,128 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
+      fail-fast: false
       matrix:
-        # The test runner (vitest) requires Node 22.12+; the runtime supports
-        # ^20.19 too, but there is no way to exercise it without the suite.
+        # The test runner needs Node 22.12+; the node20-runtime job covers the
+        # rest of the supported range.
         node-version: [22.x, 24.x]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
-      - run: npx tsc -p tsconfig.json --noEmit
-      - run: npm test
+      - if: matrix.node-version != '22.x'
+        run: npm test
+      - if: matrix.node-version == '22.x'
+        run: npm run test:coverage
+      - if: matrix.node-version == '22.x'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 14
+
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
       - run: npm run build
+      - run: npm run check:package
+      - name: Pack
+        run: |
+          mkdir -p pack
+          npm pack --pack-destination pack --json > pack/manifest.json
+      - name: Check the packed file list
+        run: |
+          node --input-type=module -e "
+            import { readFileSync } from 'node:fs';
+            const [{ files }] = JSON.parse(readFileSync('pack/manifest.json', 'utf-8'));
+            const forbidden = [
+              /\.test\.[cm]?[jt]sx?$/, /\.test\.d\.ts/, /(^|\/)__snapshots__\//, /(^|\/)__fixtures__\//,
+              /(^|\/)\.env/, /(^|\/)\.claude\//, /(^|\/)SPEC[^/]*\.md$/i, /(^|\/)CLAUDE[^/]*\.md$/i,
+            ];
+            const bad = files.map((file) => file.path).filter((p) => forbidden.some((re) => re.test(p)));
+            if (bad.length) { console.error('Files that must not ship:\n' + bad.join('\n')); process.exit(1); }
+            console.log(files.length + ' files, none forbidden.');
+          "
+      - name: Smoke test the packed tarball
+        run: node scripts/smoke-test-package.mjs pack/agent-intake-*.tgz
+      - run: npm publish --dry-run
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package
+          path: pack/*.tgz
+          retention-days: 7
+
+  node20-runtime:
+    # The tests need Node 22.12+, so this job only proves that the packed
+    # package runs on the oldest Node version `engines` allows.
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20.19.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: package
+          path: pack
+      - name: Install the tarball and run the CLI and imports
+        env:
+          SMOKE_SKIP_TYPES: '1'
+        run: node scripts/smoke-test-package.mjs pack/agent-intake-*.tgz
+
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm audit --omit=dev --audit-level=high

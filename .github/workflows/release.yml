@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: npm
+    permissions:
+      contents: write # create the GitHub Release
+      id-token: write # npm trusted publishing and provenance
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check the tag against package.json and CHANGELOG.md
+        id: version
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version (expected v$version)."
+            exit 1
+          fi
+          node scripts/changelog-section.mjs "$version" > release-notes.md
+          case "$version" in
+            *-*) echo "dist-tag=next" >> "$GITHUB_OUTPUT"; echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "dist-tag=latest" >> "$GITHUB_OUTPUT"; echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.x
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Check the npm version
+        run: |
+          current="$(npm --version)"
+          node -e "
+            const [a, b] = [process.argv[1], '11.5.1'].map((v) => v.split('.').map(Number));
+            const older = a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+            if (older < 0) {
+              console.error('::error::npm ' + process.argv[1] + ' is older than 11.5.1, the minimum for npm trusted publishing.');
+              process.exit(1);
+            }
+          " "$current"
+          echo "npm $current"
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run check:package
+      - run: npm run smoke-test
+      - run: npm audit signatures
+
+      # npm tries trusted publishing (OIDC) first and uses NODE_AUTH_TOKEN only
+      # when there is no trusted publisher, so this step works both for the
+      # first release (token) and after the token secret has been deleted.
+      # Provenance comes from publishConfig.provenance.
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DIST_TAG: ${{ steps.version.outputs.dist-tag }}
+        run: npm publish --tag "$DIST_TAG"
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          flags=()
+          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md --verify-tag "${flags[@]}"
