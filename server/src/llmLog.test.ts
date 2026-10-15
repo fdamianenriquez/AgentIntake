@@ -5,10 +5,10 @@ vi.mock('./llmClient.js', async (importOriginal) => ({
   generateStructured: vi.fn(),
 }));
 
-import { APICallError, NoObjectGeneratedError, RetryError, TypeValidationError } from 'ai';
+import { APICallError, LoadAPIKeyError, NoObjectGeneratedError, RetryError, TypeValidationError } from 'ai';
 import { createApp } from './app.js';
 import { withDegradationCapture } from './degradation.js';
-import { generateStructured, LlmTimeoutError } from './llmClient.js';
+import { buildModel, generateStructured, LlmTimeoutError, resolveProvider } from './llmClient.js';
 import { guidanceHash } from './llmLog.js';
 import { LOG_LEVELS, resolveLogLevel } from './logger.js';
 import { validateStepSubmission } from './stepEngine.js';
@@ -113,6 +113,23 @@ describe('the degradation warning', () => {
   });
 });
 
+// The error a real llmClient function throws under the given environment.
+function thrownBy(fn: () => unknown, env: Record<string, string>): unknown {
+  const saved = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]));
+  Object.assign(process.env, env);
+  try {
+    fn();
+  } catch (error) {
+    return error;
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+  throw new Error('expected a throw');
+}
+
 describe("the degradation warning's reason", () => {
   // Error text from the provider or the SDK isn't under this project's
   // control and can echo the model's output, which can echo what the user
@@ -145,6 +162,9 @@ describe("the degradation warning's reason", () => {
     ['an aborted request', () => new DOMException(`aborted ${MARKER}`, 'AbortError'), 'aborted'],
     ['a plain error', () => new Error(`Something broke: ${MARKER}`), 'unknown'],
     ['a thrown non-error', () => `raw ${MARKER}`, 'unknown'],
+    ['a missing API key', () => thrownBy(() => buildModel('anthropic'), { LLM_API_KEY: '' }), 'configuration error'],
+    ['an unsupported LLM_PROVIDER', () => thrownBy(resolveProvider, { LLM_PROVIDER: 'nope' }), 'configuration error'],
+    ['an SDK key-loading error', () => new LoadAPIKeyError({ message: 'API key is missing.' }), 'configuration error'],
   ];
 
   for (const [what, error, reason] of cases) {

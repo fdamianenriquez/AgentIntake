@@ -1,4 +1,13 @@
-import { APICallError, generateObject, JSONParseError, NoObjectGeneratedError, RetryError, TypeValidationError } from 'ai';
+import {
+  APICallError,
+  generateObject,
+  JSONParseError,
+  LoadAPIKeyError,
+  LoadSettingError,
+  NoObjectGeneratedError,
+  RetryError,
+  TypeValidationError,
+} from 'ai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
@@ -28,10 +37,15 @@ function isSupportedProvider(value: string): value is LlmProvider {
   return (SUPPORTED_PROVIDERS as readonly string[]).includes(value);
 }
 
+/** A provider setting (LLM_PROVIDER, LLM_API_KEY) is missing or invalid. */
+export class LlmConfigError extends Error {
+  override name = 'LlmConfigError';
+}
+
 export function resolveProvider(): LlmProvider {
   const raw = process.env.LLM_PROVIDER ?? 'anthropic';
   if (!isSupportedProvider(raw)) {
-    throw new Error(
+    throw new LlmConfigError(
       `Unrecognized LLM_PROVIDER "${raw}" -- expected one of: ${SUPPORTED_PROVIDERS.join(', ')}`
     );
   }
@@ -41,7 +55,7 @@ export function resolveProvider(): LlmProvider {
 function requireApiKey(provider: LlmProvider): string {
   const key = process.env[API_KEY_ENV_VAR];
   if (!key) {
-    throw new Error(
+    throw new LlmConfigError(
       `Set ${API_KEY_ENV_VAR} to your ${provider} API key to use LLM_PROVIDER=${provider}, or set LLM_PROVIDER to a different supported provider.`
     );
   }
@@ -86,15 +100,18 @@ export class LlmTimeoutError extends Error {
 
 /**
  * A short, fixed reason for a failed call -- timeout, invalid output,
- * provider error <status>, aborted or unknown -- for log lines. Decided by the
- * error's class and known properties, never its message: provider and SDK
- * error text isn't under this project's control, and some of it (a
- * type-validation error, for one) embeds the model's raw output, which can
- * echo values the user entered.
+ * provider error <status>, configuration error, aborted or unknown -- for log
+ * lines. Decided by the error's class and known properties, never its
+ * message: provider and SDK error text isn't under this project's control,
+ * and some of it (a type-validation error, for one) embeds the model's raw
+ * output, which can echo values the user entered.
  */
 export function describeLlmError(error: unknown): string {
   if (RetryError.isInstance(error)) return describeLlmError(error.lastError);
   if (error instanceof LlmTimeoutError) return 'timeout';
+  if (error instanceof LlmConfigError || LoadAPIKeyError.isInstance(error) || LoadSettingError.isInstance(error)) {
+    return 'configuration error';
+  }
   if (NoObjectGeneratedError.isInstance(error) || TypeValidationError.isInstance(error) || JSONParseError.isInstance(error)) {
     return 'invalid output';
   }
