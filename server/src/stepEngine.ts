@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { FieldDef, ParsedEndpoint } from '../../packages/react-agent-intake/src/contracts.js';
 import { reportDegradation } from './degradation.js';
-import { generateStructured } from './llmClient.js';
+import { describeLlmError, generateStructured } from './llmClient.js';
 import { describeCall, loggedLlmCall, type LlmCallMeta } from './llmLog.js';
 import { logger } from './logger.js';
 import * as classifyFailurePrompt from './prompts/classifyFailure.js';
@@ -360,8 +360,11 @@ export async function classifyFailure(input: ClassifyFailureInput): Promise<Clas
 
 // A capture (the eval runner) records the reason instead; otherwise it is
 // logged, as for every runtime request.
+// The full error message goes only to a degradation capture (the eval runner,
+// local to the process); the log line gets a fixed reason, since provider and
+// SDK error text can carry the model's output and, through it, user data.
 function logDegradation(fn: string, endpointId: string, error: unknown, meta: LlmCallMeta): void {
   const message = error instanceof Error ? error.message : String(error);
   if (reportDegradation(fn, endpointId, message)) return;
-  logger.warn(`stepEngine: ${fn}("${endpointId}") degraded to the fallback path -- ${message} [${describeCall(meta)}]`);
+  logger.warn(`stepEngine: ${fn}("${endpointId}") degraded to the fallback path (${describeLlmError(error)}) [${describeCall(meta)}]`);
 }

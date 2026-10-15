@@ -29,6 +29,7 @@ Author guidance: a flow author can adapt what the model is told for their domain
 ### Fixed
 
 - Fallback reasons in eval runs are captured per run without replacing `console.warn`, so overlapping runs no longer lose or mix them.
+- The fallback warning gives a fixed reason (`timeout`, `invalid output`, `provider error <status>`, `aborted`, `unknown`) instead of the provider's or SDK's error message, which can include the model's raw output and, through it, values the user entered. Eval reports still get the full message.
 - The cap on warnings for unknown flow ids holds when the server context is copied per request (Studio).
 
 ## [1.5.0] — 2026-10-13

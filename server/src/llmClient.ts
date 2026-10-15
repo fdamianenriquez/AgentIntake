@@ -1,4 +1,4 @@
-import { generateObject } from 'ai';
+import { APICallError, generateObject, JSONParseError, NoObjectGeneratedError, RetryError, TypeValidationError } from 'ai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
@@ -84,6 +84,25 @@ export interface GenerateStructuredOptions {
 
 export class LlmTimeoutError extends Error {
   override name = 'LlmTimeoutError';
+}
+
+/**
+ * A short, fixed reason for a failed call -- timeout, invalid output,
+ * provider error <status>, aborted or unknown -- for log lines. Decided by the
+ * error's class and known properties, never its message: provider and SDK
+ * error text isn't under this project's control, and some of it (a
+ * type-validation error, for one) embeds the model's raw output, which can
+ * echo values the user entered.
+ */
+export function describeLlmError(error: unknown): string {
+  if (RetryError.isInstance(error)) return describeLlmError(error.lastError);
+  if (error instanceof LlmTimeoutError) return 'timeout';
+  if (NoObjectGeneratedError.isInstance(error) || TypeValidationError.isInstance(error) || JSONParseError.isInstance(error)) {
+    return 'invalid output';
+  }
+  if (APICallError.isInstance(error)) return error.statusCode ? `provider error ${error.statusCode}` : 'provider error';
+  if (error instanceof Error && error.name === 'AbortError') return 'aborted';
+  return 'unknown';
 }
 
 /**

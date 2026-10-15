@@ -5,8 +5,10 @@ vi.mock('./llmClient.js', async (importOriginal) => ({
   generateStructured: vi.fn(),
 }));
 
+import { APICallError, NoObjectGeneratedError, RetryError, TypeValidationError } from 'ai';
 import { createApp } from './app.js';
-import { generateStructured } from './llmClient.js';
+import { withDegradationCapture } from './degradation.js';
+import { generateStructured, LlmTimeoutError } from './llmClient.js';
 import { guidanceHash } from './llmLog.js';
 import { LOG_LEVELS, resolveLogLevel } from './logger.js';
 import { validateStepSubmission } from './stepEngine.js';
@@ -95,11 +97,11 @@ describe('the per-call debug line', () => {
 
 describe('the degradation warning', () => {
   it('stays one line, at warn level, with the call, versions and guidance hash', async () => {
-    mocked.mockRejectedValueOnce(new Error('The model did not respond within 15 seconds.'));
+    mocked.mockRejectedValueOnce(new LlmTimeoutError('The model did not respond within 15 seconds.'));
     await validate();
 
     expect(lines).toEqual([
-      `stepEngine: validateStepSubmission("payout") degraded to the fallback path -- The model did not respond within 15 seconds. [call=validate prompt=v2 guidanceBlock=v1 guidance=${guidanceHash(guidance)}]`,
+      `stepEngine: validateStepSubmission("payout") degraded to the fallback path (timeout) [call=validate prompt=v2 guidanceBlock=v1 guidance=${guidanceHash(guidance)}]`,
     ]);
   });
 
@@ -107,6 +109,63 @@ describe('the degradation warning', () => {
     vi.stubEnv('AGENTINTAKE_LOG_LEVEL', 'error');
     mocked.mockRejectedValueOnce(new Error('x'));
     await validate();
+    expect(lines).toEqual([]);
+  });
+});
+
+describe("the degradation warning's reason", () => {
+  // Error text from the provider or the SDK isn't under this project's
+  // control and can echo the model's output, which can echo what the user
+  // typed; the warning names a fixed reason instead.
+  const MARKER = 'ECHOED-VALUE-5d1e';
+  const apiError = (statusCode?: number) =>
+    new APICallError({ message: `Bad request: ${MARKER}`, url: 'https://provider.test/v1', requestBodyValues: { MARKER }, statusCode });
+  const cases: [string, () => unknown, string][] = [
+    ['an SDK type-validation error', () => new TypeValidationError({ value: { bank: MARKER }, cause: new Error(MARKER) }), 'invalid output'],
+    [
+      'output that did not match the schema',
+      () =>
+        new NoObjectGeneratedError({
+          message: `No object generated: ${MARKER}`,
+          text: `{"bank":"${MARKER}"}`,
+          response: { id: 'r', timestamp: new Date(), modelId: 'm' },
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } as never,
+          finishReason: 'stop',
+        }),
+      'invalid output',
+    ],
+    ['a provider error with a status', () => apiError(429), 'provider error 429'],
+    ['a provider error without a status', () => apiError(), 'provider error'],
+    [
+      'a provider error after retries',
+      () => new RetryError({ message: `Failed after 3 attempts. Last error: ${MARKER}`, reason: 'maxRetriesExceeded', errors: [apiError(503)] }),
+      'provider error 503',
+    ],
+    ['a timeout', () => new LlmTimeoutError('The model did not respond within 15 seconds.'), 'timeout'],
+    ['an aborted request', () => new DOMException(`aborted ${MARKER}`, 'AbortError'), 'aborted'],
+    ['a plain error', () => new Error(`Something broke: ${MARKER}`), 'unknown'],
+    ['a thrown non-error', () => `raw ${MARKER}`, 'unknown'],
+  ];
+
+  for (const [what, error, reason] of cases) {
+    it(`for ${what} is "${reason}", without the error's text`, async () => {
+      vi.stubEnv('AGENTINTAKE_LOG_LEVEL', 'debug');
+      mocked.mockRejectedValueOnce(error());
+      await validate(false);
+
+      expect(lines).toContain(
+        `stepEngine: validateStepSubmission("payout") degraded to the fallback path (${reason}) [call=validate prompt=v2 guidanceBlock=v1 guidance=none]`
+      );
+      for (const line of lines) expect(line).not.toContain(MARKER);
+    });
+  }
+
+  it('the degradation capture still receives the full message', async () => {
+    mocked.mockRejectedValueOnce(new TypeValidationError({ value: { bank: MARKER }, cause: new Error('c') }));
+    const { degradations } = await withDegradationCapture(() => validate(false));
+
+    expect(degradations).toHaveLength(1);
+    expect(degradations[0].message).toContain(MARKER);
     expect(lines).toEqual([]);
   });
 });

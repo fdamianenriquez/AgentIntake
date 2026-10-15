@@ -490,7 +490,7 @@ Flow generation has no fallback to degrade to, so it is bounded differently: the
 `AGENTINTAKE_LOG_LEVEL` sets what the server, Studio and the CLI print: `error`, `warn` (the default), `info` or `debug`. When an LLM call falls back, a warning says which call, why, and which versions it ran with:
 
 ```
-stepEngine: validateStepSubmission("createPayoutMethod") degraded to the fallback path -- The model did not respond within 15 seconds. [call=validate prompt=v2 guidanceBlock=v1 guidance=3f9a1c0b7e24]
+stepEngine: validateStepSubmission("createPayoutMethod") degraded to the fallback path (timeout) [call=validate prompt=v2 guidanceBlock=v1 guidance=3f9a1c0b7e24]
 ```
 
 At `debug`, every LLM call logs one line:
@@ -499,7 +499,7 @@ At `debug`, every LLM call logs one line:
 llm call=validate prompt=v2 guidanceBlock=v1 guidance=3f9a1c0b7e24 outcome=ok duration=2318ms
 ```
 
-`prompt` is that call's prompt version, `guidanceBlock` the version of the guidance block's own text, and `guidance` the first 12 hex characters of the SHA-256 of the rendered guidance block (`none` without guidance) — enough to tie a rise in fallbacks to a guidance or prompt change. Log lines never contain the guidance text, the prompt, the submitted data or any field value.
+`prompt` is that call's prompt version, `guidanceBlock` the version of the guidance block's own text, and `guidance` the first 12 hex characters of the SHA-256 of the rendered guidance block (`none` without guidance) — enough to tie a rise in fallbacks to a guidance or prompt change. The reason in the warning is one of `timeout`, `invalid output`, `provider error <status>`, `aborted` or `unknown`, decided from the error's type rather than copied from its message: provider and SDK error text can include the model's raw output, which can echo what the user typed. Log lines never contain the guidance text, the prompt, the submitted data or any field value. (`eval-prompts` reports keep the full error message per failing run, since they stay on the machine that ran them.)
 
 ## Deploying the runtime server
 
