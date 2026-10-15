@@ -499,7 +499,7 @@ function TestPanel({ flow, savedGlobal, pollMs }: { flow: GeneratedFlow; savedGl
       <h3 id="test-title">Test</h3>
       <p className="studio-field-hint">
         Runs AgentIntake's built-in cases with the saved global guidance and this flow's guidance, against your configured
-        model. It spends model calls. Calls whose guidance changed since the last test are selected.
+        model. It spends model calls. Calls whose guidance changed since the last test, or that were never tested, are selected.
       </p>
       <fieldset disabled={running}>
         <legend>Calls to test</legend>
@@ -507,7 +507,13 @@ function TestPanel({ flow, savedGlobal, pollMs }: { flow: GeneratedFlow; savedGl
           <label key={call} className="studio-checkbox">
             <input type="checkbox" checked={selected.includes(call)} onChange={() => toggle(call)} />
             {CALL_LABELS[call]}
-            {changed.includes(call) && Object.keys(lastTested).length > 0 ? ' (changed)' : ''}
+            {Object.keys(lastTested).length === 0
+              ? ''
+              : lastTested[call] === undefined
+                ? ' (untested)'
+                : changed.includes(call)
+                  ? ' (changed)'
+                  : ''}
           </label>
         ))}
         <button type="button" onClick={() => setPicked([...CALLS])}>

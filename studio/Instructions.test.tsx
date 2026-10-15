@@ -355,6 +355,24 @@ describe('Test', () => {
     await waitFor(() => expect(screen.getByRole('checkbox', { name: /Flow generation/ })).not.toBeChecked());
     expect(screen.getByRole('checkbox', { name: /Checking answers \(changed\)/ })).toBeChecked();
   });
+
+  it('marks calls that were never tested as untested, not changed', async () => {
+    stubStudio();
+    const user = userEvent.setup();
+    renderTab();
+    await screen.findByLabelText('Tone');
+
+    for (const box of screen.getAllByRole('checkbox')) {
+      if (!(box as HTMLInputElement).labels?.[0]?.textContent?.startsWith('Checking answers')) await user.click(box);
+    }
+    await user.click(screen.getByRole('button', { name: 'Test' }));
+    await user.click(await screen.findByRole('button', { name: /^Run \d+ test run\(s\)$/ }));
+    await screen.findByRole('table', { name: 'Results' });
+
+    expect(screen.getByRole('checkbox', { name: 'Checking answers' })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Flow generation (untested)' })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /\(changed\)/ })).not.toBeInTheDocument();
+  });
 });
 
 describe('what Test covers', () => {
