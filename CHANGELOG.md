@@ -27,7 +27,7 @@ First public release: an OpenAPI spec becomes a multi-step form wizard whose fie
 - **Providers.** Anthropic, OpenAI, Google and OpenRouter through the Vercel AI SDK, with low-cost defaults per provider; every output schema is kept to what all of them accept.
 - **Logging.** `AGENTINTAKE_LOG_LEVEL`; at `debug`, one line per model call with its prompt version, a hash of the guidance block, the outcome and the duration. A fallback warning names a fixed reason (`timeout`, `invalid output`, `provider error <status>`, `configuration error`, `aborted`, `unknown`).
 - **CORS restriction.** `AGENTINTAKE_CORS_ORIGINS` limits which browser origins may call the runtime server.
-- **Package.** ESM only, with type declarations; React 18 or 19 as a peer dependency; JSON Schema for the config file in `schemas/`.
+- **Package.** ESM only, with type declarations; React 19 as a peer dependency; JSON Schema for the config file in `schemas/`.
 
 ### Security
 

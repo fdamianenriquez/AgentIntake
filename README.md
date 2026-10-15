@@ -56,7 +56,7 @@ npm install agent-intake
 ```
 
 - **Node.js** `^20.19.0 || >=22.12.0`.
-- **React** `^18 || ^19` is a peer dependency (`react` and `react-dom`); npm installs it if your project doesn't have it.
+- **React** 19 (`^19.0.0`) is a peer dependency (`react` and `react-dom`); npm installs it if your project doesn't have it.
 - **ESM only.** The package has no CommonJS build: use `import`, or `await import()` from CommonJS.
 
 | Import                                                | What it is                                                                                             |

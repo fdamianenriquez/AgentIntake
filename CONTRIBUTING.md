@@ -70,7 +70,7 @@ For maintainers. Releases are published by `.github/workflows/release.yml` when 
 ### One-time setup
 
 - **GitHub environment.** Create an environment named `npm` (Settings → Environments) and add protection rules, for example required reviewers, so a tag alone can't publish.
-- **First release (token).** Create a short-lived npm granular access token with publish rights for `agent-intake`, and save it as the `NPM_TOKEN` secret of the `npm` environment. The first publish creates the package.
+- **First release (token).** npm can't scope a granular access token to a package that doesn't exist yet, so create a short-lived granular token with read and write access to all packages, with "Bypass two-factor authentication" enabled if your account requires 2FA for writes. Save it as the `NPM_TOKEN` secret of the `npm` environment. The first publish creates the package; revoke the token right after trusted publishing is confirmed (next step).
 - **Trusted publishing (OIDC).** After the first release, on npmjs.com open the package's settings → Trusted publishing and add a GitHub Actions publisher: repository `fdamianenriquez/AgentIntake`, workflow `release.yml`, environment `npm`. Publish the next release to confirm it works, then delete the `NPM_TOKEN` secret, revoke the token, and under Publishing access choose "Require two-factor authentication and disallow tokens".
 
 The publish step needs no edit between the two states: npm (11.5.1 or newer) tries trusted publishing first and falls back to the token only when there is no trusted publisher.
