@@ -136,9 +136,7 @@ describe('EndpointDefSchema: execute XOR operations', () => {
 
   it('accepts operations with create (and optional read/update/undo)', () => {
     expect(EndpointDefSchema.safeParse({ ...base, operations: { create: fn } }).success).toBe(true);
-    expect(EndpointDefSchema.safeParse({ ...base, operations: { create: fn, read: fn, update: fn, undo: fn } }).success).toBe(
-      true
-    );
+    expect(EndpointDefSchema.safeParse({ ...base, operations: { create: fn, read: fn, update: fn, undo: fn } }).success).toBe(true);
   });
 
   it('rejects both, and neither', () => {
@@ -177,8 +175,8 @@ describe('flow.json author guidance', () => {
     const issues = (value: unknown) => GeneratedFlowSchema.safeParse(value).error?.issues.map((issue) => issue.path.join('.'));
     expect(issues({ ...flow, guidance: 'x'.repeat(GUIDANCE_LIMITS.flowGuidance + 1) })).toEqual(['guidance']);
     expect(issues({ ...flow, outputLanguage: 'not a language' })).toEqual(['outputLanguage']);
-    expect(
-      issues({ ...flow, endpoints: [{ ...flow.endpoints[0], guidance: 'x'.repeat(GUIDANCE_LIMITS.endpointGuidance + 1) }] })
-    ).toEqual(['endpoints.0.guidance']);
+    expect(issues({ ...flow, endpoints: [{ ...flow.endpoints[0], guidance: 'x'.repeat(GUIDANCE_LIMITS.endpointGuidance + 1) }] })).toEqual([
+      'endpoints.0.guidance',
+    ]);
   });
 });

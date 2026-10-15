@@ -16,9 +16,7 @@ import { runGenerate } from './generate.js';
 
 const mockedGenerateStructured = vi.mocked(generateStructured);
 
-const fixtureSpec = fileURLToPath(
-  new URL('../../server/src/__fixtures__/ref-example.openapi.yaml', import.meta.url)
-);
+const fixtureSpec = fileURLToPath(new URL('../../server/src/__fixtures__/ref-example.openapi.yaml', import.meta.url));
 
 const generatedResult: FlowGenerationResult = {
   flow: {
@@ -44,9 +42,7 @@ const generatedResult: FlowGenerationResult = {
       },
     ],
   },
-  ambiguousFields: [
-    { endpointId: 'createWidget', fieldName: 'quantity', note: 'Purpose unclear from the spec.' },
-  ],
+  ambiguousFields: [{ endpointId: 'createWidget', fieldName: 'quantity', note: 'Purpose unclear from the spec.' }],
 };
 
 let outputDir: string;
@@ -141,9 +137,7 @@ describe('runGenerate', () => {
       })
     );
 
-    await expect(runGenerate({ spec: noWriteSpecPath, output: outputPath })).rejects.toThrow(
-      /No write operations/
-    );
+    await expect(runGenerate({ spec: noWriteSpecPath, output: outputPath })).rejects.toThrow(/No write operations/);
     expect(mockedGenerateStructured).not.toHaveBeenCalled();
   });
 

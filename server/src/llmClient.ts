@@ -45,9 +45,7 @@ export class LlmConfigError extends Error {
 export function resolveProvider(): LlmProvider {
   const raw = process.env.LLM_PROVIDER ?? 'anthropic';
   if (!isSupportedProvider(raw)) {
-    throw new LlmConfigError(
-      `Unrecognized LLM_PROVIDER "${raw}" -- expected one of: ${SUPPORTED_PROVIDERS.join(', ')}`
-    );
+    throw new LlmConfigError(`Unrecognized LLM_PROVIDER "${raw}" -- expected one of: ${SUPPORTED_PROVIDERS.join(', ')}`);
   }
   return raw;
 }
@@ -126,11 +124,7 @@ export function describeLlmError(error: unknown): string {
  * the environment, requests structured output, and returns it already
  * Zod-validated -- callers never see a raw/untrusted response.
  */
-export async function generateStructured<T>(
-  prompt: string,
-  schema: z.ZodType<T>,
-  options: GenerateStructuredOptions = {}
-): Promise<T> {
+export async function generateStructured<T>(prompt: string, schema: z.ZodType<T>, options: GenerateStructuredOptions = {}): Promise<T> {
   const provider = resolveProvider();
   const model = buildModel(provider);
   const abortSignal = options.timeoutMs ? AbortSignal.timeout(options.timeoutMs) : undefined;

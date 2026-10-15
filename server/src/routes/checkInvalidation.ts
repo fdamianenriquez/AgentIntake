@@ -21,15 +21,17 @@ export async function handleCheckInvalidation(req: Request, res: Response): Prom
   const parsed = RequestBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({
-      error:
-        'Request body must be { sessionId, editedEndpoint, before: object, after: object, laterCompletedEndpoints: endpoint[] }.',
+      error: 'Request body must be { sessionId, editedEndpoint, before: object, after: object, laterCompletedEndpoints: endpoint[] }.',
     });
     return;
   }
 
   const { sessionId, editedEndpoint, before, after, laterCompletedEndpoints, flow } = parsed.data;
   try {
-    const laterData = getScopedData(sessionId, laterCompletedEndpoints.map((endpoint) => endpoint.id));
+    const laterData = getScopedData(
+      sessionId,
+      laterCompletedEndpoints.map((endpoint) => endpoint.id)
+    );
     const guidance = runtimeGuidance(res, 'invalidation', flow, [editedEndpoint, ...laterCompletedEndpoints]);
     const result = await checkInvalidation({ editedEndpoint, before, after, laterCompletedEndpoints, laterData, guidance });
     res.status(200).json(result);

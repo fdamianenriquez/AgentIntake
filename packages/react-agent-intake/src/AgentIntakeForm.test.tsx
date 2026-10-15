@@ -212,9 +212,7 @@ describe('AgentIntakeForm', () => {
       id: 'test-flow',
       title: 'Test Flow',
       description: 'A test flow.',
-      endpoints: [
-        { id: 'step1', title: 'Step One', fields: [{ name: 'name', type: 'string', label: 'Name', required: true }], execute },
-      ],
+      endpoints: [{ id: 'step1', title: 'Step One', fields: [{ name: 'name', type: 'string', label: 'Name', required: true }], execute }],
     };
     const user = userEvent.setup();
     render(<AgentIntakeForm flow={flow} apiUrl="http://test.local" />);
@@ -241,9 +239,7 @@ describe('AgentIntakeForm', () => {
       id: 'test-flow',
       title: 'Test Flow',
       description: 'A test flow.',
-      endpoints: [
-        { id: 'step1', title: 'Step One', fields: [{ name: 'name', type: 'string', label: 'Name', required: true }], execute },
-      ],
+      endpoints: [{ id: 'step1', title: 'Step One', fields: [{ name: 'name', type: 'string', label: 'Name', required: true }], execute }],
     };
     const user = userEvent.setup();
     render(<AgentIntakeForm flow={flow} apiUrl="http://test.local" />);
@@ -269,7 +265,12 @@ describe('AgentIntakeForm', () => {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ classification: 'needs-edit', explanation: 'Use another bank.', rollbackFromEndpointId: null, degraded: false }),
+          json: async () => ({
+            classification: 'needs-edit',
+            explanation: 'Use another bank.',
+            rollbackFromEndpointId: null,
+            degraded: false,
+          }),
         } as Response;
       })
     );
@@ -278,7 +279,12 @@ describe('AgentIntakeForm', () => {
       title: 'Test Flow',
       description: 'A test flow.',
       endpoints: [
-        { id: 'step1', title: 'Step One', fields: [{ name: 'name', type: 'string', label: 'Name', required: true }], execute: vi.fn().mockResolvedValue({ success: true }) },
+        {
+          id: 'step1',
+          title: 'Step One',
+          fields: [{ name: 'name', type: 'string', label: 'Name', required: true }],
+          execute: vi.fn().mockResolvedValue({ success: true }),
+        },
         {
           id: 'step2',
           title: 'Step Two',

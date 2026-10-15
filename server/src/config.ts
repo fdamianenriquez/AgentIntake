@@ -21,11 +21,7 @@ export const AgentIntakeConfigSchema = z
           .max(GUIDANCE_LIMITS.domainContext)
           .describe('What the business or process is, e.g. "B2B payment onboarding for marketplaces".')
           .optional(),
-        tone: z
-          .string()
-          .max(GUIDANCE_LIMITS.tone)
-          .describe('Voice of the text the model writes, e.g. "formal, second person".')
-          .optional(),
+        tone: z.string().max(GUIDANCE_LIMITS.tone).describe('Voice of the text the model writes, e.g. "formal, second person".').optional(),
         outputLanguage: LanguageTagSchema.describe(
           'BCP-47 language tag for every user-facing string the model writes. A flow can override it.'
         ).optional(),

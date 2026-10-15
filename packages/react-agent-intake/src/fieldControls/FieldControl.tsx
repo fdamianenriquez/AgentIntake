@@ -31,13 +31,7 @@ export function FieldControl({ field, value, onChange, error, suggested, disable
   );
 }
 
-function renderControl(
-  field: FieldDef,
-  value: unknown,
-  onChange: (value: unknown) => void,
-  invalid: boolean,
-  disabled: boolean
-) {
+function renderControl(field: FieldDef, value: unknown, onChange: (value: unknown) => void, invalid: boolean, disabled: boolean) {
   const common = {
     id: field.name,
     name: field.name,
@@ -48,14 +42,7 @@ function renderControl(
 
   switch (field.type) {
     case 'boolean':
-      return (
-        <input
-          {...common}
-          type="checkbox"
-          checked={Boolean(value)}
-          onChange={(event) => onChange(event.target.checked)}
-        />
-      );
+      return <input {...common} type="checkbox" checked={Boolean(value)} onChange={(event) => onChange(event.target.checked)} />;
 
     case 'number':
       return (
@@ -70,14 +57,7 @@ function renderControl(
       );
 
     case 'date':
-      return (
-        <input
-          {...common}
-          type="date"
-          value={(value as string) ?? ''}
-          onChange={(event) => onChange(event.target.value)}
-        />
-      );
+      return <input {...common} type="date" value={(value as string) ?? ''} onChange={(event) => onChange(event.target.value)} />;
 
     case 'enum':
       return (

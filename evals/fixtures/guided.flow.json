@@ -31,10 +31,7 @@
           "label": "Account Type",
           "description": "Select whether you're signing up as an individual or a business.",
           "required": true,
-          "enumValues": [
-            "individual",
-            "business"
-          ]
+          "enumValues": ["individual", "business"]
         }
       ],
       "auth": {
@@ -108,13 +105,7 @@
           "label": "Industry Category",
           "description": "Required for business accounts. Choose the sector that best describes your business.",
           "required": false,
-          "enumValues": [
-            "retail",
-            "technology",
-            "healthcare",
-            "finance",
-            "other"
-          ]
+          "enumValues": ["retail", "technology", "healthcare", "finance", "other"]
         }
       ],
       "auth": {
@@ -127,9 +118,7 @@
       },
       "resourcePath": "/accounts/{accountId}/verifications",
       "idParam": "verificationId",
-      "pathParams": [
-        "accountId"
-      ],
+      "pathParams": ["accountId"],
       "guidance": "The industry category is collected later by the onboarding team: never show industryCategory."
     },
     {
@@ -177,10 +166,7 @@
           "label": "Account Type",
           "description": "Select whether payouts should go to a checking or savings account.",
           "required": true,
-          "enumValues": [
-            "checking",
-            "savings"
-          ]
+          "enumValues": ["checking", "savings"]
         }
       ],
       "auth": {
@@ -193,9 +179,7 @@
       },
       "resourcePath": "/accounts/{accountId}/payout-methods",
       "idParam": "payoutMethodId",
-      "pathParams": [
-        "accountId"
-      ],
+      "pathParams": ["accountId"],
       "guidance": "Payout notices are sent to the account's email address, so this step must be reviewed whenever the email address changes."
     }
   ],

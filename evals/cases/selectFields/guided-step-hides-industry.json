@@ -62,13 +62,7 @@
           "label": "Industry Category",
           "description": "Required for business accounts. Choose the sector that best describes your business.",
           "required": false,
-          "enumValues": [
-            "retail",
-            "technology",
-            "healthcare",
-            "finance",
-            "other"
-          ]
+          "enumValues": ["retail", "technology", "healthcare", "finance", "other"]
         }
       ],
       "auth": {
@@ -81,9 +75,7 @@
       },
       "resourcePath": "/accounts/{accountId}/verifications",
       "idParam": "verificationId",
-      "pathParams": [
-        "accountId"
-      ]
+      "pathParams": ["accountId"]
     },
     "previouslyCollectedData": {
       "createAccount": {
@@ -94,12 +86,8 @@
     }
   },
   "expect": {
-    "mustInclude": [
-      "legalBusinessName"
-    ],
-    "mustExclude": [
-      "industryCategory"
-    ]
+    "mustInclude": ["legalBusinessName"],
+    "mustExclude": ["industryCategory"]
   },
   "notes": "Guidance-dependent: without the flow fixture, industryCategory is normally shown for a business account.",
   "fixtures": {

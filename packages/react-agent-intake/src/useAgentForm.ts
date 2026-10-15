@@ -1,12 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { EndpointDef, ExecContext, FieldDef, FlowDef, OperationResult } from './contracts.js';
 import { implementedCapabilities, normalizeResult, operationsOf, resultFromError } from './operations.js';
-import {
-  preClassify,
-  type FailureClassification,
-  type RecoveryEvent,
-  type RollbackReport,
-} from './recovery.js';
+import { preClassify, type FailureClassification, type RecoveryEvent, type RollbackReport } from './recovery.js';
 
 // StepStatus (README: "The `StepStatus` lifecycle") is the single source of truth for a step's
 // lifecycle -- never inferred from separate booleans. 'complete' is
@@ -251,11 +246,7 @@ function isUnchanged(
 // omits) keeps its local value. Only the step's own fields count -- all of
 // them, shown or not -- so read's metadata (id, status, timestamps...) never
 // gets in.
-function readOverLocal(
-  endpoint: EndpointDef,
-  local: Record<string, unknown>,
-  data: Record<string, unknown>
-): Record<string, unknown> {
+function readOverLocal(endpoint: EndpointDef, local: Record<string, unknown>, data: Record<string, unknown>): Record<string, unknown> {
   const merged: Record<string, unknown> = {};
   for (const field of endpoint.fields) {
     const found = valueAt(data, field.name);
@@ -472,8 +463,7 @@ function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T
   return rest;
 }
 
-const SKIPPED_BY_ROLLBACK_REASON =
-  'A step it depends on was undone and this one could not be undone automatically.';
+const SKIPPED_BY_ROLLBACK_REASON = 'A step it depends on was undone and this one could not be undone automatically.';
 
 const SAFE_SIDE_STALE_REASON = 'An earlier answer changed; check that this step still applies.';
 
@@ -506,7 +496,7 @@ function advance(state: FormState, records: Record<string, StepRecord>, endpoint
 // cancelling that review returns there.
 function advanceKeepingReturn(state: FormState, records: Record<string, StepRecord>, endpointIds: string[]) {
   const next = advance(state, records, endpointIds);
-  return { ...next, pendingReturnIndex: next.pendingRevisit ? state.editing?.returnIndex ?? null : null };
+  return { ...next, pendingReturnIndex: next.pendingRevisit ? (state.editing?.returnIndex ?? null) : null };
 }
 
 function reducer(state: FormState, action: FormAction): FormState {
@@ -514,8 +504,7 @@ function reducer(state: FormState, action: FormAction): FormState {
     case 'fatal':
       return { ...state, error: action.error };
     case 'stepEntered': {
-      const restored =
-        state.prefill?.endpointId === action.endpointId ? state.prefill.values : state.drafts[action.endpointId] ?? {};
+      const restored = state.prefill?.endpointId === action.endpointId ? state.prefill.values : (state.drafts[action.endpointId] ?? {});
       return {
         ...state,
         loading: true,
@@ -552,8 +541,7 @@ function reducer(state: FormState, action: FormAction): FormState {
         records: reopen ? withStatus(state.records, action.endpointId, 'idle') : state.records,
         // New values make it a different logical operation.
         idempotencyKeys: withoutKey(state.idempotencyKeys, action.endpointId),
-        recovery:
-          state.recovery.endpointId === action.endpointId && state.recovery.phase === 'idle' ? IDLE_RECOVERY : state.recovery,
+        recovery: state.recovery.endpointId === action.endpointId && state.recovery.phase === 'idle' ? IDLE_RECOVERY : state.recovery,
       };
     }
     case 'clientInvalid':
@@ -679,9 +667,7 @@ function reducer(state: FormState, action: FormAction): FormState {
       const id = state.editing.endpointId;
       // Re-confirming a stale step without changes makes it complete again.
       let records =
-        state.records[id]?.status === 'stale'
-          ? withStatus(state.records, id, 'complete', { staleReason: undefined })
-          : state.records;
+        state.records[id]?.status === 'stale' ? withStatus(state.records, id, 'complete', { staleReason: undefined }) : state.records;
       // The form showed the server's data; the record now matches it.
       if (action.values && records[id]) records = { ...records, [id]: { ...records[id], values: action.values } };
       return { ...state, records, editing: null, ...advanceKeepingReturn(state, records, action.endpointIds) };
@@ -900,10 +886,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
-        console.warn(
-          `useAgentForm: /api/step/fields failed for "${currentEndpoint.id}", falling back to the full base field list.`,
-          err
-        );
+        console.warn(`useAgentForm: /api/step/fields failed for "${currentEndpoint.id}", falling back to the full base field list.`, err);
         dispatch({ type: 'fieldsFellBack', fields: currentEndpoint.fields });
       });
 
@@ -928,10 +911,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
         // Client-side mirror of the server's graceful degradation: the semantic
         // check itself couldn't be reached, so fall back to accepting the
         // client-side validation as sufficient rather than blocking.
-        console.warn(
-          `useAgentForm: /api/step/validate failed for "${endpoint.id}", accepting client-side validation only.`,
-          err
-        );
+        console.warn(`useAgentForm: /api/step/validate failed for "${endpoint.id}", accepting client-side validation only.`, err);
         return { valid: true, errors: {}, degraded: true };
       }
     },
@@ -1020,7 +1000,14 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
         const skipped = range.filter((e) => !undoable.includes(e)).map((e) => e.id);
         if (undoable.length > 0) {
           const undo = undoable.map((e) => ({ endpointId: e.id, label: e.title }));
-          dispatch({ type: 'recoveryProposed', endpointId: endpoint.id, explanation: verdict.explanation, anchorId: anchor, undo, skipped });
+          dispatch({
+            type: 'recoveryProposed',
+            endpointId: endpoint.id,
+            explanation: verdict.explanation,
+            anchorId: anchor,
+            undo,
+            skipped,
+          });
           emitRecoveryEvent({ type: 'proposed', endpointId: endpoint.id, undo: undo.map((u) => u.endpointId), skipped });
           return;
         }
@@ -1416,9 +1403,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
     !state.loading &&
     state.editing.phase === 'idle' &&
     state.records[state.editing.endpointId]?.status === 'stale';
-  const fieldsKept = editingStale
-    ? sameFieldSet(state.currentStepFields, state.records[state.editing!.endpointId]?.fieldNames)
-    : false;
+  const fieldsKept = editingStale ? sameFieldSet(state.currentStepFields, state.records[state.editing!.endpointId]?.fieldNames) : false;
   const staleResolution: StaleResolution | null = !editingStale
     ? null
     : fieldsKept
@@ -1458,7 +1443,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
   );
 
   const isComplete = flow.endpoints.length > 0 && completedEndpoints.length === flow.endpoints.length;
-  const currentStepStatus: StepStatus = currentEndpoint ? state.records[currentEndpoint.id]?.status ?? 'idle' : 'idle';
+  const currentStepStatus: StepStatus = currentEndpoint ? (state.records[currentEndpoint.id]?.status ?? 'idle') : 'idle';
 
   return {
     currentStepIndex: state.currentStepIndex,

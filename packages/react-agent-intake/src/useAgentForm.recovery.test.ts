@@ -39,10 +39,11 @@ const field = (name: string) => [{ name, type: 'string' as const, label: name, r
 
 function makeFlow(payoutCreate: ExecuteFn, withUndo = true) {
   const order: string[] = [];
-  const undo = (id: string) => vi.fn(async ({ resourceId }: { resourceId: string }) => {
-    order.push(`${id}:${resourceId}`);
-    return { success: true } as OperationResult;
-  });
+  const undo = (id: string) =>
+    vi.fn(async ({ resourceId }: { resourceId: string }) => {
+      order.push(`${id}:${resourceId}`);
+      return { success: true } as OperationResult;
+    });
   const accountUndo = undo('account');
   const verificationUndo = undo('verification');
   const flow: FlowDef = {
@@ -74,7 +75,11 @@ function makeFlow(payoutCreate: ExecuteFn, withUndo = true) {
   return { flow, order, accountUndo, verificationUndo };
 }
 
-const complianceHold = { success: false, message: 'Account on compliance hold.', failure: { kind: 'http', status: 403, message: 'account on compliance hold' } };
+const complianceHold = {
+  success: false,
+  message: 'Account on compliance hold.',
+  failure: { kind: 'http', status: 403, message: 'account on compliance hold' },
+};
 
 type Hook = ReturnType<typeof renderHook<ReturnType<typeof useAgentForm>, unknown>>;
 
@@ -606,9 +611,7 @@ describe('while a failure is being classified', () => {
 
   async function failAndStartClassifying(payoutCreate: ExecuteFn, events: RecoveryEvent[] = []) {
     const { flow } = makeFlow(payoutCreate);
-    const hook = renderHook(() =>
-      useAgentForm(flow, { apiUrl: 'http://test.local', onRecoveryEvent: (event) => events.push(event) })
-    );
+    const hook = renderHook(() => useAgentForm(flow, { apiUrl: 'http://test.local', onRecoveryEvent: (event) => events.push(event) }));
     await submit(hook.result, 'name', 'Jordan');
     await submit(hook.result, 'idNumber', 'ID-1');
     await waitFor(() => expect(hook.result.current.loading).toBe(false));
@@ -705,7 +708,10 @@ describe('while a failure is being classified', () => {
     await act(async () => release('fail'));
 
     await waitFor(() => expect(result.current.recovery.phase).toBe('idle'));
-    expect(result.current.recovery).toMatchObject({ classification: 'retryable', explanation: expect.stringContaining('could not be determined') });
+    expect(result.current.recovery).toMatchObject({
+      classification: 'retryable',
+      explanation: expect.stringContaining('could not be determined'),
+    });
     expect(result.current.canGoToStep('account')).toBe(true);
     await act(() => result.current.retryExecution());
     expect(payoutCreate).toHaveBeenCalledTimes(2);

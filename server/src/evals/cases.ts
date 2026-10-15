@@ -63,7 +63,10 @@ const ExpectSchemas = {
   validate: z
     .object({
       valid: z.boolean(),
-      errorFields: z.object({ fields: Names, mode: z.enum(['exact', 'subset']) }).strict().optional(),
+      errorFields: z
+        .object({ fields: Names, mode: z.enum(['exact', 'subset']) })
+        .strict()
+        .optional(),
     })
     .strict(),
   invalidation: z.union([z.object({ affected: z.array(z.string()) }).strict(), IncludeExclude]),

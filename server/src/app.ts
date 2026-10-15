@@ -107,7 +107,7 @@ export function createApp({ warnOpenCors = true, config, getConfig, trustedFlows
   if (!origins && warnOpenCors && !warnedOpenCors) {
     warnedOpenCors = true;
     console.warn(
-      'AgentIntake: CORS is open to every origin. Set AGENTINTAKE_CORS_ORIGINS to your app\'s origin(s) before exposing this server.'
+      "AgentIntake: CORS is open to every origin. Set AGENTINTAKE_CORS_ORIGINS to your app's origin(s) before exposing this server."
     );
   }
   app.use(cors(origins ? { origin: origins } : {}));

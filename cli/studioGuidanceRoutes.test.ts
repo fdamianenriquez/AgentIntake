@@ -106,7 +106,9 @@ describe('config', () => {
   it('POST never takes a path from the request', async () => {
     const { app } = studio();
     const elsewhere = path.join(dir, 'elsewhere.json');
-    const response = await request(app).post('/api/studio/config').send({ guidance: { tone: 'Formal.' }, path: elsewhere });
+    const response = await request(app)
+      .post('/api/studio/config')
+      .send({ guidance: { tone: 'Formal.' }, path: elsewhere });
 
     expect(response.status).toBe(400);
     expect(existsSync(elsewhere)).toBe(false);
@@ -125,7 +127,9 @@ describe('config', () => {
     expect(configStore.get()).toEqual(saved);
 
     // The very next runtime call uses it.
-    await request(app).post('/api/step/validate').send({ sessionId: 's', endpoint: flow.endpoints[1], data: { bank: 'B' } });
+    await request(app)
+      .post('/api/step/validate')
+      .send({ sessionId: 's', endpoint: flow.endpoints[1], data: { bank: 'B' } });
     expect(mocked.mock.calls[0][0]).toContain('Tone: New tone.');
     expect(mocked.mock.calls[0][0]).toContain('- Rule one.');
   });
@@ -138,7 +142,9 @@ describe('config', () => {
     const app = express();
     registerStudioGuidanceRoutes(app, { configStore });
 
-    const response = await request(app).post('/api/studio/config').send({ guidance: { tone: 'Formal.' } });
+    const response = await request(app)
+      .post('/api/studio/config')
+      .send({ guidance: { tone: 'Formal.' } });
 
     expect(response.status).toBe(500);
     expect(readdirSync(dir).sort()).toEqual(['target']);
@@ -154,7 +160,12 @@ describe('render-prompt', () => {
     const rendered = await request(app).post('/api/studio/render-prompt').send({ call: 'validate', flow, endpointId: 'payout', data });
     await request(app)
       .post('/api/step/validate')
-      .send({ sessionId: 'fresh', flow: { id: flow.id, guidance: flow.guidance, outputLanguage: flow.outputLanguage }, endpoint: flow.endpoints[1], data });
+      .send({
+        sessionId: 'fresh',
+        flow: { id: flow.id, guidance: flow.guidance, outputLanguage: flow.outputLanguage },
+        endpoint: flow.endpoints[1],
+        data,
+      });
 
     const runtimePrompt = mocked.mock.calls[0][0];
     expect(rendered.body.prompt).toBe(runtimePrompt);
@@ -170,7 +181,8 @@ describe('render-prompt', () => {
     const response = await request(app).post('/api/studio/render-prompt').send({ call, flow, endpointId: 'account' });
 
     expect(response.status).toBe(200);
-    if (call === 'generation') expect(response.body.guidanceRange).toBeNull(); // no global config: no guidance at all
+    if (call === 'generation')
+      expect(response.body.guidanceRange).toBeNull(); // no global config: no guidance at all
     else expect(response.body.prompt).toContain('About this form: Small sellers.');
   });
 
@@ -233,7 +245,9 @@ describe('evals', () => {
     const waiting = heldModel();
     const { app } = studio({}, casesDir(2));
 
-    const started = await request(app).post('/api/studio/evals').send({ calls: ['validate'] });
+    const started = await request(app)
+      .post('/api/studio/evals')
+      .send({ calls: ['validate'] });
     expect(started.status).toBe(202);
     expect(started.body).toEqual({ jobId: expect.any(String), runs: 2 });
     const job = `/api/studio/evals/${started.body.jobId}`;
@@ -281,7 +295,13 @@ describe('evals', () => {
 
   it('refuses to start in static mode, or with invalid options', async () => {
     const { app } = studio({}, casesDir(1));
-    expect((await request(app).post('/api/studio/evals').send({ calls: ['chat'] })).status).toBe(400);
+    expect(
+      (
+        await request(app)
+          .post('/api/studio/evals')
+          .send({ calls: ['chat'] })
+      ).status
+    ).toBe(400);
     vi.stubEnv('AGENTINTAKE_STATIC_MODE', '1');
     const response = await request(app).post('/api/studio/evals').send({});
     expect(response.status).toBe(400);

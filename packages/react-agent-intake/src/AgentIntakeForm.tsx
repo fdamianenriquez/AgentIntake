@@ -30,10 +30,7 @@ export function AgentIntakeForm({ flow, apiUrl, getAuthHeaders, recovery, onReco
   const classifyingHere = recoveryHere && rec.phase === 'classifying';
   const staleReason = currentEndpoint ? form.stepRecords[currentEndpoint.id]?.staleReason : undefined;
   const busy =
-    form.navigating ||
-    form.editPhase !== 'idle' ||
-    form.currentStepStatus === 'validating' ||
-    form.currentStepStatus === 'executing';
+    form.navigating || form.editPhase !== 'idle' || form.currentStepStatus === 'validating' || form.currentStepStatus === 'executing';
   const submitLabel = form.isEditing
     ? form.editPhase === 'validating'
       ? 'Validating…'
@@ -55,13 +52,7 @@ export function AgentIntakeForm({ flow, apiUrl, getAuthHeaders, recovery, onReco
           const recorded = form.stepRecords[endpoint.id]?.status;
           // Once everything is done (and nothing is being revisited), no step is "current".
           const isCurrent = index === form.currentStepIndex && !(form.isComplete && !form.isEditing);
-          const status = isCurrent
-              ? 'current'
-              : recorded === 'complete'
-                ? 'complete'
-                : recorded === 'stale'
-                  ? 'stale'
-                  : 'pending';
+          const status = isCurrent ? 'current' : recorded === 'complete' ? 'complete' : recorded === 'stale' ? 'stale' : 'pending';
           const label = (
             <>
               {status === 'complete' ? '✓ ' : ''}
@@ -175,9 +166,7 @@ export function AgentIntakeForm({ flow, apiUrl, getAuthHeaders, recovery, onReco
                   {form.executionError && !(recoveryHere && rec.explanation?.includes(form.executionError.trim())) && (
                     <p>{form.executionError}</p>
                   )}
-                  {classifyingHere && (
-                    <p className="agent-intake-recovery-status">Checking what went wrong…</p>
-                  )}
+                  {classifyingHere && <p className="agent-intake-recovery-status">Checking what went wrong…</p>}
                   {recoveryHere && rec.explanation && <p className="agent-intake-recovery-explanation">{rec.explanation}</p>}
                   {recoveryHere && rec.phase === 'proposed' && (
                     <div className="agent-intake-recovery-proposal">
@@ -187,9 +176,7 @@ export function AgentIntakeForm({ flow, apiUrl, getAuthHeaders, recovery, onReco
                           <li key={step.endpointId}>{step.label}</li>
                         ))}
                       </ul>
-                      {(rec.skipped?.length ?? 0) > 0 && (
-                        <p>Can't be undone here (needs manual cleanup): {titlesOf(rec.skipped)}.</p>
-                      )}
+                      {(rec.skipped?.length ?? 0) > 0 && <p>Can't be undone here (needs manual cleanup): {titlesOf(rec.skipped)}.</p>}
                       <button type="button" onClick={() => void form.confirmRollback()}>
                         Undo these steps
                       </button>

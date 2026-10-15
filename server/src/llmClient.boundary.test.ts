@@ -12,8 +12,7 @@ const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 const llmClientPath = path.join(repoRoot, 'server/src/llmClient.ts');
 const FORBIDDEN_PACKAGE = /^(ai|@ai-sdk\/.+)$/;
 
-const IMPORT_RE =
-  /(?:^|\n)\s*(import|export)\s+(type\s+)?(?:[^'";]*?\s+from\s+)?['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/g;
+const IMPORT_RE = /(?:^|\n)\s*(import|export)\s+(type\s+)?(?:[^'";]*?\s+from\s+)?['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/g;
 
 function runtimeSpecifiers(source: string): string[] {
   const specifiers: string[] = [];
@@ -89,9 +88,7 @@ describe('browser code never reaches llmClient.ts or a provider SDK', () => {
 
   it('control: the detector does flag a module that imports llmClient', () => {
     const flowGenerator = path.join(repoRoot, 'server/src/flowGenerator.ts');
-    expect(findForbiddenImports(flowGenerator)).toContain(
-      'server/src/flowGenerator.ts -> server/src/llmClient.ts'
-    );
+    expect(findForbiddenImports(flowGenerator)).toContain('server/src/flowGenerator.ts -> server/src/llmClient.ts');
   });
 
   it('control: type-only imports are ignored, since they are erased at build time', () => {

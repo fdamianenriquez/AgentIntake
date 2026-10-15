@@ -499,9 +499,7 @@ describe('parseOpenApiDocument', () => {
 
 describe('parseOpenApiFile', () => {
   it('dereferences $ref pointers before parsing', async () => {
-    const fixturePath = fileURLToPath(
-      new URL('./__fixtures__/ref-example.openapi.yaml', import.meta.url)
-    );
+    const fixturePath = fileURLToPath(new URL('./__fixtures__/ref-example.openapi.yaml', import.meta.url));
 
     const endpoints = (await parseOpenApiFile(fixturePath)).endpoints;
 
@@ -526,60 +524,56 @@ describe('parseOpenApiContent', () => {
     expect(endpoints[0].fields.map((f) => f.name).sort()).toEqual(['name', 'quantity']);
   });
 
-  it(
-    'SECURITY: never fetches an external URL $ref, and never reads a local file $ref',
-    async () => {
-      const localSecretPath = fileURLToPath(new URL('./__fixtures__/local-secret.json', import.meta.url));
+  it('SECURITY: never fetches an external URL $ref, and never reads a local file $ref', async () => {
+    const localSecretPath = fileURLToPath(new URL('./__fixtures__/local-secret.json', import.meta.url));
 
-      const content = JSON.stringify({
-        openapi: '3.0.3',
-        info: { title: 'SSRF Fixture API', version: '1.0.0' },
-        paths: {
-          '/widgets': {
-            post: {
-              operationId: 'createWidget',
-              requestBody: {
-                content: {
-                  'application/json': {
-                    schema: {
-                      type: 'object',
-                      properties: {
-                        name: { type: 'string' },
-                        // 192.0.2.1 is a reserved, non-routable TEST-NET-1
-                        // address (RFC 5737) -- if this were ever actually
-                        // fetched, the request would hang until the test's
-                        // own timeout below fails it, rather than silently
-                        // succeeding.
-                        external: { $ref: 'http://192.0.2.1/evil-schema.json#/definitions/Evil' },
-                        // A real, readable local file -- proving the file
-                        // is never opened, not just that a fake path fails.
-                        local: { $ref: `${localSecretPath}#/definitions/Secret` },
-                      },
+    const content = JSON.stringify({
+      openapi: '3.0.3',
+      info: { title: 'SSRF Fixture API', version: '1.0.0' },
+      paths: {
+        '/widgets': {
+          post: {
+            operationId: 'createWidget',
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      name: { type: 'string' },
+                      // 192.0.2.1 is a reserved, non-routable TEST-NET-1
+                      // address (RFC 5737) -- if this were ever actually
+                      // fetched, the request would hang until the test's
+                      // own timeout below fails it, rather than silently
+                      // succeeding.
+                      external: { $ref: 'http://192.0.2.1/evil-schema.json#/definitions/Evil' },
+                      // A real, readable local file -- proving the file
+                      // is never opened, not just that a fake path fails.
+                      local: { $ref: `${localSecretPath}#/definitions/Secret` },
                     },
                   },
                 },
               },
-              responses: { '201': { description: 'Created' } },
             },
+            responses: { '201': { description: 'Created' } },
           },
         },
-      });
+      },
+    });
 
-      const endpoints = (await parseOpenApiContent(content)).endpoints;
-      const [endpoint] = endpoints;
-      const fieldNames = endpoint.fields.map((f) => f.name);
+    const endpoints = (await parseOpenApiContent(content)).endpoints;
+    const [endpoint] = endpoints;
+    const fieldNames = endpoint.fields.map((f) => f.name);
 
-      // Neither ref is followed -- both are left unresolved and therefore
-      // dropped by schemaToFieldDef's "unsupported schema" fallback, never
-      // surfacing as a usable field. The base "name" field still comes
-      // through untouched.
-      expect(fieldNames).toContain('name');
-      expect(fieldNames).not.toContain('external');
-      expect(fieldNames).not.toContain('local');
-      expect(JSON.stringify(endpoints)).not.toContain('THIS_SHOULD_NEVER_APPEAR_IN_OUTPUT');
-    },
-    10_000
-  );
+    // Neither ref is followed -- both are left unresolved and therefore
+    // dropped by schemaToFieldDef's "unsupported schema" fallback, never
+    // surfacing as a usable field. The base "name" field still comes
+    // through untouched.
+    expect(fieldNames).toContain('name');
+    expect(fieldNames).not.toContain('external');
+    expect(fieldNames).not.toContain('local');
+    expect(JSON.stringify(endpoints)).not.toContain('THIS_SHOULD_NEVER_APPEAR_IN_OUTPUT');
+  }, 10_000);
 });
 
 describe('resource families', () => {
@@ -668,16 +662,18 @@ describe('resource families', () => {
     const { endpoints, warnings } = parseOpenApiDocument(doc);
 
     expect(endpoints.map((e) => e.id)).toEqual(['updateSettings', 'updateWidget']);
-    expect(warnings).toEqual([
-      expect.stringContaining('PUT /me/settings'),
-      expect.stringContaining('PATCH /widgets/{widgetId}'),
-    ]);
+    expect(warnings).toEqual([expect.stringContaining('PUT /me/settings'), expect.stringContaining('PATCH /widgets/{widgetId}')]);
   });
 
   it('keeps an RPC-style action as its own step', () => {
     const doc = baseDoc({
       '/orders/{orderId}/cancel': {
-        post: { operationId: 'cancelOrder', parameters: [idParam('orderId')], requestBody: body({ reason: { type: 'string' } }), responses: {} },
+        post: {
+          operationId: 'cancelOrder',
+          parameters: [idParam('orderId')],
+          requestBody: body({ reason: { type: 'string' } }),
+          responses: {},
+        },
       },
     });
 
@@ -712,7 +708,9 @@ describe('parameters', () => {
     operationId: 'createThing',
     parameters,
     ...(security ? { security } : {}),
-    requestBody: { content: { 'application/json': { schema: { type: 'object' as const, properties: { a: { type: 'string' as const } } } } } },
+    requestBody: {
+      content: { 'application/json': { schema: { type: 'object' as const, properties: { a: { type: 'string' as const } } } } },
+    },
     responses: {},
   });
 
@@ -745,12 +743,7 @@ describe('parameters', () => {
     const doc = baseDoc(
       {
         '/things': {
-          post: op(
-            [
-              { name: 'X-API-Key', in: 'header', required: true, schema: { type: 'string' } },
-            ],
-            [{ apiKeyAuth: [] }]
-          ),
+          post: op([{ name: 'X-API-Key', in: 'header', required: true, schema: { type: 'string' } }], [{ apiKeyAuth: [] }]),
         },
         '/others': {
           post: {

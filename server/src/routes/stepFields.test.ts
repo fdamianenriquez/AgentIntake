@@ -41,9 +41,7 @@ describe('POST /api/step/fields', () => {
     });
 
     const sessionId = 'route-test-session-1';
-    const response = await request(createApp())
-      .post('/api/step/fields')
-      .send({ sessionId, endpoint });
+    const response = await request(createApp()).post('/api/step/fields').send({ sessionId, endpoint });
 
     expect(response.status).toBe(200);
     expect(response.body.fields.map((f: { name: string }) => f.name)).toEqual(['email']);
@@ -51,7 +49,7 @@ describe('POST /api/step/fields', () => {
     expect(getSession(sessionId)).toBeDefined();
   });
 
-  it('passes the session\'s previously collected data into the prompt', async () => {
+  it("passes the session's previously collected data into the prompt", async () => {
     mockedGenerateStructured.mockResolvedValueOnce({
       fields: [{ name: 'email' }],
       suggestedValues: [],
@@ -69,9 +67,7 @@ describe('POST /api/step/fields', () => {
   });
 
   it('returns 400 when the request body is invalid', async () => {
-    const response = await request(createApp())
-      .post('/api/step/fields')
-      .send({ sessionId: 'x' }); // missing endpoint
+    const response = await request(createApp()).post('/api/step/fields').send({ sessionId: 'x' }); // missing endpoint
 
     expect(response.status).toBe(400);
     expect(mockedGenerateStructured).not.toHaveBeenCalled();
@@ -84,9 +80,7 @@ describe('POST /api/step/fields', () => {
     // itself works even though it's never expected to trigger normally.
     mockedSelectStepFields.mockRejectedValueOnce(new Error('unexpected failure'));
 
-    const response = await request(createApp())
-      .post('/api/step/fields')
-      .send({ sessionId: 'route-test-session-500', endpoint });
+    const response = await request(createApp()).post('/api/step/fields').send({ sessionId: 'route-test-session-500', endpoint });
 
     expect(response.status).toBe(500);
     expect(response.body.error).toBe('unexpected failure');

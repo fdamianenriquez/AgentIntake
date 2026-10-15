@@ -82,10 +82,9 @@ describe('FlowPreview', () => {
     await user.click(screen.getByRole('button', { name: /Continue/i }));
 
     await waitFor(() =>
-      expect(logSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[Preview mode] Would call the "Step One" endpoint (step1) with:'),
-        { name: 'Jane' }
-      )
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('[Preview mode] Would call the "Step One" endpoint (step1) with:'), {
+        name: 'Jane',
+      })
     );
 
     logSpy.mockRestore();
@@ -156,9 +155,7 @@ describe('FlowPreview', () => {
     await user.type(screen.getByLabelText(/Name/), 'Janet');
     await user.click(screen.getByRole('button', { name: /Save changes/i }));
 
-    await waitFor(() =>
-      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Would update sim-step1-1'), { name: 'Janet' })
-    );
+    await waitFor(() => expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Would update sim-step1-1'), { name: 'Janet' }));
     logSpy.mockRestore();
   });
 });

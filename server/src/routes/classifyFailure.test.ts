@@ -38,7 +38,12 @@ describe('POST /api/step/classify-failure', () => {
       });
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ classification: 'fundamental', explanation: 'On hold.', rollbackFromEndpointId: 'account', degraded: false });
+    expect(response.body).toEqual({
+      classification: 'fundamental',
+      explanation: 'On hold.',
+      rollbackFromEndpointId: 'account',
+      degraded: false,
+    });
     expect(String(mockedGenerateStructured.mock.calls[0][0])).toContain('Hold Bank');
   });
 

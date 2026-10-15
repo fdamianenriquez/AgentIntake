@@ -30,10 +30,7 @@
           "label": "Account Type",
           "description": "Select whether you're signing up as an individual or a business.",
           "required": true,
-          "enumValues": [
-            "individual",
-            "business"
-          ]
+          "enumValues": ["individual", "business"]
         }
       ],
       "auth": {

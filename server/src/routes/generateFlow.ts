@@ -20,8 +20,7 @@ export async function handleGenerateFlow(req: Request, res: Response): Promise<v
   const parsed = RequestBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({
-      error:
-        'Request body must be { specContent: string } -- the raw OpenAPI spec text (JSON or YAML), never a path or URL.',
+      error: 'Request body must be { specContent: string } -- the raw OpenAPI spec text (JSON or YAML), never a path or URL.',
     });
     return;
   }

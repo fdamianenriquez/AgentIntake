@@ -31,10 +31,7 @@
             "label": "Account Type",
             "description": "Whether this account belongs to an individual or a business.",
             "required": true,
-            "enumValues": [
-              "individual",
-              "business"
-            ]
+            "enumValues": ["individual", "business"]
           }
         ],
         "auth": {

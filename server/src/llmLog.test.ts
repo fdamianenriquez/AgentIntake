@@ -138,7 +138,11 @@ describe("the degradation warning's reason", () => {
   const apiError = (statusCode?: number) =>
     new APICallError({ message: `Bad request: ${MARKER}`, url: 'https://provider.test/v1', requestBodyValues: { MARKER }, statusCode });
   const cases: [string, () => unknown, string][] = [
-    ['an SDK type-validation error', () => new TypeValidationError({ value: { bank: MARKER }, cause: new Error(MARKER) }), 'invalid output'],
+    [
+      'an SDK type-validation error',
+      () => new TypeValidationError({ value: { bank: MARKER }, cause: new Error(MARKER) }),
+      'invalid output',
+    ],
     [
       'output that did not match the schema',
       () =>
@@ -155,7 +159,12 @@ describe("the degradation warning's reason", () => {
     ['a provider error without a status', () => apiError(), 'provider error'],
     [
       'a provider error after retries',
-      () => new RetryError({ message: `Failed after 3 attempts. Last error: ${MARKER}`, reason: 'maxRetriesExceeded', errors: [apiError(503)] }),
+      () =>
+        new RetryError({
+          message: `Failed after 3 attempts. Last error: ${MARKER}`,
+          reason: 'maxRetriesExceeded',
+          errors: [apiError(503)],
+        }),
       'provider error 503',
     ],
     ['a timeout', () => new LlmTimeoutError('The model did not respond within 15 seconds.'), 'timeout'],

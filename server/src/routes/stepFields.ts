@@ -26,9 +26,7 @@ export async function handleStepFields(req: Request, res: Response): Promise<voi
   const session = getOrCreateSession(sessionId);
 
   try {
-    const previouslyCollectedData = precedingEndpointIds
-      ? getScopedData(sessionId, precedingEndpointIds)
-      : session.collectedData;
+    const previouslyCollectedData = precedingEndpointIds ? getScopedData(sessionId, precedingEndpointIds) : session.collectedData;
     const guidance = runtimeGuidance(res, 'selectFields', flow, [endpoint]);
     const result = await selectStepFields({ endpoint, previouslyCollectedData, guidance });
     res.status(200).json(result);

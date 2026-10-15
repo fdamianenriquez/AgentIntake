@@ -130,12 +130,7 @@ export function SpecInput({ onGenerated }: SpecInputProps) {
         />
       )}
       {mode === 'url' && (
-        <input
-          type="url"
-          placeholder="https://example.com/openapi.yaml"
-          value={url}
-          onChange={(event) => setUrl(event.target.value)}
-        />
+        <input type="url" placeholder="https://example.com/openapi.yaml" value={url} onChange={(event) => setUrl(event.target.value)} />
       )}
       {mode === 'file' && (
         <input

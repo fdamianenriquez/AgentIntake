@@ -140,18 +140,26 @@ describe('usage and configuration errors: exit 2, no model calls', () => {
 
   it.each([
     ['an invalid case file', () => own({ 'validate/a.json': { ...passing, extra: 1 } }), /Unrecognized key: "extra"/],
-    ['an invalid config', () => {
-      const d = dir();
-      const config = path.join(d.cases, '..', `bad-config-${Math.random()}.json`);
-      writeFileSync(config, JSON.stringify({ guidance: { tone: 'x'.repeat(201) } }));
-      return { ...d, config };
-    }, /guidance\.tone/],
-    ['an invalid flow', () => {
-      const d = dir();
-      const flow = path.join(d.cases, '..', `bad-flow-${Math.random()}.json`);
-      writeFileSync(flow, JSON.stringify({ id: 'f', title: 't', description: 'd', endpoints: [], outputLanguage: '???' }));
-      return { ...d, flow };
-    }, /outputLanguage/],
+    [
+      'an invalid config',
+      () => {
+        const d = dir();
+        const config = path.join(d.cases, '..', `bad-config-${Math.random()}.json`);
+        writeFileSync(config, JSON.stringify({ guidance: { tone: 'x'.repeat(201) } }));
+        return { ...d, config };
+      },
+      /guidance\.tone/,
+    ],
+    [
+      'an invalid flow',
+      () => {
+        const d = dir();
+        const flow = path.join(d.cases, '..', `bad-flow-${Math.random()}.json`);
+        writeFileSync(flow, JSON.stringify({ id: 'f', title: 't', description: 'd', endpoints: [], outputLanguage: '???' }));
+        return { ...d, flow };
+      },
+      /outputLanguage/,
+    ],
     ['an unknown call', () => ({ ...dir(), calls: 'validate,validation' }), /--calls takes/],
     ['a bad repeat', () => ({ ...dir(), repeat: '0' }), /--repeat must be/],
     ['a bad min-pass', () => ({ ...dir(), minPass: '90' }), /--min-pass must be/],

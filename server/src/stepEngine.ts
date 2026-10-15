@@ -160,9 +160,7 @@ export interface ValidateStepSubmissionResult {
   degraded: boolean;
 }
 
-export async function validateStepSubmission(
-  input: ValidateStepSubmissionInput
-): Promise<ValidateStepSubmissionResult> {
+export async function validateStepSubmission(input: ValidateStepSubmissionInput): Promise<ValidateStepSubmissionResult> {
   const { endpoint, data } = input;
 
   // Nothing to semantically validate either way -- same as selectStepFields,
@@ -189,10 +187,7 @@ export async function validateStepSubmission(
       ),
     });
 
-    const prompt = validatePrompt.build(
-      { endpoint, data, previouslyCollectedData: input.previouslyCollectedData ?? {} },
-      input.guidance
-    );
+    const prompt = validatePrompt.build({ endpoint, data, previouslyCollectedData: input.previouslyCollectedData ?? {} }, input.guidance);
     const result = await loggedLlmCall(validateMeta, () => generateStructured(prompt, outputSchema, { timeoutMs: STEP_TIMEOUT_MS }));
 
     if (!result.valid) {
@@ -253,7 +248,11 @@ export async function checkInvalidation(input: CheckInvalidationInput): Promise<
     return { affected: everyLaterStep(), degraded: true };
   }
 
-  const invalidationMeta: LlmCallMeta = { call: 'invalidation', promptVersion: invalidationPrompt.PROMPT_VERSION, guidance: input.guidance };
+  const invalidationMeta: LlmCallMeta = {
+    call: 'invalidation',
+    promptVersion: invalidationPrompt.PROMPT_VERSION,
+    guidance: input.guidance,
+  };
   try {
     const outputSchema = z.object({
       affected: z.array(
@@ -330,11 +329,14 @@ export async function classifyFailure(input: ClassifyFailureInput): Promise<Clas
     return fallback;
   }
 
-  const classifyMeta: LlmCallMeta = { call: 'classifyFailure', promptVersion: classifyFailurePrompt.PROMPT_VERSION, guidance: input.guidance };
+  const classifyMeta: LlmCallMeta = {
+    call: 'classifyFailure',
+    promptVersion: classifyFailurePrompt.PROMPT_VERSION,
+    guidance: input.guidance,
+  };
   try {
     const completedIds = input.completedEndpoints.map((endpoint) => endpoint.id);
-    const rollbackFrom =
-      completedIds.length > 0 ? z.enum(completedIds as [string, ...string[]]).nullable() : z.null();
+    const rollbackFrom = completedIds.length > 0 ? z.enum(completedIds as [string, ...string[]]).nullable() : z.null();
     const outputSchema = z
       .object({
         classification: z.enum(['retryable', 'needs-edit', 'fundamental']),

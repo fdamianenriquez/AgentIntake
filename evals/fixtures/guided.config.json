@@ -3,9 +3,7 @@
   "guidance": {
     "domainContext": "Onboarding for sellers who want to receive payouts.",
     "extraRules": {
-      "generation": [
-        "List every field whose name ends in \"Number\" in ambiguousFields, noting which format the API expects."
-      ],
+      "generation": ["List every field whose name ends in \"Number\" in ambiguousFields, noting which format the API expects."],
       "validate": [
         "Many sellers live in rural areas without street delivery: accept a P.O. box as a valid residential address.",
         "Account holder names must be written entirely in capital letters, exactly as the bank prints them."

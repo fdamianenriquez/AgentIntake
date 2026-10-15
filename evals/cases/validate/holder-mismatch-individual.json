@@ -47,10 +47,7 @@
           "label": "Account Type",
           "description": "Select whether payouts should go to a checking or savings account.",
           "required": true,
-          "enumValues": [
-            "checking",
-            "savings"
-          ]
+          "enumValues": ["checking", "savings"]
         }
       ],
       "auth": {
@@ -63,9 +60,7 @@
       },
       "resourcePath": "/accounts/{accountId}/payout-methods",
       "idParam": "payoutMethodId",
-      "pathParams": [
-        "accountId"
-      ]
+      "pathParams": ["accountId"]
     },
     "data": {
       "bankName": "First Example Bank",
@@ -90,9 +85,7 @@
   "expect": {
     "valid": false,
     "errorFields": {
-      "fields": [
-        "accountHolderName"
-      ],
+      "fields": ["accountHolderName"],
       "mode": "subset"
     }
   },

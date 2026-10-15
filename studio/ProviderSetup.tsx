@@ -43,9 +43,8 @@ export function ProviderSetup({ onDone }: ProviderSetupProps) {
     <section className="studio-setup">
       <h2>Set up your LLM provider</h2>
       <p>
-        AgentIntake needs an LLM provider to generate and adapt your wizard. Pick one and paste an API
-        key -- it's saved to this project's local <code>.env</code> file so you won't need to re-enter it
-        next time, and it's never sent anywhere but that provider.
+        AgentIntake needs an LLM provider to generate and adapt your wizard. Pick one and paste an API key -- it's saved to this project's
+        local <code>.env</code> file so you won't need to re-enter it next time, and it's never sent anywhere but that provider.
       </p>
       <form onSubmit={handleSubmit}>
         <label htmlFor="provider">Provider</label>
@@ -58,14 +57,7 @@ export function ProviderSetup({ onDone }: ProviderSetupProps) {
         </select>
 
         <label htmlFor="apiKey">API key</label>
-        <input
-          id="apiKey"
-          type="password"
-          autoComplete="off"
-          value={apiKey}
-          onChange={(event) => setApiKey(event.target.value)}
-          required
-        />
+        <input id="apiKey" type="password" autoComplete="off" value={apiKey} onChange={(event) => setApiKey(event.target.value)} required />
 
         {error && (
           <p role="alert" className="studio-error">

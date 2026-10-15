@@ -46,17 +46,39 @@ function reply(prompt: string): unknown {
       id: 'f',
       title: 'F',
       description: 'd',
-      endpoints: [{ id: 'payout', title: 'Payout', description: null, fields: payout.fields.map(({ name }) => ({ name, labelOverride: null, descriptionOverride: null })) }],
+      endpoints: [
+        {
+          id: 'payout',
+          title: 'Payout',
+          description: null,
+          fields: payout.fields.map(({ name }) => ({ name, labelOverride: null, descriptionOverride: null })),
+        },
+      ],
     },
     ambiguousFields: answers.ambiguous.map((fieldName) => ({ endpointId: 'payout', fieldName, note: 'n' })),
   };
 }
 
 const kase = <C extends EvalCase['call']>(call: C, input: unknown, expectation: unknown, extra: Partial<EvalCase> = {}): EvalCase =>
-  ({ file: `/cases/${call}/${extra.name ?? 'case'}.json`, call, name: extra.name ?? 'case', input, expect: expectation, ...extra }) as EvalCase;
+  ({
+    file: `/cases/${call}/${extra.name ?? 'case'}.json`,
+    call,
+    name: extra.name ?? 'case',
+    input,
+    expect: expectation,
+    ...extra,
+  }) as EvalCase;
 
 beforeEach(() => {
-  answers = { fields: ['dob', 'idNumber'], valid: true, errors: [], affected: ['payout'], classification: 'fundamental', anchor: 'account', ambiguous: ['holder'] };
+  answers = {
+    fields: ['dob', 'idNumber'],
+    valid: true,
+    errors: [],
+    affected: ['payout'],
+    classification: 'fundamental',
+    anchor: 'account',
+    ambiguous: ['holder'],
+  };
   mocked.mockReset();
   mocked.mockImplementation(async (prompt) => reply(prompt) as never);
 });
@@ -85,10 +107,12 @@ describe('expectations, one call at a time', () => {
     const input = { endpoint: payout, data: { bank: 'B', holder: 'H' } };
     answers.valid = false;
     answers.errors = ['holder', 'bank'];
-    expect((await outcome(kase('validate', input, { valid: false, errorFields: { fields: ['holder'], mode: 'subset' } }))).passed).toBe(true);
-    expect((await outcome(kase('validate', input, { valid: false, errorFields: { fields: ['holder'], mode: 'exact' } }))).failure?.reason).toBe(
-      'error fields were [holder, bank], expected exact [holder]'
+    expect((await outcome(kase('validate', input, { valid: false, errorFields: { fields: ['holder'], mode: 'subset' } }))).passed).toBe(
+      true
     );
+    expect(
+      (await outcome(kase('validate', input, { valid: false, errorFields: { fields: ['holder'], mode: 'exact' } }))).failure?.reason
+    ).toBe('error fields were [holder, bank], expected exact [holder]');
     expect((await outcome(kase('validate', input, { valid: true }))).failure?.reason).toBe('valid was false, expected true');
   });
 
@@ -101,11 +125,13 @@ describe('expectations, one call at a time', () => {
 
   it('classifyFailure: the classification and, when given, the anchor', async () => {
     const input = { failedEndpoint: payout, failure: { kind: 'http', status: 403 }, completedEndpoints: [account] };
-    expect((await outcome(kase('classifyFailure', input, { classification: 'fundamental', rollbackFromEndpointId: 'account' }))).passed).toBe(true);
+    expect(
+      (await outcome(kase('classifyFailure', input, { classification: 'fundamental', rollbackFromEndpointId: 'account' }))).passed
+    ).toBe(true);
     expect((await outcome(kase('classifyFailure', input, { classification: 'fundamental' }))).passed).toBe(true);
-    expect((await outcome(kase('classifyFailure', input, { classification: 'fundamental', rollbackFromEndpointId: null }))).failure?.reason).toBe(
-      'rollbackFromEndpointId was account, expected null'
-    );
+    expect(
+      (await outcome(kase('classifyFailure', input, { classification: 'fundamental', rollbackFromEndpointId: null }))).failure?.reason
+    ).toBe('rollbackFromEndpointId was account, expected null');
     expect((await outcome(kase('classifyFailure', input, { classification: 'retryable' }))).failure?.reason).toBe(
       'classification was fundamental, expected retryable'
     );
@@ -137,10 +163,13 @@ describe('degraded runs', () => {
     mocked.mockRejectedValue(new Error('provider said no'));
     const report = await runEvals({ cases: [kase('generation', { endpoints: [payout] }, {})] });
 
-    expect(report.calls.generation!.failures[0]).toMatchObject({ degraded: true, degradedReason: expect.stringContaining('provider said no') });
+    expect(report.calls.generation!.failures[0]).toMatchObject({
+      degraded: true,
+      degradedReason: expect.stringContaining('provider said no'),
+    });
   });
 
-  it('does not print the engine\'s own degradation warnings', async () => {
+  it("does not print the engine's own degradation warnings", async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     mocked.mockRejectedValue(new Error('x'));
     await runEvals({ cases: [kase('validate', { endpoint: payout, data: {} }, { valid: true })] });
@@ -227,15 +256,20 @@ describe('repeat and concurrency', () => {
 });
 
 describe('guidance', () => {
-  const validate = (extra: Partial<EvalCase> = {}) =>
-    kase('validate', { endpoint: payout, data: { holder: 'h' } }, { valid: true }, extra);
+  const validate = (extra: Partial<EvalCase> = {}) => kase('validate', { endpoint: payout, data: { holder: 'h' } }, { valid: true }, extra);
   const promptOf = () => mocked.mock.calls[0][0];
 
-  it('the run\'s config and flow reach the prompt, with step guidance matched by endpoint id', async () => {
+  it("the run's config and flow reach the prompt, with step guidance matched by endpoint id", async () => {
     await runEvals({
       cases: [validate()],
       config: { guidance: { extraRules: { validate: ['Holder names are uppercase.'] } } },
-      flow: { id: 'f', title: 't', description: 'd', guidance: 'Small sellers.', endpoints: [{ ...payout, guidance: 'Match the legal name.' }] },
+      flow: {
+        id: 'f',
+        title: 't',
+        description: 'd',
+        guidance: 'Small sellers.',
+        endpoints: [{ ...payout, guidance: 'Match the legal name.' }],
+      },
     });
 
     expect(promptOf()).toContain('- Holder names are uppercase.');
@@ -243,7 +277,7 @@ describe('guidance', () => {
     expect(promptOf()).toContain('Guidance for the step "Payout": Match the legal name.');
   });
 
-  it('a case\'s fixtures replace the run\'s guidance for that case', async () => {
+  it("a case's fixtures replace the run's guidance for that case", async () => {
     await runEvals({
       cases: [validate({ fixtures: { config: { guidance: { tone: 'Case tone.' } }, flow: null } })],
       config: { guidance: { tone: 'Run tone.' } },
@@ -293,8 +327,15 @@ describe('guidance hashes in the report', () => {
   it('each failing run has its guidance hash, and each call lists the hashes it ran with', async () => {
     const { guidanceHash } = await import('../llmLog.js');
     const withTone = (tone: string) =>
-      kase('validate', { endpoint: payout, data: {} }, { valid: false }, { name: tone, fixtures: { config: { guidance: { tone } }, flow: null } });
-    const report = await runEvals({ cases: [withTone('A.'), withTone('B.'), kase('validate', { endpoint: payout, data: {} }, { valid: false })] });
+      kase(
+        'validate',
+        { endpoint: payout, data: {} },
+        { valid: false },
+        { name: tone, fixtures: { config: { guidance: { tone } }, flow: null } }
+      );
+    const report = await runEvals({
+      cases: [withTone('A.'), withTone('B.'), kase('validate', { endpoint: payout, data: {} }, { valid: false })],
+    });
 
     const summary = report.calls.validate!;
     expect(summary.failures.map((failure) => failure.guidanceHash).sort()).toEqual(

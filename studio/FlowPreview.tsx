@@ -21,10 +21,7 @@ type GeneratedEndpoint = GenerateResponse['flow']['endpoints'][number];
 // Besides create, every read/update/undo the parser found in the
 // spec is simulated too, against an in-memory store, so revisiting and
 // changing steps can be previewed. Nothing ever leaves the browser.
-function makeSimulatedOperations(
-  endpoint: GeneratedEndpoint,
-  store: Map<string, Record<string, unknown>>
-): ResourceOperations {
+function makeSimulatedOperations(endpoint: GeneratedEndpoint, store: Map<string, Record<string, unknown>>): ResourceOperations {
   const name = `"${endpoint.title}" endpoint (${endpoint.id})`;
   const operations: ResourceOperations = {
     create: async (data) => {
@@ -114,8 +111,8 @@ export function FlowPreview({ generation, onReset, droppedGuidance = [], timings
   return (
     <section className="studio-preview">
       <div role="status" className="studio-preview-banner">
-        Preview mode -- each step's operations (create, and read/update/undo where the API offers them) are
-        simulated in memory and logged to the browser console instead of hitting a real API.
+        Preview mode -- each step's operations (create, and read/update/undo where the API offers them) are simulated in memory and logged
+        to the browser console instead of hitting a real API.
       </div>
 
       {generation.warnings.length > 0 && (
@@ -128,8 +125,7 @@ export function FlowPreview({ generation, onReset, droppedGuidance = [], timings
 
       {droppedGuidance.length > 0 && (
         <p role="status" className="studio-warnings">
-          Guidance kept from the previous version of this flow, except for steps that no longer exist:{' '}
-          {droppedGuidance.join(', ')}.
+          Guidance kept from the previous version of this flow, except for steps that no longer exist: {droppedGuidance.join(', ')}.
         </p>
       )}
 
@@ -170,9 +166,7 @@ export function FlowPreview({ generation, onReset, droppedGuidance = [], timings
         <button type="button" onClick={() => downloadFlowJson(sent)} disabled={problems.length > 0}>
           Download flow.json
         </button>
-        {problems.length > 0 && (
-          <p className="studio-error">Fix the flow guidance before downloading: {problems.join(' ')}</p>
-        )}
+        {problems.length > 0 && <p className="studio-error">Fix the flow guidance before downloading: {problems.join(' ')}</p>}
         <details>
           <summary>Embed snippet</summary>
           <pre>{EMBED_SNIPPET}</pre>

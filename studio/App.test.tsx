@@ -56,7 +56,8 @@ beforeEach(() => {
       if (url === '/api/provider-status') return json({ configured: true });
       if (url === '/api/studio/config') return json({ guidance: {}, path: '/p/agentintake.config.json', limits: GUIDANCE_LIMITS });
       if (url === '/api/studio/render-prompt') return json({ prompt: 'p', guidanceRange: null });
-      if (url === '/api/step/fields') return json({ fields: JSON.parse(init.body as string).endpoint.fields, suggestedValues: {}, degraded: false });
+      if (url === '/api/step/fields')
+        return json({ fields: JSON.parse(init.body as string).endpoint.fields, suggestedValues: {}, degraded: false });
       throw new Error(`unexpected ${url}`);
     })
   );

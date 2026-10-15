@@ -312,7 +312,10 @@ describe('edit-mode submit', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     await act(() => result.current.submitStep());
 
-    expect(update).toHaveBeenCalledWith({ name: 'Jordan' }, expect.objectContaining({ previousValues: { name: 'Jordan', type: 'individual' } }));
+    expect(update).toHaveBeenCalledWith(
+      { name: 'Jordan' },
+      expect.objectContaining({ previousValues: { name: 'Jordan', type: 'individual' } })
+    );
   });
 
   it('a failed update never rolls back: the step stays complete with its old values, and the session is re-synced', async () => {
@@ -380,7 +383,10 @@ describe('edit-mode baseline when the step has read', () => {
     expect(calls.map((c) => c.path)).not.toContain('/api/step/check-invalidation');
     expect(calls.map((c) => c.path)).not.toContain('/api/step/validate');
     expect(result.current.stepRecords.account.values).toEqual(server);
-    expect(calls).toContainEqual({ path: '/api/session/sync', body: expect.objectContaining({ steps: [{ endpointId: 'account', data: server }] }) });
+    expect(calls).toContainEqual({
+      path: '/api/session/sync',
+      body: expect.objectContaining({ steps: [{ endpointId: 'account', data: server }] }),
+    });
     expect(result.current.stepRecords.details.status).toBe('complete'); // nothing went stale
   });
 
@@ -414,7 +420,7 @@ describe('edit-mode baseline when the step has read', () => {
   });
 });
 
-describe('edit-mode baseline: only the step\'s own fields', () => {
+describe("edit-mode baseline: only the step's own fields", () => {
   // What a real API's read returns: the form's data plus its own metadata.
   const fromApi = { id: 'acct_1', status: 'active', createdAt: '2026-01-01', name: 'Jordan', type: 'individual' };
 
@@ -508,11 +514,15 @@ describe('edit-mode baseline: read data merged over the local record', () => {
   }
 
   it('a field read does not return keeps its local value, and an untouched save never drops it', async () => {
-    const { result, update, calls } = await openAccountWith([extra('taxId')], { taxId: 'T-1' }, {
-      id: 'acct_1',
-      name: 'Jordan (server)',
-      type: 'individual',
-    });
+    const { result, update, calls } = await openAccountWith(
+      [extra('taxId')],
+      { taxId: 'T-1' },
+      {
+        id: 'acct_1',
+        name: 'Jordan (server)',
+        type: 'individual',
+      }
+    );
     expect(result.current.values).toEqual({ name: 'Jordan (server)', type: 'individual', taxId: 'T-1' });
 
     await act(() => result.current.submitStep());
@@ -526,11 +536,15 @@ describe('edit-mode baseline: read data merged over the local record', () => {
   });
 
   it('resolves a dotted field name against the nested object read returns', async () => {
-    const { result, update } = await openAccountWith([extra('address.city')], { 'address.city': 'Cusco' }, {
-      name: 'Jordan',
-      type: 'individual',
-      address: { city: 'Lima' },
-    });
+    const { result, update } = await openAccountWith(
+      [extra('address.city')],
+      { 'address.city': 'Cusco' },
+      {
+        name: 'Jordan',
+        type: 'individual',
+        address: { city: 'Lima' },
+      }
+    );
     expect(result.current.values['address.city']).toBe('Lima');
 
     act(() => result.current.updateField('type', 'business'));
@@ -541,21 +555,29 @@ describe('edit-mode baseline: read data merged over the local record', () => {
   });
 
   it('a flat dotted key wins over the nested value', async () => {
-    const { result } = await openAccountWith([extra('address.city')], { 'address.city': 'Cusco' }, {
-      name: 'Jordan',
-      type: 'individual',
-      'address.city': 'Arequipa',
-      address: { city: 'Lima' },
-    });
+    const { result } = await openAccountWith(
+      [extra('address.city')],
+      { 'address.city': 'Cusco' },
+      {
+        name: 'Jordan',
+        type: 'individual',
+        'address.city': 'Arequipa',
+        address: { city: 'Lima' },
+      }
+    );
 
     expect(result.current.values['address.city']).toBe('Arequipa');
   });
 
   it('shows the server value where read provides one and the local value elsewhere; the baseline is what is shown', async () => {
-    const { result, update, calls } = await openAccountWith([extra('taxId')], { taxId: 'T-1' }, {
-      name: 'Jordan',
-      type: 'business',
-    });
+    const { result, update, calls } = await openAccountWith(
+      [extra('taxId')],
+      { taxId: 'T-1' },
+      {
+        name: 'Jordan',
+        type: 'business',
+      }
+    );
     expect(result.current.values).toEqual({ name: 'Jordan', type: 'business', taxId: 'T-1' });
 
     // Saving exactly what is shown is not a change.
@@ -726,7 +748,10 @@ describe('resolving a stale step', () => {
     stubServer({ affected: ['details'] });
     const result = render(flowWithEditableDetails());
     await completeFirstTwo(result);
-    stubServer({ affected: ['details'], fieldsFor: { details: [{ name: 'registration', type: 'string', label: 'Registration', required: true }] } });
+    stubServer({
+      affected: ['details'],
+      fieldsFor: { details: [{ name: 'registration', type: 'string', label: 'Registration', required: true }] },
+    });
     await makeDetailsStale(result);
 
     expect(result.current.editMode).toBe('readOnly');
@@ -734,9 +759,7 @@ describe('resolving a stale step', () => {
     act(() => result.current.flagForFollowUp());
 
     expect(result.current.stepRecords.details.status).toBe('complete');
-    expect(result.current.followUps).toEqual([
-      { endpointId: 'details', note: expect.stringContaining("can't be changed in this wizard") },
-    ]);
+    expect(result.current.followUps).toEqual([{ endpointId: 'details', note: expect.stringContaining("can't be changed in this wizard") }]);
   });
 });
 
@@ -745,7 +768,10 @@ describe('the gap between saving an edit and opening the step to review', () => 
     stubServer({ affected: ['details'] });
     let finishRead!: () => void;
     const detailsRead = vi.fn(
-      () => new Promise<{ found: true; data: Record<string, unknown> }>((resolve) => (finishRead = () => resolve({ found: true, data: { detail: 'd1' } })))
+      () =>
+        new Promise<{ found: true; data: Record<string, unknown> }>(
+          (resolve) => (finishRead = () => resolve({ found: true, data: { detail: 'd1' } }))
+        )
     );
     const { flow, account } = threeStepFlow({ update: vi.fn().mockResolvedValue({ success: true }) });
     flow.endpoints[1] = {

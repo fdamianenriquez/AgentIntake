@@ -37,10 +37,7 @@ describe('createApp body limits and error responses', () => {
   });
 
   it('answers malformed JSON with a JSON 400 and no stack trace', async () => {
-    const response = await request(createApp())
-      .post('/api/step/fields')
-      .set('Content-Type', 'application/json')
-      .send('{"sessionId": ');
+    const response = await request(createApp()).post('/api/step/fields').set('Content-Type', 'application/json').send('{"sessionId": ');
 
     expect(response.status).toBe(400);
     expect(response.type).toBe('application/json');
@@ -73,7 +70,7 @@ describe('CORS', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('an entry with a trailing slash still matches the browser\'s Origin', async () => {
+  it("an entry with a trailing slash still matches the browser's Origin", async () => {
     vi.stubEnv('AGENTINTAKE_CORS_ORIGINS', 'https://app.example.com/');
     const app = (await freshCreateApp())();
 

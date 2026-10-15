@@ -57,9 +57,7 @@ describe('GET /api/provider-status', () => {
 
 describe('POST /api/provider-setup', () => {
   it('creates .env when none exists, and applies the config to the running process', async () => {
-    const response = await request(makeApp())
-      .post('/api/provider-setup')
-      .send({ provider: 'anthropic', apiKey: 'sk-test-123' });
+    const response = await request(makeApp()).post('/api/provider-setup').send({ provider: 'anthropic', apiKey: 'sk-test-123' });
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ ok: true });
@@ -73,15 +71,9 @@ describe('POST /api/provider-setup', () => {
   });
 
   it('updates an existing .env in place without disturbing unrelated lines', async () => {
-    await writeFile(
-      path.join(tmpDir, '.env'),
-      'LLM_PROVIDER=openai\nLLM_API_KEY=old-key\nSOME_OTHER_VAR=keep-me\n',
-      'utf-8'
-    );
+    await writeFile(path.join(tmpDir, '.env'), 'LLM_PROVIDER=openai\nLLM_API_KEY=old-key\nSOME_OTHER_VAR=keep-me\n', 'utf-8');
 
-    const response = await request(makeApp())
-      .post('/api/provider-setup')
-      .send({ provider: 'openai', apiKey: 'new-key' });
+    const response = await request(makeApp()).post('/api/provider-setup').send({ provider: 'openai', apiKey: 'new-key' });
 
     expect(response.status).toBe(200);
 
@@ -121,9 +113,7 @@ describe('POST /api/provider-setup', () => {
   });
 
   it('returns 400 for an unrecognized provider', async () => {
-    const response = await request(makeApp())
-      .post('/api/provider-setup')
-      .send({ provider: 'not-a-real-provider', apiKey: 'x' });
+    const response = await request(makeApp()).post('/api/provider-setup').send({ provider: 'not-a-real-provider', apiKey: 'x' });
 
     expect(response.status).toBe(400);
   });

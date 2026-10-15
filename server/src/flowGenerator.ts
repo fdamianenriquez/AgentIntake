@@ -108,9 +108,8 @@ export async function generateFlow(input: GenerateFlowInput): Promise<FlowGenera
   const outputSchema = buildLlmOutputSchema(input.endpoints);
 
   const attempt = async (): Promise<FlowGenerationResult> => {
-    const raw = await loggedLlmCall(
-      { call: 'generation', promptVersion: generationPrompt.PROMPT_VERSION, guidance: input.guidance },
-      () => generateStructured(prompt, outputSchema, { timeoutMs: GENERATION_TIMEOUT_MS })
+    const raw = await loggedLlmCall({ call: 'generation', promptVersion: generationPrompt.PROMPT_VERSION, guidance: input.guidance }, () =>
+      generateStructured(prompt, outputSchema, { timeoutMs: GENERATION_TIMEOUT_MS })
     );
     return expandLlmOutput(raw, input.endpoints);
   };

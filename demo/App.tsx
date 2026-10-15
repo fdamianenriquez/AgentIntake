@@ -159,10 +159,9 @@ export function App() {
       <h1>{flow.title}</h1>
       <p>{flow.description}</p>
       <p className="demo-app-note">
-        Adaptive fields, semantic checks, change review and failure classification come from a real,
-        locally running AgentIntake server. Each step's operations call an in-browser mock of the payment
-        API instead of a real one. Field names are deliberately generic and fictional -- this demonstrates
-        the mechanism, not real KYC/KYB compliance requirements for any jurisdiction.
+        Adaptive fields, semantic checks, change review and failure classification come from a real, locally running AgentIntake server.
+        Each step's operations call an in-browser mock of the payment API instead of a real one. Field names are deliberately generic and
+        fictional -- this demonstrates the mechanism, not real KYC/KYB compliance requirements for any jurisdiction.
       </p>
 
       <fieldset className="demo-scenarios">
@@ -175,9 +174,9 @@ export function App() {
         ))}
         {flowChoice === 'guided' && (
           <p className="demo-app-note">
-            Flow guidance tells the model who the sellers are and to explain banking terms briefly. Step guidance asks for
-            the owner's legal name on the account step, and requires the account holder name on the payout step in capital
-            letters: try a lower-case name there and semantic validation flags it.
+            Flow guidance tells the model who the sellers are and to explain banking terms briefly. Step guidance asks for the owner's legal
+            name on the account step, and requires the account holder name on the payout step in capital letters: try a lower-case name
+            there and semantic validation flags it.
           </p>
         )}
       </fieldset>

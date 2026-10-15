@@ -75,9 +75,7 @@ export interface ResourceOperations {
    * "***1234": the form would show the mask, and a later update would send it
    * as the real value. Extra keys (id, status...) are ignored.
    */
-  read?: (
-    context: ExecContext & { resourceId: string }
-  ) => Promise<{ found: true; data: Record<string, unknown> } | { found: false }>;
+  read?: (context: ExecContext & { resourceId: string }) => Promise<{ found: true; data: Record<string, unknown> } | { found: false }>;
   update?: (data: Record<string, unknown>, context: ExecContext & { resourceId: string }) => Promise<OperationResult>;
   /**
    * Should treat "already gone" (e.g. 404/410) as success: a retry after a

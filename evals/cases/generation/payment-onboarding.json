@@ -31,10 +31,7 @@
             "label": "Account Type",
             "description": "Whether this account belongs to an individual or a business.",
             "required": true,
-            "enumValues": [
-              "individual",
-              "business"
-            ]
+            "enumValues": ["individual", "business"]
           }
         ],
         "auth": {
@@ -108,21 +105,13 @@
             "label": "Industry Category",
             "description": "Business accounts only. The industry the business operates in.",
             "required": false,
-            "enumValues": [
-              "retail",
-              "technology",
-              "healthcare",
-              "finance",
-              "other"
-            ]
+            "enumValues": ["retail", "technology", "healthcare", "finance", "other"]
           }
         ],
         "auth": {
           "type": "none"
         },
-        "pathParams": [
-          "accountId"
-        ],
+        "pathParams": ["accountId"],
         "resourcePath": "/accounts/{accountId}/verifications",
         "idParam": "verificationId",
         "capabilities": {
@@ -176,18 +165,13 @@
             "label": "Payout Account Type",
             "description": "The type of bank account payouts will be sent to.",
             "required": true,
-            "enumValues": [
-              "checking",
-              "savings"
-            ]
+            "enumValues": ["checking", "savings"]
           }
         ],
         "auth": {
           "type": "none"
         },
-        "pathParams": [
-          "accountId"
-        ],
+        "pathParams": ["accountId"],
         "resourcePath": "/accounts/{accountId}/payout-methods",
         "idParam": "payoutMethodId",
         "capabilities": {

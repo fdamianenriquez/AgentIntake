@@ -25,12 +25,14 @@ const MAX_FAILURE_MESSAGE = 500;
 // steps) plus the human confirmation before anything is undone.
 export function sanitizeFailureMessage(message: string | undefined): string {
   if (!message) return '';
-  return message
-    .replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, ' ')
-    .replace(/```/g, "'''")
-    // So the message can't close the fenced block it is placed in.
-    .replace(/API_ERROR_MESSAGE/gi, 'API ERROR MESSAGE')
-    .slice(0, MAX_FAILURE_MESSAGE);
+  return (
+    message
+      .replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, ' ')
+      .replace(/```/g, "'''")
+      // So the message can't close the fenced block it is placed in.
+      .replace(/API_ERROR_MESSAGE/gi, 'API ERROR MESSAGE')
+      .slice(0, MAX_FAILURE_MESSAGE)
+  );
 }
 
 export function build(input: ClassifyFailurePromptInput, guidance?: PromptGuidance): string {

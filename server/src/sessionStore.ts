@@ -82,11 +82,7 @@ export function getOrCreateSession(sessionId: string): SessionState {
   return getSession(sessionId) ?? newSession(sessionId);
 }
 
-export function recordValidatedStep(
-  sessionId: string,
-  endpointId: string,
-  data: Record<string, unknown>
-): SessionState {
+export function recordValidatedStep(sessionId: string, endpointId: string, data: Record<string, unknown>): SessionState {
   const session = getSession(sessionId);
   if (!session) {
     throw new Error(`sessionStore: no session found for id "${sessionId}"`);
@@ -116,10 +112,7 @@ export function getScopedData(sessionId: string, endpointIds: string[]): Record<
  * discards an edit (so the server matches what was actually submitted) and,
  * later, after a rollback.
  */
-export function replaceStepData(
-  sessionId: string,
-  steps: { endpointId: string; data: Record<string, unknown> | null }[]
-): SessionState {
+export function replaceStepData(sessionId: string, steps: { endpointId: string; data: Record<string, unknown> | null }[]): SessionState {
   const session = getOrCreateSession(sessionId);
   for (const { endpointId, data } of steps) {
     if (data === null) {

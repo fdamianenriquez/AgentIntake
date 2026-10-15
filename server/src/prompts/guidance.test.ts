@@ -15,7 +15,7 @@ const steps = [
 ];
 
 describe('guidanceFor', () => {
-  it('passes global, flow and step guidance, with only this call\'s extra rules', () => {
+  it("passes global, flow and step guidance, with only this call's extra rules", () => {
     expect(guidanceFor('validate', global, flow, steps)).toEqual({
       domainContext: 'Payouts for sellers.',
       tone: 'Formal.',
@@ -79,7 +79,7 @@ describe('guidance sanitisation', () => {
   });
 });
 
-describe('the guidance block\'s fixed text', () => {
+describe("the guidance block's fixed text", () => {
   // The framing around the author's text is part of every prompt that has
   // guidance. A change to it shows up here, and bumps GUIDANCE_BLOCK_VERSION.
   it('is versioned', () => {

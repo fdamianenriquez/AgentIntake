@@ -94,9 +94,7 @@ describe('generateFlow', () => {
   });
 
   it('retries once when the first attempt rejects, then succeeds', async () => {
-    mockedGenerateStructured
-      .mockRejectedValueOnce(new Error('model returned malformed JSON'))
-      .mockResolvedValueOnce(narrowLlmResult());
+    mockedGenerateStructured.mockRejectedValueOnce(new Error('model returned malformed JSON')).mockResolvedValueOnce(narrowLlmResult());
 
     const output = await generateFlow({ endpoints: rawEndpoints });
 
@@ -208,13 +206,9 @@ describe('generateFlow', () => {
   });
 
   it('throws a clear error after both attempts fail', async () => {
-    mockedGenerateStructured
-      .mockRejectedValueOnce(new Error('rate limited'))
-      .mockRejectedValueOnce(new Error('rate limited again'));
+    mockedGenerateStructured.mockRejectedValueOnce(new Error('rate limited')).mockRejectedValueOnce(new Error('rate limited again'));
 
-    await expect(generateFlow({ endpoints: rawEndpoints })).rejects.toThrow(
-      /failed to generate a valid flow after 2 attempts/
-    );
+    await expect(generateFlow({ endpoints: rawEndpoints })).rejects.toThrow(/failed to generate a valid flow after 2 attempts/);
     expect(mockedGenerateStructured).toHaveBeenCalledTimes(2);
   });
 
@@ -294,7 +288,7 @@ describe('parser-owned metadata', () => {
     expect(flow.endpoints[0]).not.toHaveProperty('guidance');
   });
 
-  it('the model\'s output schema has no slot for author guidance', async () => {
+  it("the model's output schema has no slot for author guidance", async () => {
     let schema: z.ZodType | undefined;
     mockedGenerateStructured.mockImplementationOnce(async (_prompt, s) => {
       schema = s;

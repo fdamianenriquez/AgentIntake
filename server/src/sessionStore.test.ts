@@ -54,9 +54,7 @@ describe('sessionStore', () => {
   });
 
   it('throws a clear error when recording a validated step for an unknown session', () => {
-    expect(() => recordValidatedStep('does-not-exist', 'createCandidate', {})).toThrow(
-      /no session found/
-    );
+    expect(() => recordValidatedStep('does-not-exist', 'createCandidate', {})).toThrow(/no session found/);
   });
 
   it('deletes a session', () => {

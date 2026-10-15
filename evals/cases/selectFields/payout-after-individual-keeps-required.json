@@ -47,10 +47,7 @@
           "label": "Account Type",
           "description": "Select whether payouts should go to a checking or savings account.",
           "required": true,
-          "enumValues": [
-            "checking",
-            "savings"
-          ]
+          "enumValues": ["checking", "savings"]
         }
       ],
       "auth": {
@@ -63,9 +60,7 @@
       },
       "resourcePath": "/accounts/{accountId}/payout-methods",
       "idParam": "payoutMethodId",
-      "pathParams": [
-        "accountId"
-      ]
+      "pathParams": ["accountId"]
     },
     "previouslyCollectedData": {
       "createAccount": {
@@ -81,12 +76,6 @@
     }
   },
   "expect": {
-    "mustInclude": [
-      "bankName",
-      "accountHolderName",
-      "accountNumber",
-      "routingNumber",
-      "payoutAccountType"
-    ]
+    "mustInclude": ["bankName", "accountHolderName", "accountNumber", "routingNumber", "payoutAccountType"]
   }
 }

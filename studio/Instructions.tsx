@@ -1,9 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import {
-  GUIDANCE_LIMITS,
-  LanguageTagSchema,
-  type GeneratedFlow,
-} from '../packages/react-agent-intake/src/contracts.js';
+import { GUIDANCE_LIMITS, LanguageTagSchema, type GeneratedFlow } from '../packages/react-agent-intake/src/contracts.js';
 
 // The Instructions tab: guidance an author adds to what the
 // model is told -- global (saved to agentintake.config.json through Studio's
@@ -195,25 +191,32 @@ function GlobalGuidanceForm({ onSaved }: { onSaved: (guidance: GlobalGuidance) =
                 <TextField
                   label={`${CALL_LABELS[call]}: rule ${index + 1}`}
                   value={rule}
-                  onChange={(text) => setRules(call, rules(call).map((r, i) => (i === index ? text : r)))}
+                  onChange={(text) =>
+                    setRules(
+                      call,
+                      rules(call).map((r, i) => (i === index ? text : r))
+                    )
+                  }
                   limit={limits.extraRule}
                   error={issueAt(`guidance.extraRules.${call}.${index}`)}
                 />
-                <button type="button" onClick={() => setRules(call, rules(call).filter((_, i) => i !== index))}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setRules(
+                      call,
+                      rules(call).filter((_, i) => i !== index)
+                    )
+                  }
+                >
                   Remove rule {index + 1} ({CALL_LABELS[call]})
                 </button>
               </div>
             ))}
-            <button
-              type="button"
-              disabled={rules(call).length >= limits.extraRules}
-              onClick={() => setRules(call, [...rules(call), ''])}
-            >
+            <button type="button" disabled={rules(call).length >= limits.extraRules} onClick={() => setRules(call, [...rules(call), ''])}>
               Add a rule ({CALL_LABELS[call]})
             </button>
-            {rules(call).length >= limits.extraRules && (
-              <p className="studio-field-hint">At most {limits.extraRules} rules per call.</p>
-            )}
+            {rules(call).length >= limits.extraRules && <p className="studio-field-hint">At most {limits.extraRules} rules per call.</p>}
           </div>
         ))}
       </fieldset>
@@ -239,7 +242,8 @@ export function flowGuidanceProblems(flow: GeneratedFlow): string[] {
   if ((flow.guidance ?? '').length > GUIDANCE_LIMITS.flowGuidance) problems.push('The flow guidance is too long.');
   if (languageProblem(flow.outputLanguage ?? '')) problems.push("The flow's output language is not a BCP-47 tag.");
   for (const endpoint of flow.endpoints) {
-    if ((endpoint.guidance ?? '').length > GUIDANCE_LIMITS.endpointGuidance) problems.push(`The guidance for "${endpoint.title}" is too long.`);
+    if ((endpoint.guidance ?? '').length > GUIDANCE_LIMITS.endpointGuidance)
+      problems.push(`The guidance for "${endpoint.title}" is too long.`);
   }
   return problems;
 }
@@ -490,16 +494,15 @@ function TestPanel({ flow, savedGlobal, pollMs }: { flow: GeneratedFlow; savedGl
     if (job) await fetch(`/api/studio/evals/${job.id}`, { method: 'DELETE' });
   };
 
-  const toggle = (call: Call) =>
-    setPicked(selected.includes(call) ? selected.filter((c) => c !== call) : [...selected, call]);
+  const toggle = (call: Call) => setPicked(selected.includes(call) ? selected.filter((c) => c !== call) : [...selected, call]);
   const report = job?.view.report;
 
   return (
     <section className="studio-instructions-section" aria-labelledby="test-title">
       <h3 id="test-title">Test</h3>
       <p className="studio-field-hint">
-        Runs AgentIntake's built-in cases with the saved global guidance and this flow's guidance, against your configured
-        model. It spends model calls. Calls whose guidance changed since the last test, or that were never tested, are selected.
+        Runs AgentIntake's built-in cases with the saved global guidance and this flow's guidance, against your configured model. It spends
+        model calls. Calls whose guidance changed since the last test, or that were never tested, are selected.
       </p>
       <fieldset disabled={running}>
         <legend>Calls to test</legend>
@@ -524,14 +527,13 @@ function TestPanel({ flow, savedGlobal, pollMs }: { flow: GeneratedFlow; savedGl
         Test
       </button>
       <p className="studio-field-hint">
-        The test uses AgentIntake's built-in example cases (a payment onboarding flow), not your own steps. Your global
-        and flow guidance applies to them; step guidance only applies to steps with the same id.
+        The test uses AgentIntake's built-in example cases (a payment onboarding flow), not your own steps. Your global and flow guidance
+        applies to them; step guidance only applies to steps with the same id.
       </p>
       {stepGuidanceUncovered && (
         <p role="note" className="studio-warnings">
-          Your step guidance isn't covered by this test: none of the steps you gave guidance to has the id of a step in the
-          built-in cases. Check it in "What the model receives" above, or with your own cases (agent-intake eval-prompts
-          --cases).
+          Your step guidance isn't covered by this test: none of the steps you gave guidance to has the id of a step in the built-in cases.
+          Check it in "What the model receives" above, or with your own cases (agent-intake eval-prompts --cases).
         </p>
       )}
 
@@ -570,7 +572,11 @@ function TestPanel({ flow, savedGlobal, pollMs }: { flow: GeneratedFlow; savedGl
           The test failed: {job.view.error}
         </p>
       )}
-      {job?.view.status === 'cancelled' && <p role="status">Cancelled after {job.view.done} of {job.view.total} runs.</p>}
+      {job?.view.status === 'cancelled' && (
+        <p role="status">
+          Cancelled after {job.view.done} of {job.view.total} runs.
+        </p>
+      )}
 
       {report && (
         <>

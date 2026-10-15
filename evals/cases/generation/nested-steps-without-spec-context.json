@@ -63,21 +63,13 @@
             "label": "Industry Category",
             "description": "Business accounts only. The industry the business operates in.",
             "required": false,
-            "enumValues": [
-              "retail",
-              "technology",
-              "healthcare",
-              "finance",
-              "other"
-            ]
+            "enumValues": ["retail", "technology", "healthcare", "finance", "other"]
           }
         ],
         "auth": {
           "type": "none"
         },
-        "pathParams": [
-          "accountId"
-        ],
+        "pathParams": ["accountId"],
         "resourcePath": "/accounts/{accountId}/verifications",
         "idParam": "verificationId",
         "capabilities": {
@@ -131,18 +123,13 @@
             "label": "Payout Account Type",
             "description": "The type of bank account payouts will be sent to.",
             "required": true,
-            "enumValues": [
-              "checking",
-              "savings"
-            ]
+            "enumValues": ["checking", "savings"]
           }
         ],
         "auth": {
           "type": "none"
         },
-        "pathParams": [
-          "accountId"
-        ],
+        "pathParams": ["accountId"],
         "resourcePath": "/accounts/{accountId}/payout-methods",
         "idParam": "payoutMethodId",
         "capabilities": {
@@ -155,9 +142,7 @@
   },
   "expect": {
     "ambiguousFields": {
-      "mustExclude": [
-        "bankName"
-      ]
+      "mustExclude": ["bankName"]
     }
   }
 }

@@ -36,9 +36,7 @@ export async function handleStepValidate(req: Request, res: Response): Promise<v
   const session = getOrCreateSession(sessionId);
 
   try {
-    const previouslyCollectedData = precedingEndpointIds
-      ? getScopedData(sessionId, precedingEndpointIds)
-      : session.collectedData;
+    const previouslyCollectedData = precedingEndpointIds ? getScopedData(sessionId, precedingEndpointIds) : session.collectedData;
     const guidance = runtimeGuidance(res, 'validate', flow, [endpoint]);
     const result = await validateStepSubmission({ endpoint, data, previouslyCollectedData, guidance });
     if (result.valid) {

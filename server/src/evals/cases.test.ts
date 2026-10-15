@@ -52,7 +52,10 @@ describe('loadCases', () => {
     };
     write('fixtures/config.json', { guidance: { tone: 'Formal.' } });
     write('fixtures/flow.json', { id: 'f', title: 't', description: 'd', endpoints: [endpoint] });
-    write('cases/validate/guided.json', { ...validateCase, fixtures: { config: '../../fixtures/config.json', flow: '../../fixtures/flow.json' } });
+    write('cases/validate/guided.json', {
+      ...validateCase,
+      fixtures: { config: '../../fixtures/config.json', flow: '../../fixtures/flow.json' },
+    });
 
     const [loaded] = loadCases(path.join(root, 'cases'));
 
@@ -61,14 +64,30 @@ describe('loadCases', () => {
   });
 
   it.each([
-    ['an unknown key', { 'validate/a.json': { ...validateCase, extra: 1 } }, /a\.json is not a valid validate case:\n {2}\(top level\): Unrecognized key: "extra"/],
-    ['an unknown key inside expect', { 'validate/a.json': { ...validateCase, expect: { valid: true, mode: 'x' } } }, /expect: Unrecognized key: "mode"/],
-    ['a call that does not match its directory', { 'selectFields/a.json': validateCase }, /"call" is "validate", but the file is in the "selectFields" directory/],
+    [
+      'an unknown key',
+      { 'validate/a.json': { ...validateCase, extra: 1 } },
+      /a\.json is not a valid validate case:\n {2}\(top level\): Unrecognized key: "extra"/,
+    ],
+    [
+      'an unknown key inside expect',
+      { 'validate/a.json': { ...validateCase, expect: { valid: true, mode: 'x' } } },
+      /expect: Unrecognized key: "mode"/,
+    ],
+    [
+      'a call that does not match its directory',
+      { 'selectFields/a.json': validateCase },
+      /"call" is "validate", but the file is in the "selectFields" directory/,
+    ],
     ['an unknown call directory', { 'validation/a.json': validateCase }, /unknown call "validation"/],
     ['a file that is not JSON', { 'validate/a.json': '{' }, /a\.json: not valid JSON/],
     ['a non-JSON file', { 'validate/a.txt': 'x' }, /a\.txt: case files must be \.json/],
     ['an invalid input', { 'validate/a.json': { ...validateCase, input: { data: {} } } }, /input\.endpoint/],
-    ['an empty include/exclude expectation', { 'selectFields/a.json': { call: 'selectFields', name: 'n', input: { endpoint }, expect: {} } }, /Give mustInclude, mustExclude or both/],
+    [
+      'an empty include/exclude expectation',
+      { 'selectFields/a.json': { call: 'selectFields', name: 'n', input: { endpoint }, expect: {} } },
+      /Give mustInclude, mustExclude or both/,
+    ],
     ['a missing fixture', { 'validate/a.json': { ...validateCase, fixtures: { config: 'nope.json' } } }, /nope\.json/],
   ])('fails with the path and the problem for %s', (_label, files, message) => {
     const dir = casesDir(files);

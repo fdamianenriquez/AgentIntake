@@ -32,17 +32,11 @@ describe('localOnlyGuard', () => {
     expect(response.status).toBe(200);
   });
 
-  it.each(['https://attacker.example', 'http://localhost:3000', 'null'])(
-    'rejects a cross-origin request from %s',
-    async (origin) => {
-      const response = await request(makeApp())
-        .post('/api/provider-setup')
-        .set('Host', 'localhost:4000')
-        .set('Origin', origin);
-      expect(response.status).toBe(403);
-      expect(response.body.error).toMatch(/Cross-origin/);
-    }
-  );
+  it.each(['https://attacker.example', 'http://localhost:3000', 'null'])('rejects a cross-origin request from %s', async (origin) => {
+    const response = await request(makeApp()).post('/api/provider-setup').set('Host', 'localhost:4000').set('Origin', origin);
+    expect(response.status).toBe(403);
+    expect(response.body.error).toMatch(/Cross-origin/);
+  });
 
   it('also rejects the CORS preflight from another origin', async () => {
     const response = await request(makeApp())

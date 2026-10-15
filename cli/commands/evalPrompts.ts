@@ -81,10 +81,18 @@ function prepare(options: EvalPromptsOptions): Prepared {
   const repeat = numberOption(options.repeat, 'repeat', (n) => Number.isInteger(n) && n >= 1 && n <= 50, 'a whole number from 1 to 50');
   const minPass = numberOption(options.minPass, 'min-pass', (n) => n >= 0 && n <= 1, 'a number from 0 to 1') ?? 0.9;
   const concurrency =
-    numberOption(options.concurrency, 'concurrency', (n) => Number.isInteger(n) && n >= 1 && n <= MAX_CONCURRENCY, `a whole number from 1 to ${MAX_CONCURRENCY}`) ?? 1;
+    numberOption(
+      options.concurrency,
+      'concurrency',
+      (n) => Number.isInteger(n) && n >= 1 && n <= MAX_CONCURRENCY,
+      `a whole number from 1 to ${MAX_CONCURRENCY}`
+    ) ?? 1;
   let calls: EvalCall[] | undefined;
   if (options.calls !== undefined) {
-    calls = options.calls.split(',').map((call) => call.trim()).filter(Boolean) as EvalCall[];
+    calls = options.calls
+      .split(',')
+      .map((call) => call.trim())
+      .filter(Boolean) as EvalCall[];
     const unknown = calls.filter((call) => !(EVAL_CALLS as readonly string[]).includes(call));
     if (calls.length === 0 || unknown.length > 0) {
       throw new UsageError(`--calls takes a comma-separated list of ${EVAL_CALLS.join(', ')} (got "${options.calls}").`);
@@ -132,7 +140,15 @@ function formatReport(report: EvalReport, minPass: number, root: string): string
   for (const [call, summary] of Object.entries(report.calls)) {
     const flag = summary.passRate < minPass ? `   below ${percent(minPass)}` : '';
     lines.push(
-      row([call, String(summary.runs), String(summary.passed), percent(summary.passRate), String(summary.degraded), seconds(summary.p50Ms), seconds(summary.p95Ms)]) + flag
+      row([
+        call,
+        String(summary.runs),
+        String(summary.passed),
+        percent(summary.passRate),
+        String(summary.degraded),
+        seconds(summary.p50Ms),
+        seconds(summary.p95Ms),
+      ]) + flag
     );
   }
   const t = report.totals;

@@ -62,13 +62,7 @@
           "label": "Industry Category",
           "description": "Required for business accounts. Choose the sector that best describes your business.",
           "required": false,
-          "enumValues": [
-            "retail",
-            "technology",
-            "healthcare",
-            "finance",
-            "other"
-          ]
+          "enumValues": ["retail", "technology", "healthcare", "finance", "other"]
         }
       ],
       "auth": {
@@ -81,9 +75,7 @@
       },
       "resourcePath": "/accounts/{accountId}/verifications",
       "idParam": "verificationId",
-      "pathParams": [
-        "accountId"
-      ]
+      "pathParams": ["accountId"]
     },
     "data": {
       "dateOfBirth": "1990-04-12",

@@ -95,9 +95,7 @@ describe('POST /api/generate-flow', () => {
   });
 
   it('returns 400 when a path/URL is sent instead of spec content (the old, now-removed contract)', async () => {
-    const response = await request(createApp())
-      .post('/api/generate-flow')
-      .send({ spec: fixtureSpecPath });
+    const response = await request(createApp()).post('/api/generate-flow').send({ spec: fixtureSpecPath });
 
     expect(response.status).toBe(400);
     expect(response.body.error).toMatch(/specContent/);
@@ -117,9 +115,7 @@ describe('POST /api/generate-flow', () => {
   });
 
   it('returns 500 when specContent is neither valid JSON nor YAML', async () => {
-    const response = await request(createApp())
-      .post('/api/generate-flow')
-      .send({ specContent: '{{{ not json or yaml : : :' });
+    const response = await request(createApp()).post('/api/generate-flow').send({ specContent: '{{{ not json or yaml : : :' });
 
     expect(response.status).toBe(500);
     expect(response.body.error).toBeDefined();

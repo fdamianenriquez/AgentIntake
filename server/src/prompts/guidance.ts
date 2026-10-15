@@ -51,9 +51,7 @@ export function guidanceFor(
   steps: { title: string; guidance?: string }[] = []
 ): PromptGuidance | undefined {
   const withFlow = call !== 'generation';
-  const stepGuidance = withFlow
-    ? steps.filter((step) => step.guidance).map((step) => ({ title: step.title, text: step.guidance! }))
-    : [];
+  const stepGuidance = withFlow ? steps.filter((step) => step.guidance).map((step) => ({ title: step.title, text: step.guidance! })) : [];
   const guidance: PromptGuidance = {
     domainContext: global?.domainContext,
     tone: global?.tone,

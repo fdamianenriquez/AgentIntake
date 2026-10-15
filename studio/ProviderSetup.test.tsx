@@ -34,10 +34,7 @@ describe('ProviderSetup', () => {
   });
 
   it('shows the server error and does not call onDone when setup fails', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: false, status: 400, json: async () => ({ error: 'Invalid API key.' }) })
-    );
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 400, json: async () => ({ error: 'Invalid API key.' }) }));
     const onDone = vi.fn();
     const user = userEvent.setup();
 

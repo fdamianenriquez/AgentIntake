@@ -25,8 +25,7 @@ export interface PreClassification {
   explanation?: string;
 }
 
-const DUPLICATE_WARNING =
-  " If the service doesn't support idempotency keys, retrying might create a duplicate.";
+const DUPLICATE_WARNING = " If the service doesn't support idempotency keys, retrying might create a duplicate.";
 
 /**
  * The cases that never need judgment. Network problems,
@@ -53,7 +52,5 @@ export function preClassify(failure: OperationFailure | undefined, previousOther
     }
     return { verdict: 'ask' };
   }
-  return previousOtherFailures === 0
-    ? { verdict: 'retryable', explanation: 'Something went wrong. Try again.' }
-    : { verdict: 'ask' };
+  return previousOtherFailures === 0 ? { verdict: 'retryable', explanation: 'Something went wrong. Try again.' } : { verdict: 'ask' };
 }

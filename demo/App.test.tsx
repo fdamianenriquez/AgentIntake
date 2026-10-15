@@ -35,9 +35,7 @@ describe('demo operations', () => {
     const calls: MockApiCall[] = [];
     const ops = operationsFor(createMockApi((call) => calls.push(call)));
 
-    await expect(ops.createVerification.undo!({ results: {}, idempotencyKey: 'k', resourceId: 'ver_1' })).rejects.toThrow(
-      /account id/
-    );
+    await expect(ops.createVerification.undo!({ results: {}, idempotencyKey: 'k', resourceId: 'ver_1' })).rejects.toThrow(/account id/);
     expect(calls).toEqual([]);
   });
 
@@ -55,7 +53,10 @@ describe('demo operations', () => {
           id: 'account',
           title: 'Account',
           fields: field('name'),
-          operations: { create: vi.fn().mockResolvedValue({ success: true, resourceId: 'acct_1' }), undo: vi.fn().mockResolvedValue({ success: true }) },
+          operations: {
+            create: vi.fn().mockResolvedValue({ success: true, resourceId: 'acct_1' }),
+            undo: vi.fn().mockResolvedValue({ success: true }),
+          },
         },
         {
           id: 'verification',
@@ -72,7 +73,11 @@ describe('demo operations', () => {
       ],
     };
     const { result } = renderHook(() => useAgentForm(flow, { apiUrl: 'http://test.local' }));
-    for (const [name, value] of [['name', 'Jordan'], ['idNumber', 'ID-1'], ['bank', 'Bank']]) {
+    for (const [name, value] of [
+      ['name', 'Jordan'],
+      ['idNumber', 'ID-1'],
+      ['bank', 'Bank'],
+    ]) {
       await waitFor(() => expect(result.current.loading).toBe(false));
       act(() => result.current.updateField(name, value));
       await act(() => result.current.submitStep());

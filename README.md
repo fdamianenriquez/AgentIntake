@@ -93,9 +93,9 @@ Paste raw spec text, upload a file, or paste a URL. Studio validates that the in
 
 ![Studio: pasting the example spec, generating, and the live preview adapting step 2 to a business account](docs/demo-studio.gif)
 
-*Captured from a real run against the example spec; frames are spaced out, not real time.*
+_Captured from a real run against the example spec; frames are spaced out, not real time._
 
-The preview runs in **Preview mode**: adaptive fields and semantic validation are real LLM calls, but each step's `execute()` is simulated — it logs what it *would* call to the browser console instead of hitting any API. A notice in the UI says so.
+The preview runs in **Preview mode**: adaptive fields and semantic validation are real LLM calls, but each step's `execute()` is simulated — it logs what it _would_ call to the browser console instead of hitting any API. A notice in the UI says so.
 
 Next to the preview, the **Instructions** tab edits [author guidance](#author-guidance) without touching a file by hand:
 
@@ -106,38 +106,38 @@ Next to the preview, the **Instructions** tab edits [author guidance](#author-gu
 
 Regenerating a flow in the same Studio session keeps its flow and step guidance by endpoint id and lists any steps whose guidance was dropped.
 
-Studio itself resolves a pasted URL or uploaded file to spec *content* in your browser first. Fetching a URL from the browser is subject to that host's CORS policy, so some URLs will fail there; pasting the spec text always works.
+Studio itself resolves a pasted URL or uploaded file to spec _content_ in your browser first. Fetching a URL from the browser is subject to that host's CORS policy, so some URLs will fail there; pasting the spec text always works.
 
 ### Choosing an LLM provider
 
 One `.env` at the project root is the source of truth. It is read from the directory you run the command in.
 
-| Variable | Meaning |
-|---|---|
-| `LLM_PROVIDER` | `anthropic` (default), `openai`, `google`, or `openrouter` |
-| `LLM_MODEL` | Provider-specific model name; optional, each provider has a default |
-| `LLM_API_KEY` | Your API key for the provider named in `LLM_PROVIDER` — one variable for all of them, so it must be a key for that provider |
-| `AGENTINTAKE_STATIC_MODE` | Any value other than empty, `false` or `0` turns adaptivity off (see below) |
-| `PORT` | Port for the runtime server (`npm start`), default `3000` |
+| Variable                   | Meaning                                                                                                                                                                                                                                                 |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LLM_PROVIDER`             | `anthropic` (default), `openai`, `google`, or `openrouter`                                                                                                                                                                                              |
+| `LLM_MODEL`                | Provider-specific model name; optional, each provider has a default                                                                                                                                                                                     |
+| `LLM_API_KEY`              | Your API key for the provider named in `LLM_PROVIDER` — one variable for all of them, so it must be a key for that provider                                                                                                                             |
+| `AGENTINTAKE_STATIC_MODE`  | Any value other than empty, `false` or `0` turns adaptivity off (see below)                                                                                                                                                                             |
+| `PORT`                     | Port for the runtime server (`npm start`), default `3000`                                                                                                                                                                                               |
 | `AGENTINTAKE_CORS_ORIGINS` | Comma-separated origins allowed to call the runtime server from a browser (e.g. `https://app.example.com`). Unset, every origin is allowed and the server logs a warning at startup — see [Deploying the runtime server](#deploying-the-runtime-server) |
-| `AGENTINTAKE_CONFIG` | Path of the [author guidance](#author-guidance) config file, instead of `agentintake.config.json` in the working directory. A missing file at this path is an error |
-| `AGENTINTAKE_FLOWS_DIR` | Directory of `flow.json` files the runtime server trusts for guidance — see [Trust model](#trust-model-and-trusted-flows) |
-| `AGENTINTAKE_LOG_LEVEL` | `error`, `warn` (default), `info` or `debug` — see [Logging](#logging). Any other value stops startup |
+| `AGENTINTAKE_CONFIG`       | Path of the [author guidance](#author-guidance) config file, instead of `agentintake.config.json` in the working directory. A missing file at this path is an error                                                                                     |
+| `AGENTINTAKE_FLOWS_DIR`    | Directory of `flow.json` files the runtime server trusts for guidance — see [Trust model](#trust-model-and-trusted-flows)                                                                                                                               |
+| `AGENTINTAKE_LOG_LEVEL`    | `error`, `warn` (default), `info` or `debug` — see [Logging](#logging). Any other value stops startup                                                                                                                                                   |
 
 Defaults: `anthropic` → `claude-haiku-5-5`, `openai` → `gpt-6-luna`, `google` → `gemini-3.8-flash`, `openrouter` → `openrouter/free`. Each is a fast, low-cost tier that did well in the comparison below; set `LLM_MODEL` to use a larger model. `openrouter` is an extra fourth option (OpenAI-compatible API, reached through the same SDK); `openrouter/free` is OpenRouter's own router across whichever free models are currently available, so it costs nothing to try but can hand consecutive requests to different underlying models. The `anthropic`, `openai` and `google` defaults have so far been run only through OpenRouter (as `anthropic/claude-haiku-5.5`, `openai/gpt-6-luna` and `google/gemini-3.8-flash`), not yet with each provider's own key and model id; if a provider rejects its default, set `LLM_MODEL`.
 
 How each way of running it finds its provider:
 
-- **CLI `generate`** — reads `.env` if present. Variables already set in your shell (for example CI secrets) take precedence over `.env`, and `--provider` / `--model` take precedence over both. It fails fast, before touching the spec, with a specific message if `LLM_API_KEY` is missing or `LLM_PROVIDER` isn't a supported value — never a raw SDK error. Because one variable serves every provider, a key that belongs to a *different* provider can't be detected up front; the provider rejects it on the first call.
+- **CLI `generate`** — reads `.env` if present. Variables already set in your shell (for example CI secrets) take precedence over `.env`, and `--provider` / `--model` take precedence over both. It fails fast, before touching the spec, with a specific message if `LLM_API_KEY` is missing or `LLM_PROVIDER` isn't a supported value — never a raw SDK error. Because one variable serves every provider, a key that belongs to a _different_ provider can't be detected up front; the provider rejects it on the first call.
 - **Studio** — if no valid provider and key are configured, it shows a one-time setup screen in the browser: pick a provider, paste the key. It is written to `.env` in the directory you launched Studio from, so no text-file editing is needed and you aren't asked again next session.
 - **Runtime wizard server** (`npm start`) — reads `.env` like the CLI. This is a deployment-time concern of whoever hosts the wizard; the person filling out the form never sees or configures it.
 
 **Honest caveats.** Structured-output reliability varies by provider and by model. Every provider goes through the same Vercel AI SDK `generateObject` interface, and every LLM output schema is kept to the subset all of them accept (no `oneOf`, no optional properties, no open-ended maps — a test checks this), but the models themselves differ. The [built-in eval suite](#checking-guidance-with-eval-prompts) — 33 cases with a known correct answer across the five LLM calls, run twice each (66 runs), through OpenRouter — gave:
 
-| Model | Passed | Fell back | generation p50 / p95 | step calls p50 / p95 |
-|---|---|---|---|---|
-| `anthropic/claude-haiku-5.5` | 66/66 (100%) | 0 | 6.4 s / 7.8 s | 2.2–2.6 s / 2.9–3.8 s |
-| `openrouter/free` | 40/66 (61%) | 26 | 27.6 s / 90.8 s | 6.7–10.3 s / 15.0–30.0 s |
+| Model                        | Passed       | Fell back | generation p50 / p95 | step calls p50 / p95     |
+| ---------------------------- | ------------ | --------- | -------------------- | ------------------------ |
+| `anthropic/claude-haiku-5.5` | 66/66 (100%) | 0         | 6.4 s / 7.8 s        | 2.2–2.6 s / 2.9–3.8 s    |
+| `openrouter/free`            | 40/66 (61%)  | 26        | 27.6 s / 90.8 s      | 6.7–10.3 s / 15.0–30.0 s |
 
 Per call for `openrouter/free`: generation 7/8, adaptive fields 6/14, semantic validation 5/16, later-step review 11/14, failure classification 11/14 — and every one of its failures was a fallback (mostly timeouts), not a wrong answer. A small sample, not a benchmark suite, but the gap is clear: the free router is fine for trying the tool out, and much of the time the wizard runs on its fallback path with it. A call that runs past its timeout degrades gracefully (below) rather than blocking. Run `eval-prompts` yourself to measure the model you configure. Live calls against real providers are deliberately not part of the automated tests (they'd need funded keys for every provider on each CI run); provider wiring, schema compatibility and the fail-fast errors are.
 
@@ -145,10 +145,10 @@ Per call for `openrouter/free`: generation 7/8, adaptive fields 6/14, semantic v
 
 The demo is a "Payment Account Onboarding" wizard built from `server/specs/example-payment-onboarding.openapi.yaml`: three resource families, two of them nested under the account.
 
-| Step | Created with | Revisit / undo with |
-|---|---|---|
-| Account | `POST /accounts` | `GET`, `PATCH`, `DELETE /accounts/{accountId}` |
-| Verification | `POST /accounts/{accountId}/verifications` | `GET`, `PATCH`, `DELETE …/verifications/{verificationId}` |
+| Step          | Created with                                | Revisit / undo with                                            |
+| ------------- | ------------------------------------------- | -------------------------------------------------------------- |
+| Account       | `POST /accounts`                            | `GET`, `PATCH`, `DELETE /accounts/{accountId}`                 |
+| Verification  | `POST /accounts/{accountId}/verifications`  | `GET`, `PATCH`, `DELETE …/verifications/{verificationId}`      |
 | Payout method | `POST /accounts/{accountId}/payout-methods` | `DELETE …/payout-methods/{payoutMethodId}` (no read or update) |
 
 ```bash
@@ -158,7 +158,7 @@ npx vite --config demo/vite.config.ts       # demo UI on :5173
 
 ![Demo wizard: step 2 shows business fields for a business account and individual fields for an individual one, then the payout step rejects an account holder name that doesn't match](docs/demo-wizard.gif)
 
-*Captured from real runs; frames are spaced out, not real time. Field descriptions are written by the model at runtime.*
+_Captured from real runs; frames are spaced out, not real time. Field descriptions are written by the model at runtime._
 
 The demo's operations call an in-browser mock of that API (`demo/mockApi.ts`), so nothing needs to run besides the two commands above; a log under the form lists every mock call. A "Simulate" switch picks what the mock does:
 
@@ -188,7 +188,7 @@ The package lives in `packages/react-agent-intake` (published name: `react-agent
 ```tsx
 import { AgentIntakeForm } from 'react-agent-intake';
 
-<AgentIntakeForm flow={flow} apiUrl="http://localhost:3000" getAuthHeaders={optional} />
+<AgentIntakeForm flow={flow} apiUrl="http://localhost:3000" getAuthHeaders={optional} />;
 ```
 
 `AgentIntakeForm` is a thin, replaceable consumer of the hook. It maps `FieldDef.type` (`string`, `number`, `boolean`, `date`, `enum`) to generic controls with no per-field JSX, shows a stepper, and marks completed steps.
@@ -206,14 +206,14 @@ function useAgentForm(
   currentStepFields: FieldDef[];
   suggestedValues: Record<string, unknown>;
   values: Record<string, unknown>;
-  errors: Record<string, string>;      // set only when currentStepStatus === 'invalid'
+  errors: Record<string, string>; // set only when currentStepStatus === 'invalid'
   currentStepStatus: StepStatus;
-  executionError: string | null;       // set only when currentStepStatus === 'executionFailed'
-  loading: boolean;                    // fetching this step's adapted fields
+  executionError: string | null; // set only when currentStepStatus === 'executionFailed'
+  loading: boolean; // fetching this step's adapted fields
   updateField: (fieldName: string, value: unknown) => void;
   submitStep: () => Promise<void>;
   retryExecution: () => Promise<void>;
-  completedEndpoints: string[];        // endpoint ids that reached 'complete'
+  completedEndpoints: string[]; // endpoint ids that reached 'complete'
   isComplete: boolean;
   stepRecords: Record<string, StepRecord>; // per step: last submitted values, result, status
   canGoToStep: (endpointId: string) => boolean;
@@ -222,16 +222,16 @@ function useAgentForm(
   isEditing: boolean;
   editMode: 'editable' | 'readOnly' | null;
   editPhase: 'idle' | 'validating' | 'saving';
-  navigationError: string | null;      // e.g. the step's read() failed
+  navigationError: string | null; // e.g. the step's read() failed
   staleResolution: 'keepOrEdit' | 'mustEdit' | 'followUp' | null; // for the step under review
   acknowledgeStale: () => { ok: true } | { ok: false; reason: 'fieldsChanged' | 'notStale' };
   flagForFollowUp: () => void;
   followUps: { endpointId: string; note: string }[];
-  recovery: { phase, classification?, explanation?, proposedUndo?, skipped?, report? }; // see below
+  recovery: { phase; classification?; explanation?; proposedUndo?; skipped?; report? }; // see below
   confirmRollback: () => Promise<void>;
   declineRollback: () => void;
   retryRollback: () => Promise<void>;
-  error: Error | null;                 // fatal, e.g. a flow with no endpoints
+  error: Error | null; // fatal, e.g. a flow with no endpoints
 };
 ```
 
@@ -296,12 +296,12 @@ AgentIntake never calls your API and never inspects its responses itself; mappin
 
 Completed steps are clickable in the stepper (`goToStep`). What happens depends on what you implemented for that step:
 
-| `read` | `update` | Revisiting the step |
-|---|---|---|
-| yes | yes | Shows the resource as your API returns it now; changes are saved with `update` |
-| no | yes | Shows the values submitted last time; changes are saved with `update` |
-| yes | no | Shows the resource read-only |
-| no | no | Shows the values submitted last time, read-only |
+| `read` | `update` | Revisiting the step                                                            |
+| ------ | -------- | ------------------------------------------------------------------------------ |
+| yes    | yes      | Shows the resource as your API returns it now; changes are saved with `update` |
+| no     | yes      | Shows the values submitted last time; changes are saved with `update`          |
+| yes    | no       | Shows the resource read-only                                                   |
+| no     | no       | Shows the values submitted last time, read-only                                |
 
 The step's fields are adapted again to the earlier answers as they are now, and only the visible fields are sent to `update` (the previous values arrive as `ctx.previousValues`, so a PUT-style API can merge). `read` should return values in the form's shape — field names as in the flow, with nested objects fine for dotted names (`{ address: { city } }` fills `address.city`). Each field it returns replaces the local value; a field it leaves out keeps what the user entered, so leave out what your API doesn't return instead of sending a placeholder, and never return masked values (`"***1234"`): the form would show the mask and a later `update` would send it as the real value. Other keys (`id`, `status`, timestamps) are ignored. Saving without changes makes no `update` call. A failed `update` leaves the step as it was — nothing is rolled back. If `read` reports the resource is gone, the step goes back to being filled in and is created again.
 
@@ -351,14 +351,14 @@ A validation failure and an execution failure are deliberately different states.
 
 The routes are mounted by `createApp()` in `server/src/app.ts`. The form calls all of them except `/api/generate-flow`; `endpoint` values are the step definitions from the flow (the server holds no flow of its own).
 
-| Route | Body | Returns |
-|---|---|---|
-| `POST /api/generate-flow` | `{ specContent }` — raw JSON or YAML text | `{ flow, ambiguousFields, warnings }` |
-| `POST /api/step/fields` | `{ sessionId, flow?, endpoint, precedingEndpointIds? }` | `{ fields, suggestedValues, degraded }` |
-| `POST /api/step/validate` | `{ sessionId, flow?, endpoint, data, precedingEndpointIds? }` | `{ valid, errors, degraded }` |
-| `POST /api/session/sync` | `{ sessionId, steps: [{ endpointId, data \| null }] }` — replaces (or, with `null`, clears) what the session holds for those steps | `{ ok: true }` |
-| `POST /api/step/check-invalidation` | `{ sessionId, flow?, editedEndpoint, before, after, laterCompletedEndpoints }` | `{ affected: [{ endpointId, reason }], degraded }` |
-| `POST /api/step/classify-failure` | `{ sessionId, flow?, failedEndpoint, failure: { kind, status?, message? }, completedEndpoints }` | `{ classification, explanation, rollbackFromEndpointId, degraded }` |
+| Route                               | Body                                                                                                                               | Returns                                                             |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `POST /api/generate-flow`           | `{ specContent }` — raw JSON or YAML text                                                                                          | `{ flow, ambiguousFields, warnings }`                               |
+| `POST /api/step/fields`             | `{ sessionId, flow?, endpoint, precedingEndpointIds? }`                                                                            | `{ fields, suggestedValues, degraded }`                             |
+| `POST /api/step/validate`           | `{ sessionId, flow?, endpoint, data, precedingEndpointIds? }`                                                                      | `{ valid, errors, degraded }`                                       |
+| `POST /api/session/sync`            | `{ sessionId, steps: [{ endpointId, data \| null }] }` — replaces (or, with `null`, clears) what the session holds for those steps | `{ ok: true }`                                                      |
+| `POST /api/step/check-invalidation` | `{ sessionId, flow?, editedEndpoint, before, after, laterCompletedEndpoints }`                                                     | `{ affected: [{ endpointId, reason }], degraded }`                  |
+| `POST /api/step/classify-failure`   | `{ sessionId, flow?, failedEndpoint, failure: { kind, status?, message? }, completedEndpoints }`                                   | `{ classification, explanation, rollbackFromEndpointId, degraded }` |
 
 `flow` is `{ id, guidance?, outputLanguage? }`: the flow's id and its [author guidance](#author-guidance); each `endpoint` can carry its step's `guidance`.
 
@@ -376,18 +376,18 @@ So end users' form answers leave your infrastructure and reach the LLM provider 
 
 ## Author guidance
 
-A flow author can tell the model about their domain without touching code: what the business is, the voice of the text it writes, the language to write in, and extra rules — per LLM call globally, and per flow and step in `flow.json`. Guidance only ever *adds* text to one marked block of each prompt; it can't change the prompt's own instructions, the output schemas or the guardrails.
+A flow author can tell the model about their domain without touching code: what the business is, the voice of the text it writes, the language to write in, and extra rules — per LLM call globally, and per flow and step in `flow.json`. Guidance only ever _adds_ text to one marked block of each prompt; it can't change the prompt's own instructions, the output schemas or the guardrails.
 
 ### Slots
 
-| Slot | Set in | Limit | Reaches |
-|---|---|---|---|
-| `domainContext` — what the business or process is | `agentintake.config.json` | 1,000 characters | every call |
-| `tone` — voice of the text the model writes | `agentintake.config.json` | 200 characters | every call |
-| `outputLanguage` — BCP-47 tag, e.g. `es-MX` | `agentintake.config.json`, and `flow.json` (flow level) | valid tag | every call (generation: the config's only) |
-| `extraRules.<call>` — extra rules for one call | `agentintake.config.json` | 10 rules × 300 characters | that call only |
-| flow `guidance` | `flow.json` | 1,000 characters | every runtime call |
-| step `guidance` | `flow.json`, per endpoint | 500 characters | field selection and validation of that step; the review after an edit (the edited step and each later one); failure classification of the failed step |
+| Slot                                              | Set in                                                  | Limit                     | Reaches                                                                                                                                               |
+| ------------------------------------------------- | ------------------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `domainContext` — what the business or process is | `agentintake.config.json`                               | 1,000 characters          | every call                                                                                                                                            |
+| `tone` — voice of the text the model writes       | `agentintake.config.json`                               | 200 characters            | every call                                                                                                                                            |
+| `outputLanguage` — BCP-47 tag, e.g. `es-MX`       | `agentintake.config.json`, and `flow.json` (flow level) | valid tag                 | every call (generation: the config's only)                                                                                                            |
+| `extraRules.<call>` — extra rules for one call    | `agentintake.config.json`                               | 10 rules × 300 characters | that call only                                                                                                                                        |
+| flow `guidance`                                   | `flow.json`                                             | 1,000 characters          | every runtime call                                                                                                                                    |
+| step `guidance`                                   | `flow.json`, per endpoint                               | 500 characters            | field selection and validation of that step; the review after an edit (the edited step and each later one); failure classification of the failed step |
 
 The calls are `generation`, `selectFields` (adaptive fields), `validate` (semantic validation), `invalidation` (which later steps an edit affects) and `classifyFailure`. Everything applicable is combined, global first, then flow, then step, so the most specific text reads last; a flow's `outputLanguage` overrides the global one. Over-limit text, an invalid language tag or an unknown key is an error that names the file, the place and the rule — never silently truncated or ignored. The runtime server, Studio and the CLI read the config once at startup (Studio again after each save); a bad file stops them.
 
@@ -440,17 +440,17 @@ node dist/cli/index.js eval-prompts --config evals/fixtures/guided.config.json -
 node dist/cli/index.js eval-prompts --cases evals/cases --no-builtin --calls generation --json --yes
 ```
 
-| Flag | Meaning |
-|---|---|
-| `--config <path>` | Global guidance to apply (default: `agentintake.config.json` or `AGENTINTAKE_CONFIG`) |
-| `--flow <path>` | A `flow.json` whose flow guidance applies to every case, and whose step guidance applies to case steps with the same endpoint id |
-| `--cases <dir>` | Your own cases, run with the built-in ones (`--no-builtin` for yours only) |
-| `--calls <list>` | Only these calls (comma-separated) |
-| `--repeat <n>` | Runs per case (overrides a case's own `repeat`) |
-| `--concurrency <n>` | Cases at once, 1–4 (default 1) |
-| `--min-pass <rate>` | Exit with code 1 if any call passes less than this (default `0.9`) |
-| `--json` | Print only the report, as JSON |
-| `--yes` | Don't ask for confirmation |
+| Flag                | Meaning                                                                                                                          |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `--config <path>`   | Global guidance to apply (default: `agentintake.config.json` or `AGENTINTAKE_CONFIG`)                                            |
+| `--flow <path>`     | A `flow.json` whose flow guidance applies to every case, and whose step guidance applies to case steps with the same endpoint id |
+| `--cases <dir>`     | Your own cases, run with the built-in ones (`--no-builtin` for yours only)                                                       |
+| `--calls <list>`    | Only these calls (comma-separated)                                                                                               |
+| `--repeat <n>`      | Runs per case (overrides a case's own `repeat`)                                                                                  |
+| `--concurrency <n>` | Cases at once, 1–4 (default 1)                                                                                                   |
+| `--min-pass <rate>` | Exit with code 1 if any call passes less than this (default `0.9`)                                                               |
+| `--json`            | Print only the report, as JSON                                                                                                   |
+| `--yes`             | Don't ask for confirmation                                                                                                       |
 
 Before running it prints how many runs it will make and with which provider and model, and asks; without a terminal to ask and without `--yes` it refuses instead of waiting. The report shows, per call, the pass rate, how many runs fell back (timeout, invalid output, provider error — always counted as failures), p50/p95 latency and each failing run with what came back, plus every prompt version and the guidance hash each run used. Exit codes: `0` all calls at or above `--min-pass`, `1` some call below it, `2` a usage or configuration error (bad option, invalid config, flow or case file, static mode, missing key) — reported before any model call.
 
@@ -527,7 +527,7 @@ Stated plainly, because a multi-endpoint, AI-in-the-loop wizard has failure mode
 - **Spec size.** `/api/generate-flow` accepts request bodies up to 10 MB; the per-step routes keep a 100 KB limit, since they only carry one endpoint and its answers.
 - **Small-model quality.** See the provider caveats above.
 
-One thing that is a fix, not a boundary, but worth being visible about: **`/api/generate-flow` never fetches a caller-supplied path or URL itself.** It accepts only spec *content* and parses it with external `$ref` resolution disabled, closing an SSRF / local-file-disclosure vector. Only the CLI resolves paths and URLs, where the caller is the trusted developer running it. Studio's own provider-setup routes (which write an API key to `.env`) are mounted only by the local `studio` command and are never part of `createApp()`. Studio also listens on 127.0.0.1 only, and rejects requests whose `Host` isn't a loopback name or whose `Origin` isn't Studio itself, so neither other machines nor other websites open in your browser can reach it.
+One thing that is a fix, not a boundary, but worth being visible about: **`/api/generate-flow` never fetches a caller-supplied path or URL itself.** It accepts only spec _content_ and parses it with external `$ref` resolution disabled, closing an SSRF / local-file-disclosure vector. Only the CLI resolves paths and URLs, where the caller is the trusted developer running it. Studio's own provider-setup routes (which write an API key to `.env`) are mounted only by the local `studio` command and are never part of `createApp()`. Studio also listens on 127.0.0.1 only, and rejects requests whose `Host` isn't a loopback name or whose `Origin` isn't Studio itself, so neither other machines nor other websites open in your browser can reach it.
 
 ## Roadmap
 

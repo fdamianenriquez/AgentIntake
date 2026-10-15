@@ -36,9 +36,7 @@ describe('POST /api/step/validate', () => {
 
     const sessionId = 'route-validate-session-1';
     const data = { email: 'a@b.com' };
-    const response = await request(createApp())
-      .post('/api/step/validate')
-      .send({ sessionId, endpoint, data });
+    const response = await request(createApp()).post('/api/step/validate').send({ sessionId, endpoint, data });
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ valid: true, errors: {}, degraded: false });
@@ -63,9 +61,7 @@ describe('POST /api/step/validate', () => {
   });
 
   it('returns 400 when the request body is invalid', async () => {
-    const response = await request(createApp())
-      .post('/api/step/validate')
-      .send({ sessionId: 'x', endpoint }); // missing data
+    const response = await request(createApp()).post('/api/step/validate').send({ sessionId: 'x', endpoint }); // missing data
 
     expect(response.status).toBe(400);
     expect(mockedGenerateStructured).not.toHaveBeenCalled();

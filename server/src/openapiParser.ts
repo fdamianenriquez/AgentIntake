@@ -80,10 +80,7 @@ function findResourceFamilies(paths: OpenAPIV3.PathsObject, warnings: string[]):
 
 // OpenAPI allows parameters on the path item, shared by every operation on it;
 // an operation-level parameter with the same name and location overrides one.
-function mergeParameters(
-  pathLevel: OpenAPIV3.ParameterObject[],
-  operationLevel: OpenAPIV3.ParameterObject[]
-): OpenAPIV3.ParameterObject[] {
+function mergeParameters(pathLevel: OpenAPIV3.ParameterObject[], operationLevel: OpenAPIV3.ParameterObject[]): OpenAPIV3.ParameterObject[] {
   const merged = new Map<string, OpenAPIV3.ParameterObject>();
   for (const param of [...pathLevel, ...operationLevel]) merged.set(`${param.in}:${param.name}`, param);
   return [...merged.values()];
@@ -118,14 +115,10 @@ function headerCoveredByAuth(name: string, auth: AuthRequirement): boolean {
  */
 export function parseOpenApiDocument(doc: OpenAPIV3.Document): ParseResult {
   if (!doc.openapi || !doc.openapi.startsWith('3.')) {
-    throw new Error(
-      `AgentIntake only supports OpenAPI 3.x specs (got openapi: "${doc.openapi ?? 'unknown'}")`
-    );
+    throw new Error(`AgentIntake only supports OpenAPI 3.x specs (got openapi: "${doc.openapi ?? 'unknown'}")`);
   }
 
-  const securitySchemes = doc.components?.securitySchemes as
-    | Record<string, OpenAPIV3.SecuritySchemeObject>
-    | undefined;
+  const securitySchemes = doc.components?.securitySchemes as Record<string, OpenAPIV3.SecuritySchemeObject> | undefined;
 
   const paths = doc.paths ?? {};
   const warnings: string[] = [];
@@ -166,19 +159,12 @@ export function parseOpenApiDocument(doc: OpenAPIV3.Document): ParseResult {
           continue;
         }
         if (param.in !== 'query' || !param.schema) continue;
-        const field = schemaToFieldDef(
-          param.name,
-          param.schema as OpenAPIV3.SchemaObject,
-          param.required ?? false,
-          param.description
-        );
+        const field = schemaToFieldDef(param.name, param.schema as OpenAPIV3.SchemaObject, param.required ?? false, param.description);
         if (field) fields.push(field);
       }
 
       const requestBody = operation.requestBody as OpenAPIV3.RequestBodyObject | undefined;
-      const bodySchema = requestBody?.content?.['application/json']?.schema as
-        | OpenAPIV3.SchemaObject
-        | undefined;
+      const bodySchema = requestBody?.content?.['application/json']?.schema as OpenAPIV3.SchemaObject | undefined;
       if (bodySchema) {
         flattenSchemaToFields(bodySchema, '', 0, fields);
       }
@@ -193,9 +179,7 @@ export function parseOpenApiDocument(doc: OpenAPIV3.Document): ParseResult {
         fields,
         auth,
         ...(pathParams.length > 0 ? { pathParams } : {}),
-        ...(family
-          ? { resourcePath: path, idParam: family.idParam, capabilities: family.capabilities }
-          : {}),
+        ...(family ? { resourcePath: path, idParam: family.idParam, capabilities: family.capabilities } : {}),
       });
     }
   }
@@ -279,19 +263,14 @@ function humanize(name: string): string {
 // taken from its own level's `required` array only; it isn't multiplied by
 // whether an ancestor object itself is required, which would make an
 // otherwise-required leaf field ambiguous when its parent is optional.
-function flattenSchemaToFields(
-  schema: OpenAPIV3.SchemaObject,
-  prefix: string,
-  depth: number,
-  out: FieldDef[]
-): void {
+function flattenSchemaToFields(schema: OpenAPIV3.SchemaObject, prefix: string, depth: number, out: FieldDef[]): void {
   if (depth > MAX_NESTING_DEPTH) {
     console.warn(`openapiParser: max nesting depth exceeded at "${prefix}", skipping deeper fields`);
     return;
   }
 
-  const required = new Set('required' in schema ? schema.required ?? [] : []);
-  const properties = 'properties' in schema ? schema.properties ?? {} : {};
+  const required = new Set('required' in schema ? (schema.required ?? []) : []);
+  const properties = 'properties' in schema ? (schema.properties ?? {}) : {};
 
   for (const [propName, rawPropSchema] of Object.entries(properties)) {
     const propSchema = rawPropSchema as OpenAPIV3.SchemaObject;
@@ -312,12 +291,7 @@ function flattenSchemaToFields(
   }
 }
 
-function schemaToFieldDef(
-  name: string,
-  schema: OpenAPIV3.SchemaObject,
-  required: boolean,
-  description?: string
-): FieldDef | null {
+function schemaToFieldDef(name: string, schema: OpenAPIV3.SchemaObject, required: boolean, description?: string): FieldDef | null {
   const label = humanize(name.split('.').pop() ?? name);
 
   if (schema.enum && schema.enum.length > 0) {
@@ -362,9 +336,7 @@ function schemaToFieldDef(
     return { name, type: 'boolean', label, description, required };
   }
 
-  console.warn(
-    `openapiParser: unsupported schema for field "${name}" (type: ${schema.type ?? 'unknown'}), skipping`
-  );
+  console.warn(`openapiParser: unsupported schema for field "${name}" (type: ${schema.type ?? 'unknown'}), skipping`);
   return null;
 }
 

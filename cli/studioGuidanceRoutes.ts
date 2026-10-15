@@ -107,10 +107,7 @@ function renderPrompt(
     case 'invalidation': {
       const later = flow.endpoints.slice(index + 1);
       guidance = narrow([endpoint, ...later]);
-      prompt = invalidationPrompt.build(
-        { editedEndpoint: endpoint, before: {}, after: {}, laterCompletedEndpoints: later },
-        guidance
-      );
+      prompt = invalidationPrompt.build({ editedEndpoint: endpoint, before: {}, after: {}, laterCompletedEndpoints: later }, guidance);
       break;
     }
     case 'classifyFailure':

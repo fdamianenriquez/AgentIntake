@@ -153,7 +153,7 @@ describe('global guidance', () => {
     });
   });
 
-  it('shows the server\'s validation errors next to the field', async () => {
+  it("shows the server's validation errors next to the field", async () => {
     stubStudio({
       'POST /api/studio/config': () => ({
         status: 400,
@@ -385,14 +385,14 @@ describe('what Test covers', () => {
     expect(screen.queryByText(/isn't covered by this test/)).not.toBeInTheDocument();
   });
 
-  it('says so when this flow\'s step guidance can\'t reach any built-in case', async () => {
+  it("says so when this flow's step guidance can't reach any built-in case", async () => {
     stubStudio();
     renderTab(vi.fn(), { ...flow, endpoints: [{ ...flow.endpoints[0], guidance: 'Names have accents.' }, flow.endpoints[1]] });
 
     expect(await screen.findByText(/Your step guidance isn't covered by this test/)).toHaveAttribute('role', 'note');
   });
 
-  it('does not warn when a step with guidance has a built-in case\'s id', async () => {
+  it("does not warn when a step with guidance has a built-in case's id", async () => {
     stubStudio();
     renderTab(vi.fn(), { ...flow, endpoints: [{ ...flow.endpoints[0], id: 'createAccount', guidance: 'G.' }, flow.endpoints[1]] });
 

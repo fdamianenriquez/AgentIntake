@@ -170,9 +170,7 @@ describe('useAgentForm', () => {
     expect(result.current.currentStepStatus).toBe('executionFailed');
     expect(result.current.executionError).toBe('Downstream API rejected the request.');
 
-    const validateCallsBeforeRetry = fetchMock.mock.calls.filter(([url]) =>
-      (url as string).endsWith('/api/step/validate')
-    ).length;
+    const validateCallsBeforeRetry = fetchMock.mock.calls.filter(([url]) => (url as string).endsWith('/api/step/validate')).length;
 
     await act(() => result.current.retryExecution());
 
@@ -181,9 +179,7 @@ describe('useAgentForm', () => {
     // step2's fresh 'idle' status, not step1's).
     expect(result.current.completedEndpoints).toEqual(['step1']);
     expect(execute1).toHaveBeenCalledTimes(2);
-    const validateCallsAfterRetry = fetchMock.mock.calls.filter(([url]) =>
-      (url as string).endsWith('/api/step/validate')
-    ).length;
+    const validateCallsAfterRetry = fetchMock.mock.calls.filter(([url]) => (url as string).endsWith('/api/step/validate')).length;
     expect(validateCallsAfterRetry).toBe(validateCallsBeforeRetry); // no extra validation call
   });
 
@@ -213,10 +209,7 @@ describe('useAgentForm', () => {
   });
 
   it('updateField resets an invalid/executionFailed status back to idle', async () => {
-    vi.stubGlobal(
-      'fetch',
-      mockFetch({ validate: () => ({ valid: false, errors: { email: 'bad' }, degraded: false }) })
-    );
+    vi.stubGlobal('fetch', mockFetch({ validate: () => ({ valid: false, errors: { email: 'bad' }, degraded: false }) }));
     const flow = makeFlow(vi.fn());
     const { result } = renderHook(() => useAgentForm(flow, { apiUrl: 'http://test.local' }));
 
@@ -384,10 +377,7 @@ describe('useAgentForm operations', () => {
   });
 
   it('normalizes a failure without a cause, and a thrown error, into failure.kind "other"', async () => {
-    const execute1 = vi
-      .fn()
-      .mockResolvedValueOnce({ success: false, message: 'Nope.' })
-      .mockRejectedValueOnce(new Error('Boom.'));
+    const execute1 = vi.fn().mockResolvedValueOnce({ success: false, message: 'Nope.' }).mockRejectedValueOnce(new Error('Boom.'));
     const { result } = renderHook(() => useAgentForm(makeFlow(execute1), { apiUrl: 'http://test.local' }));
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -434,9 +424,7 @@ describe('useAgentForm operations', () => {
       id: 'ops',
       title: 'Ops',
       description: 'd',
-      endpoints: [
-        { id: 'step1', title: 'Step 1', fields: step1Fields, operations: { create: vi.fn(), read: vi.fn(), undo: vi.fn() } },
-      ],
+      endpoints: [{ id: 'step1', title: 'Step 1', fields: step1Fields, operations: { create: vi.fn(), read: vi.fn(), undo: vi.fn() } }],
     };
     const { result } = renderHook(() => useAgentForm(flow, { apiUrl: 'http://test.local' }));
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -474,8 +462,8 @@ describe('useAgentForm operations', () => {
   });
 });
 
-describe('useAgentForm sends the flow\'s author guidance', () => {
-  it('sends the flow id, flow guidance and language, and the step\'s guidance', async () => {
+describe("useAgentForm sends the flow's author guidance", () => {
+  it("sends the flow id, flow guidance and language, and the step's guidance", async () => {
     const fetchMock = mockFetch({});
     vi.stubGlobal('fetch', fetchMock);
     const flow: FlowDef = {
@@ -495,7 +483,11 @@ describe('useAgentForm sends the flow\'s author guidance', () => {
       expect(body.flow, url).toEqual({ id: 'test-flow', guidance: 'Small businesses.', outputLanguage: 'es-MX' });
       expect(body.endpoint.guidance, url).toBe(body.endpoint.id === 'step1' ? 'Use the work email.' : undefined);
     }
-    expect(fetchMock.mock.calls.map(([url]) => new URL(url).pathname)).toEqual(['/api/step/fields', '/api/step/validate', '/api/step/fields']);
+    expect(fetchMock.mock.calls.map(([url]) => new URL(url).pathname)).toEqual([
+      '/api/step/fields',
+      '/api/step/validate',
+      '/api/step/fields',
+    ]);
   });
 
   it('a flow without guidance sends only its id', async () => {

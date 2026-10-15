@@ -29,8 +29,7 @@ function namesUsed(c: EvalCase): { fields: string[]; steps: string[] } {
 
 function namesAvailable(c: EvalCase): { fields: Set<string>; steps: Set<string> } {
   const input = c.input as Record<string, any>;
-  const endpoints: any[] =
-    input.endpoints ?? [input.endpoint, input.editedEndpoint, input.failedEndpoint].filter(Boolean);
+  const endpoints: any[] = input.endpoints ?? [input.endpoint, input.editedEndpoint, input.failedEndpoint].filter(Boolean);
   const steps: any[] = input.laterCompletedEndpoints ?? input.completedEndpoints ?? [];
   return {
     fields: new Set(endpoints.flatMap((endpoint) => endpoint.fields.map((field: { name: string }) => field.name))),

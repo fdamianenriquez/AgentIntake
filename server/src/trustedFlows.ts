@@ -15,10 +15,7 @@ import { GeneratedFlowSchema, type GeneratedFlow } from '../../packages/react-ag
  * flow id. Unset: null (trusted flows off). A missing directory, an invalid
  * file or two files with the same flow id is an error naming the file.
  */
-export function loadTrustedFlows(
-  env: NodeJS.ProcessEnv = process.env,
-  cwd: string = process.cwd()
-): Map<string, GeneratedFlow> | null {
+export function loadTrustedFlows(env: NodeJS.ProcessEnv = process.env, cwd: string = process.cwd()): Map<string, GeneratedFlow> | null {
   const setting = env.AGENTINTAKE_FLOWS_DIR?.trim();
   if (!setting) return null;
   const dir = path.resolve(cwd, setting);
@@ -28,7 +25,9 @@ export function loadTrustedFlows(
 
   const flows = new Map<string, GeneratedFlow>();
   const sources = new Map<string, string>();
-  for (const name of readdirSync(dir).filter((entry) => entry.endsWith('.json')).sort()) {
+  for (const name of readdirSync(dir)
+    .filter((entry) => entry.endsWith('.json'))
+    .sort()) {
     const file = path.join(dir, name);
     const flow = readFlowFile(file);
     const previous = sources.get(flow.id);

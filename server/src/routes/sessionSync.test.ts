@@ -4,7 +4,7 @@ import { createApp } from '../app.js';
 import { getOrCreateSession, getSession, recordValidatedStep } from '../sessionStore.js';
 
 describe('POST /api/session/sync', () => {
-  it('replaces a step\'s data and forgets steps sent as null', async () => {
+  it("replaces a step's data and forgets steps sent as null", async () => {
     const sessionId = 'sync-session';
     getOrCreateSession(sessionId);
     recordValidatedStep(sessionId, 'stepA', { name: 'edited, then cancelled' });
