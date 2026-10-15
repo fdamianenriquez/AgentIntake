@@ -14,10 +14,11 @@ export interface SpecInputProps {
 
 type InputMode = 'text' | 'url' | 'file';
 
-// The server must never fetch a caller-supplied path/URL
-// itself. Whichever input mode is used, this always resolves to spec
-// *content* in the browser first (fetching a pasted URL, or reading an
-// uploaded file, right here) and only ever sends that content onward.
+// The server must never fetch a caller-supplied path/URL itself (an SSRF /
+// local-file-disclosure risk; see server/src/routes/generateFlow.ts).
+// Whichever input mode is used, this always resolves to spec *content* in
+// the browser first (fetching a pasted URL, or reading an uploaded file,
+// right here) and only ever sends that content onward.
 function looksLikeOpenApi(text: string): boolean {
   let parsed: unknown;
   try {

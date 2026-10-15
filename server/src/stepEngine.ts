@@ -142,9 +142,8 @@ export async function selectStepFields(input: SelectStepFieldsInput): Promise<Se
 // process as the hook -- i.e. the browser. The server can
 // never hold or call a client-defined execute(); it can only tell the
 // client whether the submitted data passed the semantic check. Calling
-// execute() and marking the step complete is the client's job, once
-// it sees a positive verdict from this function (via the /api/step/validate
-// route).
+// execute() and marking the step complete is the client's job, once it
+// sees a positive verdict from this function (via /api/step/validate).
 
 export interface ValidateStepSubmissionInput {
   endpoint: Pick<ParsedEndpoint, 'id' | 'title' | 'fields'>;

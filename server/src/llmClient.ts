@@ -6,15 +6,13 @@ import type { z } from 'zod';
 import { API_KEY_ENV_VAR, SUPPORTED_PROVIDERS, type LlmProvider } from './providers.js';
 
 // The only file in this project allowed to import a provider SDK directly
-// -- every LLM touchpoint calls generateStructured() below.
+// -- every LLM touchpoint calls generateStructured() below, so provider
+// keys and SDKs stay in one place (llmClient.boundary.test.ts enforces it).
 //
-// "openrouter" isn't one of the three documented providers
-// (anthropic | openai | google), but OpenRouter's API is OpenAI-compatible,
-// so it's added here as a fourth option that reuses @ai-sdk/openai with a
-// different base URL rather than pulling in a new SDK. Useful for
-// development against OpenRouter's free-tier models without an Anthropic/
-// OpenAI/Google key. This is
-// exactly that kind of choice, called out in the pull request.
+// "openrouter" isn't a provider with its own SDK: OpenRouter's API is
+// OpenAI-compatible, so it reuses @ai-sdk/openai with a different base URL
+// rather than pulling in a new SDK. Useful for trying many models, including
+// free-tier ones, without an Anthropic/OpenAI/Google key.
 const DEFAULT_MODELS: Record<LlmProvider, string> = {
   anthropic: 'claude-haiku-5-5',
   openai: 'gpt-6-luna',

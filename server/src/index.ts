@@ -1,8 +1,7 @@
 import path from 'node:path';
 import { createApp } from './app.js';
 
-// .env at the project root -- read the same way as the CLI.
-// Already-set environment
+// .env at the project root -- read the same way as the CLI. Already-set environment
 // variables are left untouched.
 try {
   process.loadEnvFile(path.resolve(process.cwd(), '.env'));

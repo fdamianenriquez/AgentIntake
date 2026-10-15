@@ -61,8 +61,7 @@ export function registerStudioProviderRoutes(app: Express): void {
   });
 }
 
-// Persists to .env (so it survives across Studio sessions
-// "written to .env for reuse across sessions" option -- chosen over
+// Persists to .env (so it survives across Studio sessions -- chosen over
 // in-memory-only so a non-technical user isn't asked to re-paste their key
 // every time they run `npx agent-intake studio`) and applies it to the
 // current process immediately, so it takes effect without a restart.

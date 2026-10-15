@@ -30,8 +30,9 @@ interface AuthorGuidance {
   endpoints: Map<string, string>;
 }
 
-// The author-owned parts of an existing flow.json, or null
-// when there is no file, it isn't JSON, or it has none.
+// The author-owned parts of an existing flow.json (flow and step guidance,
+// output language; what --keep-guidance carries over), or null when there is
+// no file, it isn't JSON, or it has none.
 async function existingGuidance(file: string): Promise<AuthorGuidance | null> {
   let raw: unknown;
   try {

@@ -33,8 +33,7 @@ export async function handleStepFields(req: Request, res: Response): Promise<voi
     const result = await selectStepFields({ endpoint, previouslyCollectedData, guidance });
     res.status(200).json(result);
   } catch (error) {
-    // selectStepFields already degrades gracefully on its own;
-    // reaching here means something genuinely unexpected broke.
+    // selectStepFields already degrades gracefully on its own; reaching here means something genuinely unexpected broke.
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
   }
 }

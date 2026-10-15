@@ -170,8 +170,7 @@ function expandLlmOutput(raw: LlmOutput, rawEndpoints: ParsedEndpoint[]): FlowGe
       ...(endpoint.description !== null ? { description: endpoint.description } : {}),
       fields,
       // Rehydrated, never LLM-controlled -- same principle as type/required/etc.
-      // (the no-invented-fields rule). The LLM output schema has no slot for
-      // any of these, so a model can't add, drop or alter them.
+      // The LLM output schema has no slot for any of these, so a model can't add, drop or alter them.
       auth: rawEndpoint.auth,
       ...pickDefined(rawEndpoint, ['capabilities', 'resourcePath', 'idParam', 'pathParams']),
     };

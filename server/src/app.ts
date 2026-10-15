@@ -91,8 +91,7 @@ export interface CreateAppOptions {
   trustedFlows?: Map<string, GeneratedFlow> | null;
 }
 
-// Separated from index.ts (not part of  sketch, but the standard
-// Express split) so tests can build and exercise the app -- routes, CORS,
+// Separated from index.ts (the standard Express split) so tests can build and exercise the app -- routes, CORS,
 // JSON parsing -- without binding a real port.
 export function createApp({ warnOpenCors = true, config, getConfig, trustedFlows }: CreateAppOptions = {}): Express {
   const app = express();

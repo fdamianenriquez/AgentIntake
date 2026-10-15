@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 
-// In-memory Map<sessionId, CollectedData> (session state is v1 scope;
-// persistence beyond memory is out of scope). Deliberately minimal: this module only stores/retrieves data,
-// it has no notion of a flow's full endpoint list or "is the wizard done" --
-// that's for whoever wires sessions into routes/the hook to
-// decide, since it requires knowing the flow definition this store doesn't.
+// In-memory Map<sessionId, CollectedData> (persistence across restarts is
+// out of scope; README: "Known operational boundaries"). Deliberately
+// minimal: this module only stores/retrieves data, it has no notion of a
+// flow's full endpoint list or "is the wizard done" -- that's for the routes
+// and the hook to decide, since it requires knowing the flow definition this store doesn't.
 //
 // Naming note: this store only ever knows whether a step's data passed
 // semantic validation -- it has no way to know whether the client's
