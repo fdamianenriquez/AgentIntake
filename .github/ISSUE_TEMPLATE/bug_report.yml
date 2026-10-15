@@ -1,0 +1,54 @@
+name: Bug report
+description: Something in AgentIntake doesn't work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. For a security problem, don't use this form: see SECURITY.md.
+        Never paste an API key, a `.env` file or real user data.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The smallest spec, flow.json or code that shows the problem, and the steps.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI (generate)
+        - Studio
+        - React form / hook
+        - Runtime server
+        - eval-prompts
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: agent-intake version
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Node.js version, OS, and LLM provider and model
+      placeholder: Node 22.12, macOS 15, anthropic / claude-haiku-5-5
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant output, for example with AGENTINTAKE_LOG_LEVEL=debug.
+      render: text

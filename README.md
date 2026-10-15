@@ -1,5 +1,9 @@
 # AgentIntake
 
+[![CI](https://github.com/fdamianenriquez/AgentIntake/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/fdamianenriquez/AgentIntake/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/agent-intake.svg)](https://www.npmjs.com/package/agent-intake)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 **Turn an OpenAPI spec into a single, AI-orchestrated, multi-step form wizard.**
 
 AgentIntake reads your OpenAPI spec to build a base schema (which endpoints, which fields, what's required), then adapts that wizard at runtime: which fields are relevant to show on each step given what the user has already answered, and whether a submitted value is actually plausible. The person filling it out always sees and edits **real form controls, one step per endpoint** — never a chat window.
@@ -45,25 +49,41 @@ Multi-endpoint intake (onboarding, KYC-style verification, provisioning) is a fo
 
 The model can only **show, hide, reorder, annotate, or pre-fill fields that already exist in the base schema**. It can never introduce a field. This is enforced structurally, not by prompt: the LLM's output schema is built per call from the real field names (a Zod enum), so a response naming any other field fails validation and is discarded. The same principle protects generation: `flowGenerator` lets the model supply only a field's `name` and optional label/description overrides — `type`, `required`, `enumValues` and `validation` are always rehydrated from the parsed spec by name, never trusted from the model. (An earlier prompt-only version of this guardrail let a real generation run silently corrupt a field's regex pattern; that is why it's structural now.) Both guardrails have dedicated tests.
 
-## Quickstart
-
-AgentIntake is not published to npm yet; run it from a clone. Requires Node.js 20.19+ or 22.12+ (running the test suite needs 22.12+).
+## Installation
 
 ```bash
-git clone https://github.com/fdamianenriquez/AgentIntake.git
-cd AgentIntake
-npm install
-npm run build
-cp server/.env.example .env   # then add an API key (see "Choosing an LLM provider")
+npm install agent-intake
 ```
 
-`npm run build` compiles the CLI to `dist/`. The commands below use `node dist/cli/index.js`; run `npm link` once if you'd rather type `agent-intake`.
+- **Node.js** `^20.19.0 || >=22.12.0`.
+- **React** `^18 || ^19` is a peer dependency (`react` and `react-dom`); npm installs it if your project doesn't have it.
+- **ESM only.** The package has no CommonJS build: use `import`, or `await import()` from CommonJS.
+
+| Import                                                | What it is                                                                                             |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `agent-intake`                                        | The React side: `AgentIntakeForm`, `useAgentForm`, `FieldControl`, the flow types and response helpers |
+| `agent-intake/server`                                 | `createApp()`, the runtime routes as an Express app (see [Deploying](#deploying-the-runtime-server))   |
+| `agent-intake/schemas/agentintake.config.schema.json` | The JSON Schema for the [config file](#author-guidance)                                                |
+
+The `agent-intake` command (CLI and Studio) comes with the package, or runs without installing through `npx agent-intake`.
+
+## Quickstart
+
+Put your provider settings in a `.env` in the directory you run the commands from (see [Choosing an LLM provider](#choosing-an-llm-provider)), or let Studio's setup screen write it for you:
+
+```bash
+LLM_PROVIDER=anthropic
+LLM_API_KEY=your-key
+```
 
 ### Path 1 — CLI (developers, scriptable, CI-friendly)
 
 ```bash
-node dist/cli/index.js generate \
-  --spec server/specs/example-payment-onboarding.openapi.yaml \
+npx agent-intake generate --spec ./openapi.yaml --output flow.json
+
+# or try it on the example spec from this repository
+npx agent-intake generate \
+  --spec https://raw.githubusercontent.com/fdamianenriquez/AgentIntake/main/server/specs/example-payment-onboarding.openapi.yaml \
   --output flow.json
 ```
 
@@ -85,8 +105,8 @@ The CLI prints these warnings and, after writing `flow.json`, a short list of wh
 ### Path 2 — Studio (no code required)
 
 ```bash
-node dist/cli/index.js studio          # http://127.0.0.1:4000, opens your browser
-node dist/cli/index.js studio --port 4100 --no-open
+npx agent-intake studio                      # http://127.0.0.1:4000, opens your browser
+npx agent-intake studio --port 4100 --no-open
 ```
 
 Paste raw spec text, upload a file, or paste a URL. Studio validates that the input looks like OpenAPI before doing anything and shows plain-language errors. Click **Generate** to get a live wizard rendered with the real `<AgentIntakeForm />`, then download `flow.json` or copy the embed snippet.
@@ -118,7 +138,7 @@ One `.env` at the project root is the source of truth. It is read from the direc
 | `LLM_MODEL`                | Provider-specific model name; optional, each provider has a default                                                                                                                                                                                     |
 | `LLM_API_KEY`              | Your API key for the provider named in `LLM_PROVIDER` — one variable for all of them, so it must be a key for that provider                                                                                                                             |
 | `AGENTINTAKE_STATIC_MODE`  | Any value other than empty, `false` or `0` turns adaptivity off (see below)                                                                                                                                                                             |
-| `PORT`                     | Port for the runtime server (`npm start`), default `3000`                                                                                                                                                                                               |
+| `PORT`                     | Port for the runtime server when run with `npm start` from a clone, default `3000`                                                                                                                                                                      |
 | `AGENTINTAKE_CORS_ORIGINS` | Comma-separated origins allowed to call the runtime server from a browser (e.g. `https://app.example.com`). Unset, every origin is allowed and the server logs a warning at startup — see [Deploying the runtime server](#deploying-the-runtime-server) |
 | `AGENTINTAKE_CONFIG`       | Path of the [author guidance](#author-guidance) config file, instead of `agentintake.config.json` in the working directory. A missing file at this path is an error                                                                                     |
 | `AGENTINTAKE_FLOWS_DIR`    | Directory of `flow.json` files the runtime server trusts for guidance — see [Trust model](#trust-model-and-trusted-flows)                                                                                                                               |
@@ -130,7 +150,7 @@ How each way of running it finds its provider:
 
 - **CLI `generate`** — reads `.env` if present. Variables already set in your shell (for example CI secrets) take precedence over `.env`, and `--provider` / `--model` take precedence over both. It fails fast, before touching the spec, with a specific message if `LLM_API_KEY` is missing or `LLM_PROVIDER` isn't a supported value — never a raw SDK error. Because one variable serves every provider, a key that belongs to a _different_ provider can't be detected up front; the provider rejects it on the first call.
 - **Studio** — if no valid provider and key are configured, it shows a one-time setup screen in the browser: pick a provider, paste the key. It is written to `.env` in the directory you launched Studio from, so no text-file editing is needed and you aren't asked again next session.
-- **Runtime wizard server** (`npm start`) — reads `.env` like the CLI. This is a deployment-time concern of whoever hosts the wizard; the person filling out the form never sees or configures it.
+- **Runtime server** — `createApp()` from `agent-intake/server` reads the provider settings from the environment and loads no `.env` file itself (use your process manager, or `node --env-file=.env`). From a clone of this repository, `npm start` runs it and reads `.env` like the CLI. Either way it is a deployment-time concern of whoever hosts the wizard; the person filling out the form never sees or configures it.
 
 **Honest caveats.** Structured-output reliability varies by provider and by model. Every provider goes through the same Vercel AI SDK `generateObject` interface, and every LLM output schema is kept to the subset all of them accept (no `oneOf`, no optional properties, no open-ended maps — a test checks this), but the models themselves differ. The [built-in eval suite](#checking-guidance-with-eval-prompts) — 33 cases with a known correct answer across the five LLM calls, run twice each (66 runs), through OpenRouter — gave:
 
@@ -143,7 +163,7 @@ Per call for `openrouter/free`: generation 7/8, adaptive fields 6/14, semantic v
 
 ### Running the demo
 
-The demo is a "Payment Account Onboarding" wizard built from `server/specs/example-payment-onboarding.openapi.yaml`: three resource families, two of them nested under the account.
+The demo lives in this repository, so it runs from a clone (see [Development](#development)). It is a "Payment Account Onboarding" wizard built from `server/specs/example-payment-onboarding.openapi.yaml`: three resource families, two of them nested under the account.
 
 | Step          | Created with                                | Revisit / undo with                                            |
 | ------------- | ------------------------------------------- | -------------------------------------------------------------- |
@@ -183,10 +203,8 @@ No OAuth login flow, token refresh or credential storage is provided.
 
 ## React API
 
-The package lives in `packages/react-agent-intake` (published name: `react-agent-intake`).
-
 ```tsx
-import { AgentIntakeForm } from 'react-agent-intake';
+import { AgentIntakeForm } from 'agent-intake';
 
 <AgentIntakeForm flow={flow} apiUrl="http://localhost:3000" getAuthHeaders={optional} />;
 ```
@@ -273,7 +291,7 @@ interface OperationResult {
 `execute` is the original form and is exactly `operations.create`. Later steps often need what an earlier one created; it arrives as `context.results`:
 
 ```ts
-import { failureFromResponse } from 'react-agent-intake';
+import { failureFromResponse } from 'agent-intake';
 
 operations: {
   create: async (data, { results, idempotencyKey }) => {
@@ -349,7 +367,7 @@ A validation failure and an execution failure are deliberately different states.
 
 ### Server routes
 
-The routes are mounted by `createApp()` in `server/src/app.ts`. The form calls all of them except `/api/generate-flow`; `endpoint` values are the step definitions from the flow (the server holds no flow of its own).
+The routes are mounted by `createApp()` (`agent-intake/server`). The form calls all of them except `/api/generate-flow`; `endpoint` values are the step definitions from the flow (the server holds no flow of its own).
 
 | Route                               | Body                                                                                                                               | Returns                                                             |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
@@ -395,7 +413,7 @@ The calls are `generation`, `selectFields` (adaptive fields), `validate` (semant
 
 ```json
 {
-  "$schema": "./schemas/agentintake.config.schema.json",
+  "$schema": "./node_modules/agent-intake/schemas/agentintake.config.schema.json",
   "guidance": {
     "domainContext": "Onboarding for sellers who want to receive payouts.",
     "tone": "Friendly, concise, second person.",
@@ -408,7 +426,7 @@ The calls are `generation`, `selectFields` (adaptive fields), `validate` (semant
 }
 ```
 
-The `$schema` line is optional: it points editors at the JSON Schema shipped in `schemas/agentintake.config.schema.json` (adjust the relative path to where your config file is) for completion and inline checks. In `flow.json`, `guidance` and `outputLanguage` sit next to the flow's `title`, and `guidance` next to each endpoint's `title`. Generation never writes them; they are yours.
+The `$schema` line is optional: it points editors at the JSON Schema the package ships in `schemas/agentintake.config.schema.json` (adjust the relative path to where your config file is) for completion and inline checks. In `flow.json`, `guidance` and `outputLanguage` sit next to the flow's `title`, and `guidance` next to each endpoint's `title`. Generation never writes them; they are yours.
 
 ### What guidance can and cannot do
 
@@ -434,10 +452,10 @@ For deployments that want guidance to be authoritative, set `AGENTINTAKE_FLOWS_D
 `eval-prompts` runs eval cases — inputs with a known correct answer — against the configured provider and model, with your guidance applied, through the same engine functions the server uses. It is how you check that a guidance change (or a model change) still gets the right answers before it ships. It spends real model calls, so it is never part of `npm test`.
 
 ```bash
-node dist/cli/index.js eval-prompts                                  # the built-in suite, asks before running
-node dist/cli/index.js eval-prompts --calls validate,classifyFailure --repeat 3
-node dist/cli/index.js eval-prompts --config evals/fixtures/guided.config.json --flow demo/flow.guided.json --yes
-node dist/cli/index.js eval-prompts --cases evals/cases --no-builtin --calls generation --json --yes
+npx agent-intake eval-prompts                                  # the built-in suite, asks before running
+npx agent-intake eval-prompts --calls validate,classifyFailure --repeat 3
+npx agent-intake eval-prompts --config agentintake.config.json --flow flow.json --yes
+npx agent-intake eval-prompts --cases my-cases --no-builtin --calls generation --json --yes
 ```
 
 | Flag                | Meaning                                                                                                                          |
@@ -503,7 +521,19 @@ llm call=validate prompt=v2 guidanceBlock=v1 guidance=3f9a1c0b7e24 outcome=ok du
 
 ## Deploying the runtime server
 
-`npm start` runs the routes from `createApp()`: the per-step calls the form makes, and `/api/generate-flow`. They are meant to sit next to your own application, not on the open internet:
+`createApp()` returns an Express app with the routes: the per-step calls the form makes, and `/api/generate-flow`. Mount it behind your own middleware:
+
+```ts
+import express from 'express';
+import { createApp } from 'agent-intake/server';
+
+const app = express();
+app.use(yourAuth, yourRateLimit); // see below
+app.use(createApp()); // reads LLM_PROVIDER, LLM_MODEL, LLM_API_KEY and AGENTINTAKE_* from the environment
+app.listen(3000);
+```
+
+The routes are meant to sit next to your own application, not on the open internet:
 
 - **The routes have no authentication of their own.** Run the server behind your app's auth (as middleware in front of `createApp()`, or a reverse proxy that only forwards authenticated requests), or on a private network your app reaches.
 - **Every call can spend LLM quota.** Rate-limit the routes, per user or per IP, at the proxy or with middleware. An open public endpoint is a free LLM proxy for anyone who finds it.
@@ -531,22 +561,36 @@ One thing that is a fix, not a boundary, but worth being visible about: **`/api/
 
 ## Roadmap
 
-**v1.5 — Smart Recovery** is in place: resource families in the parser, the operations contract, revisiting completed steps with `read`/`update`, an LLM check that narrows down which later steps an edit affects, and recovery from a failed step with a confirmed undo. The demo shows each of them.
+Planned next: translating the form's own UI strings, so `outputLanguage` covers the whole form and not only text the model writes.
 
-**v1.6 — Author guidance** is in place: guidance slots in a config file and in `flow.json`, trusted flows, `eval-prompts` with a built-in suite, Studio's Instructions tab, and per-call debug logging. See [CHANGELOG.md](CHANGELOG.md). Translating the form's own UI strings is planned next.
-
-Smaller stretch goals, roughly in priority order: dynamic enum options, chunked generation for large specs, rate-limiting middleware, free-text bulk fill, hosted Studio with shareable links, multi-spec cross-service flows, an explicit LangGraph state graph for the step engine, session persistence, and a visual `FlowDef` editor.
+Further ideas, roughly in priority order: dynamic enum options, chunked generation for large specs, rate-limiting middleware, free-text bulk fill, hosted Studio with shareable links, multi-spec cross-service flows, an explicit LangGraph state graph for the step engine, session persistence, and a visual `FlowDef` editor.
 
 ## Development
 
+Working on AgentIntake itself, or running the demo, starts from a clone (Node.js 22.12+ for the test suite):
+
 ```bash
-npm test               # Vitest suite
-npm run test:watch
-npx vitest run --coverage
-npm run build          # tsc -> dist/
+git clone https://github.com/fdamianenriquez/AgentIntake.git
+cd AgentIntake
+npm ci
+npm run build
+cp server/.env.example .env   # then add an API key (see "Choosing an LLM provider")
+node dist/cli/index.js --help # or `npm link` once to get `agent-intake`
 ```
 
-`npm test` makes no real model calls. To measure prompts against a real model, use [`eval-prompts`](#checking-guidance-with-eval-prompts).
+| Script                                    | What it does                                                                                             |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `npm run build`                           | Removes `dist/` (`npm run clean`), then compiles with `tsc`                                              |
+| `npm test` / `npm run test:watch`         | Vitest suite; makes no real model calls                                                                  |
+| `npm run test:coverage`                   | The suite with coverage                                                                                  |
+| `npm run lint` / `npm run lint:fix`       | ESLint                                                                                                   |
+| `npm run format` / `npm run format:check` | Prettier                                                                                                 |
+| `npm run typecheck`                       | `tsc --noEmit`                                                                                           |
+| `npm run check:package`                   | `publint` and `arethetypeswrong` against the packed tarball                                              |
+| `npm run smoke-test`                      | Installs the packed tarball into a fresh project, runs the CLI, imports and type-checks the entry points |
+| `npm start`                               | The runtime server on `PORT` (default 3000), reading `.env`                                              |
+
+To measure prompts against a real model, use [`eval-prompts`](#checking-guidance-with-eval-prompts). See [CONTRIBUTING.md](CONTRIBUTING.md) for the rest.
 
 ## License
 
