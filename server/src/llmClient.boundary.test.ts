@@ -149,3 +149,25 @@ describe('prompt modules stay pure', () => {
     expect(found).toContain('server/src/llmClient.ts: reads process.env');
   });
 });
+
+// The package's main entry is what a browser bundle imports, so everything
+// reachable from it is held to the same rules as the prompt modules.
+describe("the published '.' entry stays browser-safe", () => {
+  const manifest = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf-8')) as {
+    exports?: Record<string, { import?: string; types?: string } | string>;
+  };
+  const main = manifest.exports?.['.'];
+  const compiled = typeof main === 'object' ? main.import : undefined;
+  // dist/<path>.js is compiled from <path>.ts or <path>.tsx.
+  const source = compiled ? resolveRelative(path.join(repoRoot, 'package.json'), `./${compiled.replace(/^\.\/dist\//, '')}`) : null;
+
+  it('maps to a source file', () => {
+    expect(compiled).toMatch(/^\.\/dist\/.+\.js$/);
+    expect(source).not.toBeNull();
+  });
+
+  it('never reaches llmClient.ts, a provider SDK, fs or process.env', () => {
+    expect(source).not.toBeNull();
+    expect(impurities(source!)).toEqual([]);
+  });
+});
