@@ -8,7 +8,17 @@ import { useAgentForm, type UseAgentFormOptions } from './useAgentForm.js';
 
 interface Call {
   path: string;
-  body: Record<string, any>;
+  body: Record<string, unknown>;
+}
+
+// The parts of the request bodies these tests read.
+interface ClassifyFailureRequest {
+  failure: unknown;
+  failedEndpoint: EndpointDef;
+  completedEndpoints: EndpointDef[];
+}
+interface SessionSyncRequest {
+  steps: unknown[];
 }
 
 type Verdict = { classification: string; explanation: string; rollbackFromEndpointId: string | null } | 'fail';
@@ -138,10 +148,10 @@ describe('classifying a failed step', () => {
 
     const { result } = await failAtPayout(flow);
 
-    const request = calls.find((c) => c.path === '/api/step/classify-failure')!.body;
+    const request = calls.find((c) => c.path === '/api/step/classify-failure')!.body as unknown as ClassifyFailureRequest;
     expect(request.failure).toEqual({ kind: 'http', status: 403, message: 'account on compliance hold' });
     expect(request.failedEndpoint.id).toBe('payout');
-    expect(request.completedEndpoints.map((e: EndpointDef) => e.id)).toEqual(['account', 'verification']);
+    expect(request.completedEndpoints.map((e) => e.id)).toEqual(['account', 'verification']);
     expect(request.completedEndpoints[0].fields).toHaveLength(1);
     expect(result.current.recovery).toMatchObject({ phase: 'idle', classification: 'needs-edit', explanation: 'Use a different bank.' });
 
@@ -200,7 +210,7 @@ describe('propose -> confirm -> run', () => {
     expect(result.current.stepRecords.account.result?.resourceId).toBeUndefined();
     expect(result.current.currentStepIndex).toBe(0);
     expect(result.current.values).toEqual({ name: 'Jordan' });
-    expect(calls.filter((c) => c.path === '/api/session/sync').map((c) => c.body.steps[0])).toEqual([
+    expect(calls.filter((c) => c.path === '/api/session/sync').map((c) => (c.body as unknown as SessionSyncRequest).steps[0])).toEqual([
       { endpointId: 'verification', data: null },
       { endpointId: 'account', data: null },
       { endpointId: 'payout', data: null },
@@ -439,8 +449,8 @@ describe('stale steps still own their resources (rollback range)', () => {
     await submit(result, 'bank', 'Hold Bank');
     await waitFor(() => expect(result.current.recovery.phase).toBe('proposed'));
 
-    const request = calls.find((c) => c.path === '/api/step/classify-failure')!.body;
-    expect(request.completedEndpoints.map((e: EndpointDef) => e.id)).toEqual(['account', 'verification']);
+    const request = calls.find((c) => c.path === '/api/step/classify-failure')!.body as unknown as ClassifyFailureRequest;
+    expect(request.completedEndpoints.map((e) => e.id)).toEqual(['account', 'verification']);
     expect(result.current.recovery.proposedUndo).toEqual([{ endpointId: 'verification', label: 'Verification' }]);
 
     await act(() => result.current.confirmRollback());

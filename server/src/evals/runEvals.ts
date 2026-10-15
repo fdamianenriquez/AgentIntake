@@ -11,7 +11,7 @@ import * as invalidationPrompt from '../prompts/invalidation.js';
 import * as selectFieldsPrompt from '../prompts/selectFields.js';
 import * as validatePrompt from '../prompts/validate.js';
 import { checkInvalidation, classifyFailure, isStaticMode, selectStepFields, validateStepSubmission } from '../stepEngine.js';
-import { EVAL_CALLS, type EvalCall, type EvalCase } from './cases.js';
+import { caseEndpoints, EVAL_CALLS, type EvalCall, type EvalCase } from './cases.js';
 
 // Runs eval cases against the configured provider and model,
 // through the real engine functions and the same guidance narrowing the
@@ -103,13 +103,7 @@ function guidanceForCase(c: EvalCase, options: RunEvalsOptions): PromptGuidance 
   const flowGuidance = flow ? { guidance: flow.guidance, outputLanguage: flow.outputLanguage } : undefined;
   // Step guidance is matched to the case's steps by endpoint id.
   const stepGuidance = new Map(flow?.endpoints.map((endpoint) => [endpoint.id, endpoint.guidance]) ?? []);
-  const input = c.input as Record<string, any>;
-  const steps: { id: string; title: string }[] =
-    c.call === 'invalidation'
-      ? [input.editedEndpoint, ...input.laterCompletedEndpoints]
-      : c.call === 'generation'
-        ? []
-        : [input.endpoint ?? input.failedEndpoint];
+  const steps = caseEndpoints(c).subjects;
   return guidanceFor(
     c.call,
     config?.guidance,
@@ -144,14 +138,15 @@ function sameSet(a: string[], b: string[]): boolean {
 }
 
 async function runOne(c: EvalCase, guidance: PromptGuidance | undefined): Promise<Outcome> {
-  const input = c.input as any;
-  const expect = c.expect as any;
+  // Each branch narrows the case to its call; the loader checked that input
+  // and expect match the call's schemas.
   switch (c.call) {
     case 'generation': {
+      const { input, expect } = c as EvalCase<'generation'>;
       const { flow, ambiguousFields } = await generateFlow({ ...input, guidance });
       const ids = flow.endpoints.map((endpoint) => endpoint.id);
       const ambiguous = ambiguousFields.map((note) => note.fieldName);
-      const absent = input.endpoints.map((endpoint: { id: string }) => endpoint.id).filter((id: string) => !ids.includes(id));
+      const absent = input.endpoints.map((endpoint) => endpoint.id).filter((id) => !ids.includes(id));
       const mismatch = absent.length
         ? `endpoints missing: ${absent.join(', ')}`
         : expect.ambiguousFields
@@ -160,23 +155,26 @@ async function runOne(c: EvalCase, guidance: PromptGuidance | undefined): Promis
       return { degraded: false, got: { endpoints: ids, ambiguousFields: ambiguous }, mismatch };
     }
     case 'selectFields': {
+      const { input, expect } = c as EvalCase<'selectFields'>;
       const result = await selectStepFields({ ...input, guidance });
       const names = result.fields.map((field) => field.name);
       return { degraded: result.degraded, got: { fields: names }, mismatch: missingAndUnexpected(names, expect) };
     }
     case 'validate': {
+      const { input, expect } = c as EvalCase<'validate'>;
       const result = await validateStepSubmission({ ...input, guidance });
       const fields = Object.keys(result.errors);
       let mismatch: string | undefined;
       if (result.valid !== expect.valid) mismatch = `valid was ${result.valid}, expected ${expect.valid}`;
       else if (expect.errorFields) {
-        const wanted: string[] = expect.errorFields.fields;
+        const wanted = expect.errorFields.fields;
         const ok = expect.errorFields.mode === 'exact' ? sameSet(fields, wanted) : wanted.every((name) => fields.includes(name));
         if (!ok) mismatch = `error fields were [${fields.join(', ')}], expected ${expect.errorFields.mode} [${wanted.join(', ')}]`;
       }
       return { degraded: result.degraded, got: { valid: result.valid, errors: result.errors }, mismatch };
     }
     case 'invalidation': {
+      const { input, expect } = c as EvalCase<'invalidation'>;
       const result = await checkInvalidation({ ...input, guidance });
       const ids = result.affected.map((entry) => entry.endpointId);
       const mismatch =
@@ -188,6 +186,7 @@ async function runOne(c: EvalCase, guidance: PromptGuidance | undefined): Promis
       return { degraded: result.degraded, got: { affected: result.affected }, mismatch };
     }
     case 'classifyFailure': {
+      const { input, expect } = c as EvalCase<'classifyFailure'>;
       const result = await classifyFailure({ ...input, guidance });
       let mismatch: string | undefined;
       if (result.classification !== expect.classification) {
@@ -205,7 +204,7 @@ async function timedRun(c: EvalCase, run: number, options: RunEvalsOptions): Pro
   const started = performance.now();
   const guidance = guidanceForCase(c, options);
   let outcome: Outcome;
-  let reasons: string[] = [];
+  let reasons: string[];
   try {
     // The engine reports why it fell back to this run's own capture, so
     // overlapping runs (or eval jobs) never mix their reasons.

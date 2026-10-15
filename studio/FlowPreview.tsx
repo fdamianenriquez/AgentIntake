@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AgentIntakeForm } from '../packages/react-agent-intake/src/index.js';
 import type { FlowDef, GeneratedFlow, ResourceOperations } from '../packages/react-agent-intake/src/contracts.js';
 import { cleanFlow, flowGuidanceProblems, Instructions, type InstructionsProps } from './Instructions.js';
@@ -77,7 +77,7 @@ import flow from './flow.json';
 type Tab = 'preview' | 'instructions';
 
 export function FlowPreview({ generation, onReset, droppedGuidance = [], timings }: FlowPreviewProps) {
-  const store = useRef(new Map<string, Record<string, unknown>>()).current;
+  const [store] = useState(() => new Map<string, Record<string, unknown>>());
   // The flow as the author edits it in the Instructions tab (flow and step
   // guidance); the preview and the download always use this version.
   const [edited, setEdited] = useState<GeneratedFlow>(generation.flow);

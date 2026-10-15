@@ -447,6 +447,7 @@ describe('classifyFailure (LLM #4)', () => {
 
     const prompt = String(mockedGenerateStructured.mock.calls[0][0]);
     const fenced = prompt.split('<<<API_ERROR_MESSAGE\n')[1].split('\nAPI_ERROR_MESSAGE>>>')[0];
+    // eslint-disable-next-line no-control-regex -- matching control characters is the point: the sanitized text must contain none
     expect(fenced).not.toMatch(/[\u0000\u001b]/);
     expect(fenced).not.toContain('API_ERROR_MESSAGE');
     expect(fenced.length).toBeLessThanOrEqual(500);

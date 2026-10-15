@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { ParsedEndpointSchema, type GeneratedFlow } from '../../../packages/react-agent-intake/src/contracts.js';
+import { ParsedEndpointSchema, type GeneratedFlow, type ParsedEndpoint } from '../../../packages/react-agent-intake/src/contracts.js';
 import { readConfigFile, type AgentIntakeConfig } from '../config.js';
 import type { PromptCall } from '../prompts/guidance.js';
 import { readFlowFile } from '../trustedFlows.js';
@@ -113,6 +113,30 @@ export interface EvalCase<C extends EvalCall = EvalCall> {
   fixtures?: { config: AgentIntakeConfig | null; flow: GeneratedFlow | null };
 }
 
+/**
+ * The endpoints a case's input names: `subjects` are the steps the call is
+ * about (every endpoint for generation; the step being shown, edited or that
+ * failed otherwise), `others` the completed steps it is judged against.
+ */
+export function caseEndpoints(c: EvalCase): { subjects: ParsedEndpoint[]; others: ParsedEndpoint[] } {
+  switch (c.call) {
+    case 'generation':
+      return { subjects: (c as EvalCase<'generation'>).input.endpoints, others: [] };
+    case 'selectFields':
+      return { subjects: [(c as EvalCase<'selectFields'>).input.endpoint], others: [] };
+    case 'validate':
+      return { subjects: [(c as EvalCase<'validate'>).input.endpoint], others: [] };
+    case 'invalidation': {
+      const { input } = c as EvalCase<'invalidation'>;
+      return { subjects: [input.editedEndpoint], others: input.laterCompletedEndpoints };
+    }
+    case 'classifyFailure': {
+      const { input } = c as EvalCase<'classifyFailure'>;
+      return { subjects: [input.failedEndpoint], others: input.completedEndpoints };
+    }
+  }
+}
+
 function problems(error: z.ZodError): string {
   return error.issues.map((issue) => `  ${issue.path.join('.') || '(top level)'}: ${issue.message}`).join('\n');
 }
@@ -123,7 +147,7 @@ export function loadCaseFile(file: string, call: EvalCall): EvalCase {
   try {
     raw = JSON.parse(readFileSync(file, 'utf-8'));
   } catch (error) {
-    throw new Error(`${file}: not valid JSON (${error instanceof Error ? error.message : String(error)}).`);
+    throw new Error(`${file}: not valid JSON (${error instanceof Error ? error.message : String(error)}).`, { cause: error });
   }
   const declared = (raw as { call?: unknown } | null)?.call;
   if (declared !== call) {

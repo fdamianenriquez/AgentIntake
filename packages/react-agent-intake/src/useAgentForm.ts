@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { EndpointDef, ExecContext, FieldDef, FlowDef, OperationResult } from './contracts.js';
 import { implementedCapabilities, normalizeResult, operationsOf, resultFromError } from './operations.js';
 import { preClassify, type FailureClassification, type RecoveryEvent, type RollbackReport } from './recovery.js';
@@ -793,19 +793,18 @@ function reducer(state: FormState, action: FormAction): FormState {
 }
 
 export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAgentFormResult {
-  const sessionIdRef = useRef<string | undefined>(undefined);
-  if (!sessionIdRef.current) {
-    sessionIdRef.current = randomId();
-  }
+  const [sessionId] = useState(randomId);
 
   const [state, dispatch] = useReducer(reducer, initialState);
   // Callbacks read the latest state through this ref, so they don't need to be
   // recreated (and re-subscribed by the host) on every keystroke.
   const stateRef = useRef(state);
+  // eslint-disable-next-line react-hooks/refs -- latest-value ref, read only by callbacks; set during render so a callback fired before the next commit sees it
   stateRef.current = state;
   // Read at call time, so a host that changes the flow's guidance is heard
   // without re-creating every callback.
   const wireFlowRef = useRef(toWireFlow(flow));
+  // eslint-disable-next-line react-hooks/refs -- latest-value ref, read only by callbacks at call time
   wireFlowRef.current = toWireFlow(flow);
 
   const isMountedRef = useRef(true);
@@ -819,6 +818,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
   const warnedMissingIdRef = useRef(new Set<string>());
   // Read at call time, so a host that passes a new callback each render isn't a problem.
   const optionsRef = useRef(options);
+  // eslint-disable-next-line react-hooks/refs -- latest-value ref, read only by callbacks at call time
   optionsRef.current = options;
   const emitRecoveryEvent = useCallback((event: RecoveryEvent) => optionsRef.current.onRecoveryEvent?.(event), []);
   // confirmRollback must be idempotent even for two clicks in the same tick,
@@ -873,7 +873,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
     postJson<StepFieldsResponse>(
       `${options.apiUrl}/api/step/fields`,
       {
-        sessionId: sessionIdRef.current,
+        sessionId: sessionId,
         flow: wireFlowRef.current,
         endpoint: toWireEndpoint(currentEndpoint),
         precedingEndpointIds: precedingIds(state.currentStepIndex),
@@ -901,7 +901,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
     async (endpoint: EndpointDef, index: number, data: Record<string, unknown>): Promise<StepValidateResponse> => {
       try {
         return await postJson<StepValidateResponse>(`${options.apiUrl}/api/step/validate`, {
-          sessionId: sessionIdRef.current,
+          sessionId: sessionId,
           flow: wireFlowRef.current,
           endpoint: toWireEndpoint(endpoint),
           data,
@@ -915,7 +915,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
         return { valid: true, errors: {}, degraded: true };
       }
     },
-    [options.apiUrl, precedingIds]
+    [options.apiUrl, precedingIds, sessionId]
   );
 
   // Brings the server session back to what was actually submitted. Best
@@ -923,11 +923,11 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
   const syncSession = useCallback(
     (endpointId: string, data: Record<string, unknown> | null) => {
       postJson(`${options.apiUrl}/api/session/sync`, {
-        sessionId: sessionIdRef.current,
+        sessionId: sessionId,
         steps: [{ endpointId, data }],
       }).catch((err: unknown) => console.warn(`useAgentForm: /api/session/sync failed for "${endpointId}".`, err));
     },
-    [options.apiUrl]
+    [options.apiUrl, sessionId]
   );
 
   // Decide what the user can do about a failed create (README: "When a step fails").
@@ -959,7 +959,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
         verdict = await postJson(
           `${options.apiUrl}/api/step/classify-failure`,
           {
-            sessionId: sessionIdRef.current,
+            sessionId: sessionId,
             flow: wireFlowRef.current,
             failedEndpoint: toWireEndpoint(endpoint),
             failure: failure ?? { kind: 'other', message: result.message },
@@ -1028,7 +1028,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
         explanation: verdict.explanation,
       });
     },
-    [flow.endpoints, endpointIds, options.apiUrl, emitRecoveryEvent]
+    [flow.endpoints, endpointIds, options.apiUrl, emitRecoveryEvent, sessionId]
   );
 
   // Runs the remaining undos in order and stops at the first failure.
@@ -1156,7 +1156,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
         const response = await postJson<{ affected: { endpointId: string; reason: string }[] }>(
           `${options.apiUrl}/api/step/check-invalidation`,
           {
-            sessionId: sessionIdRef.current,
+            sessionId: sessionId,
             flow: wireFlowRef.current,
             editedEndpoint: toWireEndpoint(endpoint),
             before,
@@ -1171,7 +1171,7 @@ export function useAgentForm(flow: FlowDef, options: UseAgentFormOptions): UseAg
         return later.map((endpointId) => ({ endpointId, reason: SAFE_SIDE_STALE_REASON }));
       }
     },
-    [endpointIds, flow.endpoints, options.apiUrl]
+    [endpointIds, flow.endpoints, options.apiUrl, sessionId]
   );
 
   const submitEdit = useCallback(

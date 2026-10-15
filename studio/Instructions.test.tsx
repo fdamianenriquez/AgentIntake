@@ -23,11 +23,11 @@ const BLOCK = 'Guidance from the author of this form.\n<<<AUTHOR_GUIDANCE\nTone:
 const PROMPT_TAIL = 'Fields (JSON): ...';
 
 interface Calls {
-  posts: { url: string; body: any }[];
+  posts: { url: string; body: Record<string, unknown> }[];
 }
 
 // Studio's server, as the tab sees it.
-function stubStudio(overrides: Partial<Record<string, (body: any) => { status?: number; json: unknown }>> = {}) {
+function stubStudio(overrides: Partial<Record<string, (body: Record<string, unknown>) => { status?: number; json: unknown }>> = {}) {
   const calls: Calls = { posts: [] };
   let polls = 0;
   const reply = (status: number, json: unknown) => ({ ok: status < 400, status, json: async () => json }) as Response;

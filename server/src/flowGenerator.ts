@@ -120,13 +120,17 @@ export async function generateFlow(input: GenerateFlowInput): Promise<FlowGenera
     // The retry exists for invalid output. A timeout isn't that, and retrying
     // would just double the wait for a model that's already not responding.
     if (firstError instanceof LlmTimeoutError) {
-      throw new Error(`flowGenerator: ${firstError.message} Try again, or switch to a different model or provider.`);
+      throw new Error(`flowGenerator: ${firstError.message} Try again, or switch to a different model or provider.`, {
+        cause: firstError,
+      });
     }
     try {
       return await attempt();
     } catch (secondError) {
       const message = secondError instanceof Error ? secondError.message : String(secondError);
-      throw new Error(`flowGenerator: failed to generate a valid flow after 2 attempts. Last error: ${message}`);
+      throw new Error(`flowGenerator: failed to generate a valid flow after 2 attempts. Last error: ${message}`, {
+        cause: secondError,
+      });
     }
   }
 }

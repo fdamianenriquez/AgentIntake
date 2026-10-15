@@ -79,7 +79,7 @@ export function readConfigFile(file: string): AgentIntakeConfig {
   try {
     raw = JSON.parse(readFileSync(file, 'utf-8'));
   } catch (error) {
-    throw new Error(`${file}: not valid JSON (${error instanceof Error ? error.message : String(error)}).`);
+    throw new Error(`${file}: not valid JSON (${error instanceof Error ? error.message : String(error)}).`, { cause: error });
   }
 
   const parsed = AgentIntakeConfigSchema.safeParse(raw);

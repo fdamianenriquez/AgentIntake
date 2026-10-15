@@ -5,7 +5,7 @@ import express, { type Express } from 'express';
 import { z } from 'zod';
 import { GeneratedFlowSchema, GUIDANCE_LIMITS, type GeneratedFlow } from '../packages/react-agent-intake/src/contracts.js';
 import { AgentIntakeConfigSchema, type AgentIntakeConfig } from '../server/src/config.js';
-import { EVAL_CALLS, loadCases, type EvalCall } from '../server/src/evals/cases.js';
+import { caseEndpoints, EVAL_CALLS, loadCases, type EvalCall } from '../server/src/evals/cases.js';
 import { countRuns, runEvals, type EvalReport } from '../server/src/evals/runEvals.js';
 import { buildModel, resolveModelId, resolveProvider } from '../server/src/llmClient.js';
 import * as classifyFailurePrompt from '../server/src/prompts/classifyFailure.js';
@@ -230,16 +230,8 @@ export function registerStudioGuidanceRoutes(app: Express, { configStore, casesD
     try {
       const ids = new Set<string>();
       for (const c of cases()) {
-        const input = c.input as Record<string, any>;
-        const endpoints = [
-          ...(input.endpoints ?? []),
-          input.endpoint,
-          input.editedEndpoint,
-          ...(input.laterCompletedEndpoints ?? []),
-          input.failedEndpoint,
-          ...(input.completedEndpoints ?? []),
-        ].filter(Boolean);
-        for (const endpoint of endpoints) ids.add(endpoint.id);
+        const { subjects, others } = caseEndpoints(c);
+        for (const endpoint of [...subjects, ...others]) ids.add(endpoint.id);
       }
       res.status(200).json({ stepIds: [...ids].sort() });
     } catch (error) {

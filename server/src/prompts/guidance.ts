@@ -71,11 +71,14 @@ const DELIMITER = 'AUTHOR_GUIDANCE';
 // before: control characters out (newlines and tabs stay), and neither this
 // block's delimiter nor the API error block's can be written into it.
 export function sanitizeGuidanceText(text: string): string {
-  return text
-    .replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, ' ')
-    .replace(/AUTHOR_GUIDANCE/gi, 'AUTHOR GUIDANCE')
-    .replace(/API_ERROR_MESSAGE/gi, 'API ERROR MESSAGE')
-    .trim();
+  return (
+    text
+      // eslint-disable-next-line no-control-regex -- matching control characters is the point: they are stripped from untrusted text
+      .replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, ' ')
+      .replace(/AUTHOR_GUIDANCE/gi, 'AUTHOR GUIDANCE')
+      .replace(/API_ERROR_MESSAGE/gi, 'API ERROR MESSAGE')
+      .trim()
+  );
 }
 
 /** The block, followed by a blank line, or an empty string when there is no guidance. */

@@ -307,11 +307,12 @@ function PromptView({ flow, configVersion, debounceMs }: { flow: GeneratedFlow; 
   const stepId = useId();
 
   const sent = useMemo(() => cleanFlow(flow), [flow]);
+  // Invalid guidance can't be rendered; the message comes from the flow itself
+  // rather than from state set inside the effect.
+  const guidanceInvalid = flowGuidanceProblems(flow).length > 0;
+  const shownError = guidanceInvalid ? 'Fix the guidance above to see the prompt.' : error;
   useEffect(() => {
-    if (flowGuidanceProblems(flow).length > 0) {
-      setError('Fix the guidance above to see the prompt.');
-      return;
-    }
+    if (guidanceInvalid) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       fetch('/api/studio/render-prompt', {
@@ -334,7 +335,7 @@ function PromptView({ flow, configVersion, debounceMs }: { flow: GeneratedFlow; 
       clearTimeout(timer);
       controller.abort();
     };
-  }, [call, endpointId, sent, configVersion, debounceMs, flow]);
+  }, [call, endpointId, sent, configVersion, debounceMs, guidanceInvalid]);
 
   const range = rendered?.guidanceRange;
   return (
@@ -362,9 +363,9 @@ function PromptView({ flow, configVersion, debounceMs }: { flow: GeneratedFlow; 
         <span className="studio-legend-locked">Grey text</span> is written by AgentIntake and can't be changed.{' '}
         <mark>Highlighted text</mark> is your guidance. Example values stand in for real answers.
       </p>
-      {error && (
+      {shownError && (
         <p role="alert" className="studio-error">
-          {error}
+          {shownError}
         </p>
       )}
       {rendered && (

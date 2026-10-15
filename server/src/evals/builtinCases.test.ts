@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { EVAL_CALLS, loadCases, type EvalCase } from './cases.js';
+import { caseEndpoints, EVAL_CALLS, loadCases, type EvalCase } from './cases.js';
 
 // The built-in suite in evals/cases is part of the repo, so it is checked
 // like code: every file valid, and every name an expectation uses present in
@@ -11,29 +11,33 @@ const cases = loadCases(dir);
 const byCall = (call: string) => cases.filter((c) => c.call === call);
 
 function namesUsed(c: EvalCase): { fields: string[]; steps: string[] } {
-  const e = c.expect as Record<string, any>;
-  const lists = (o: any) => [...(o?.mustInclude ?? []), ...(o?.mustExclude ?? [])];
+  const lists = (o: { mustInclude?: string[]; mustExclude?: string[] } | undefined) => [
+    ...(o?.mustInclude ?? []),
+    ...(o?.mustExclude ?? []),
+  ];
   switch (c.call) {
     case 'generation':
-      return { fields: lists(e.ambiguousFields), steps: [] };
+      return { fields: lists((c as EvalCase<'generation'>).expect.ambiguousFields), steps: [] };
     case 'selectFields':
-      return { fields: lists(e), steps: [] };
+      return { fields: lists((c as EvalCase<'selectFields'>).expect), steps: [] };
     case 'validate':
-      return { fields: e.errorFields?.fields ?? [], steps: [] };
-    case 'invalidation':
-      return { fields: [], steps: [...(e.affected ?? []), ...lists(e)] };
-    case 'classifyFailure':
+      return { fields: (c as EvalCase<'validate'>).expect.errorFields?.fields ?? [], steps: [] };
+    case 'invalidation': {
+      const e = (c as EvalCase<'invalidation'>).expect;
+      return { fields: [], steps: 'affected' in e ? e.affected : lists(e) };
+    }
+    case 'classifyFailure': {
+      const e = (c as EvalCase<'classifyFailure'>).expect;
       return { fields: [], steps: e.rollbackFromEndpointId ? [e.rollbackFromEndpointId] : [] };
+    }
   }
 }
 
 function namesAvailable(c: EvalCase): { fields: Set<string>; steps: Set<string> } {
-  const input = c.input as Record<string, any>;
-  const endpoints: any[] = input.endpoints ?? [input.endpoint, input.editedEndpoint, input.failedEndpoint].filter(Boolean);
-  const steps: any[] = input.laterCompletedEndpoints ?? input.completedEndpoints ?? [];
+  const { subjects, others } = caseEndpoints(c);
   return {
-    fields: new Set(endpoints.flatMap((endpoint) => endpoint.fields.map((field: { name: string }) => field.name))),
-    steps: new Set(steps.map((endpoint) => endpoint.id)),
+    fields: new Set(subjects.flatMap((endpoint) => endpoint.fields.map((field) => field.name))),
+    steps: new Set(others.map((endpoint) => endpoint.id)),
   };
 }
 

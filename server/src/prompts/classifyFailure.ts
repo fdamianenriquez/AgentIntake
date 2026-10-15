@@ -27,6 +27,7 @@ export function sanitizeFailureMessage(message: string | undefined): string {
   if (!message) return '';
   return (
     message
+      // eslint-disable-next-line no-control-regex -- matching control characters is the point: they are stripped from untrusted text
       .replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, ' ')
       .replace(/```/g, "'''")
       // So the message can't close the fenced block it is placed in.
