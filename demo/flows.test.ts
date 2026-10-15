@@ -13,9 +13,10 @@ describe('the demo flows', () => {
     expect(guided.id).not.toBe(plain.id);
   });
 
-  it('sets flow guidance, guidance on at least two steps, and an output language', () => {
+  it('sets flow guidance and guidance on at least two steps, and leaves the output language unset (English)', () => {
     expect(guided.guidance).toBeTruthy();
-    expect(guided.outputLanguage).toBe('es-MX');
+    expect(guided.outputLanguage).toBeUndefined();
+    expect(plain.outputLanguage).toBeUndefined();
     expect(guided.endpoints.filter((endpoint) => endpoint.guidance).length).toBeGreaterThanOrEqual(2);
     expect(plain.guidance).toBeUndefined();
   });

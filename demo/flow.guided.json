@@ -3,7 +3,6 @@
   "title": "Set Up Your Payment Account",
   "description": "Create a new payment account, verify your identity, and add a payout method so you can receive funds.",
   "guidance": "Sellers are individuals and small businesses. Many are opening their first business account, so explain any banking term briefly.",
-  "outputLanguage": "es-MX",
   "endpoints": [
     {
       "id": "createAccount",

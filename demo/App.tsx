@@ -17,13 +17,13 @@ const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 // -- also gives properly-typed fields, which a raw JSON import loses (its
 // `type` fields infer as plain `string`, not the FieldDef literal union).
 const generatedFlow = GeneratedFlowSchema.parse(rawFlow);
-// The same flow with author guidance (README: "Author guidance"): flow and step guidance, and
-// es-MX as the language of everything the model writes.
+// The same flow with author guidance (README: "Author guidance"): context
+// for the whole flow, plus guidance on the account and payout steps.
 const guidedFlow = GeneratedFlowSchema.parse(rawGuidedFlow);
 
 const FLOWS = {
   default: { flow: generatedFlow, label: 'Default flow' },
-  guided: { flow: guidedFlow, label: 'With author guidance (model-written text in es-MX)' },
+  guided: { flow: guidedFlow, label: 'With author guidance' },
 } as const;
 type FlowChoice = keyof typeof FLOWS;
 
@@ -175,9 +175,9 @@ export function App() {
         ))}
         {flowChoice === 'guided' && (
           <p className="demo-app-note">
-            The model writes field descriptions, validation messages and review reasons in Spanish (es-MX), and the payout
-            step's guidance requires the account holder name in capital letters. The form's own buttons and messages stay in
-            English: fixed UI strings aren't translated in this version.
+            Flow guidance tells the model who the sellers are and to explain banking terms briefly. Step guidance asks for
+            the owner's legal name on the account step, and requires the account holder name on the payout step in capital
+            letters: try a lower-case name there and semantic validation flags it.
           </p>
         )}
       </fieldset>

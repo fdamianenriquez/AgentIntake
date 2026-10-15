@@ -18,7 +18,7 @@ Author guidance: a flow author can adapt what the model is told for their domain
 - **Studio "Instructions" tab.** Edit global guidance (saved to the config file and applied without a restart) and flow and step guidance (kept in the flow and in the downloaded `flow.json`); see the prompt a call would send with the guidance block highlighted; run the built-in cases with confirmation, progress and cancel. Regenerating in the same session keeps the guidance by endpoint id.
 - **`generate --keep-guidance` / `--force`.** `generate` no longer overwrites a `flow.json` that has author guidance unless told to keep it (carried over by endpoint id, checked against the limits before the model is called) or to overwrite it.
 - **Logging.** `AGENTINTAKE_LOG_LEVEL` (`error`, `warn`, `info`, `debug`). At `debug`, one line per LLM call with the call, its prompt version, the guidance block version, a short hash of the guidance block, the outcome and the duration — never guidance text, prompts or user data. The fallback warning carries the same call, versions and hash.
-- **Demo.** A second demo flow with flow and step guidance and `outputLanguage: "es-MX"`.
+- **Demo.** A second demo flow with flow and step guidance; the payout step's guidance (holder name in capital letters) shows guidance tightening semantic validation.
 
 ### Changed
 
