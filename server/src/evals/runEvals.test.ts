@@ -277,6 +277,26 @@ describe('guidance', () => {
     expect(promptOf()).toContain('Guidance for the step "Payout": Match the legal name.');
   });
 
+  it("invalidation: the later steps' guidance reaches the prompt, as it does on the real route", async () => {
+    const input = { editedEndpoint: account, before: {}, after: { name: 'x' }, laterCompletedEndpoints: [verification, payout] };
+    await runEvals({
+      cases: [kase('invalidation', input, { affected: ['payout'] })],
+      flow: {
+        id: 'f',
+        title: 't',
+        description: 'd',
+        endpoints: [
+          { ...account, guidance: 'Edited step note.' },
+          verification,
+          { ...payout, guidance: 'Review when the account changes.' },
+        ],
+      },
+    });
+
+    expect(promptOf()).toContain('Guidance for the step "Account": Edited step note.');
+    expect(promptOf()).toContain('Guidance for the step "Payout": Review when the account changes.');
+  });
+
   it("a case's fixtures replace the run's guidance for that case", async () => {
     await runEvals({
       cases: [validate({ fixtures: { config: { guidance: { tone: 'Case tone.' } }, flow: null } })],

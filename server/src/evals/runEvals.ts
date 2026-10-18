@@ -103,7 +103,10 @@ function guidanceForCase(c: EvalCase, options: RunEvalsOptions): PromptGuidance 
   const flowGuidance = flow ? { guidance: flow.guidance, outputLanguage: flow.outputLanguage } : undefined;
   // Step guidance is matched to the case's steps by endpoint id.
   const stepGuidance = new Map(flow?.endpoints.map((endpoint) => [endpoint.id, endpoint.guidance]) ?? []);
-  const steps = caseEndpoints(c).subjects;
+  // Invalidation is the one call whose prompt also carries the later steps'
+  // guidance, as the route passes the edited step and every later one.
+  const { subjects, others } = caseEndpoints(c);
+  const steps = c.call === 'invalidation' ? [...subjects, ...others] : subjects;
   return guidanceFor(
     c.call,
     config?.guidance,
