@@ -56,6 +56,7 @@ npm install agent-intake
 ```
 
 - **Node.js** `^20.19.0 || >=22.12.0`.
+- **npm 11 or newer.** npm 10 (bundled with Node 20 and early Node 22 releases) fails with `Cannot read properties of null (reading 'edgesOut')` when it resolves the optional peers of `vite`, whichever package depends on it. Run `npm install --global npm@11`, or pass `--legacy-peer-deps`.
 - **React** 19 (`^19.0.0`) is a peer dependency (`react` and `react-dom`); npm installs it if your project doesn't have it.
 - **ESM only.** The package has no CommonJS build: use `import`, or `await import()` from CommonJS.
 

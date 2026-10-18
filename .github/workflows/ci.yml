@@ -119,6 +119,10 @@ jobs:
         with:
           name: package
           path: pack
+      # npm 10 (bundled with Node 20) crashes while resolving the optional peer
+      # chain of vite, for any package that depends on it. npm 11 runs on
+      # Node 20.19 and resolves it, so this job tests the Node runtime, not npm 10.
+      - run: npm install --global npm@11
       - name: Install the tarball and run the CLI and imports
         env:
           SMOKE_SKIP_TYPES: '1'
