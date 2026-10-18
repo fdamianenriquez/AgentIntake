@@ -100,6 +100,7 @@ describe('CORS', () => {
     expect(response.headers['access-control-allow-origin']).toBe('*');
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0][0]).toMatch(/AGENTINTAKE_CORS_ORIGINS/);
+    expect(warn.mock.calls[0][0]).toMatch(/localhost or an internal network.*model calls/);
   });
 
   it('Studio can skip the warning (its own guard already rejects other origins)', async () => {

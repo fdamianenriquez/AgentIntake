@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- The startup warning about open CORS now says what it allows (any web page can call the server from a browser that can reach it, and spend model calls), and the README says the same.
+
 ## [1.0.1] — 2026-10-17
 
 ### Fixed
@@ -43,5 +49,6 @@ First public release: an OpenAPI spec becomes a multi-step form wizard whose fie
 - Log lines never contain guidance text, prompts, submitted data, field values or provider error text.
 - Sessions expire after 2 hours idle and are capped at 10,000.
 
+[Unreleased]: https://github.com/fdamianenriquez/AgentIntake/compare/v1.0.1...HEAD
 [1.0.1]: https://github.com/fdamianenriquez/AgentIntake/releases/tag/v1.0.1
 [1.0.0]: https://github.com/fdamianenriquez/AgentIntake/releases/tag/v1.0.0
