@@ -1,10 +1,12 @@
 import {
   APICallError,
-  generateObject,
+  generateText,
   JSONParseError,
   LoadAPIKeyError,
   LoadSettingError,
   NoObjectGeneratedError,
+  NoOutputGeneratedError,
+  Output,
   RetryError,
   TypeValidationError,
 } from 'ai';
@@ -110,7 +112,12 @@ export function describeLlmError(error: unknown): string {
   if (error instanceof LlmConfigError || LoadAPIKeyError.isInstance(error) || LoadSettingError.isInstance(error)) {
     return 'configuration error';
   }
-  if (NoObjectGeneratedError.isInstance(error) || TypeValidationError.isInstance(error) || JSONParseError.isInstance(error)) {
+  if (
+    NoObjectGeneratedError.isInstance(error) ||
+    NoOutputGeneratedError.isInstance(error) ||
+    TypeValidationError.isInstance(error) ||
+    JSONParseError.isInstance(error)
+  ) {
     return 'invalid output';
   }
   if (APICallError.isInstance(error)) return error.statusCode ? `provider error ${error.statusCode}` : 'provider error';
@@ -130,8 +137,8 @@ export async function generateStructured<T>(prompt: string, schema: z.ZodType<T>
   const abortSignal = options.timeoutMs ? AbortSignal.timeout(options.timeoutMs) : undefined;
 
   try {
-    const { object } = await generateObject({ model, schema, prompt, abortSignal });
-    return object;
+    const { output } = await generateText({ model, output: Output.object({ schema }), prompt, abortSignal });
+    return output;
   } catch (error) {
     // Checked via the signal itself, not the error's shape: the SDK may wrap
     // the abort reason differently across providers and versions.

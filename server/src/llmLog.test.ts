@@ -5,7 +5,7 @@ vi.mock('./llmClient.js', async (importOriginal) => ({
   generateStructured: vi.fn(),
 }));
 
-import { APICallError, LoadAPIKeyError, NoObjectGeneratedError, RetryError, TypeValidationError } from 'ai';
+import { APICallError, LoadAPIKeyError, NoObjectGeneratedError, NoOutputGeneratedError, RetryError, TypeValidationError } from 'ai';
 import { createApp } from './app.js';
 import { withDegradationCapture } from './degradation.js';
 import { buildModel, generateStructured, LlmTimeoutError, resolveProvider } from './llmClient.js';
@@ -155,6 +155,7 @@ describe("the degradation warning's reason", () => {
         }),
       'invalid output',
     ],
+    ['a response without any output', () => new NoOutputGeneratedError(), 'invalid output'],
     ['a provider error with a status', () => apiError(429), 'provider error 429'],
     ['a provider error without a status', () => apiError(), 'provider error'],
     [

@@ -3,10 +3,10 @@ import { z } from 'zod';
 
 vi.mock('ai', async (importOriginal) => ({
   ...(await importOriginal<typeof import('ai')>()),
-  generateObject: vi.fn(),
+  generateText: vi.fn(),
 }));
 
-import { generateObject } from 'ai';
+import { generateText } from 'ai';
 import { buildModel, generateStructured, LlmTimeoutError, resolveProvider } from './llmClient.js';
 import { SUPPORTED_PROVIDERS } from './providers.js';
 
@@ -80,7 +80,7 @@ describe('generateStructured timeout', () => {
   it('aborts the underlying request and throws LlmTimeoutError when the model stalls', async () => {
     vi.stubEnv('LLM_API_KEY', 'test-key');
     let received: AbortSignal | undefined;
-    vi.mocked(generateObject).mockImplementationOnce(((options: { abortSignal?: AbortSignal }) => {
+    vi.mocked(generateText).mockImplementationOnce(((options: { abortSignal?: AbortSignal }) => {
       received = options.abortSignal;
       return new Promise((_, reject) => {
         options.abortSignal?.addEventListener('abort', () => reject(options.abortSignal?.reason));
@@ -91,19 +91,31 @@ describe('generateStructured timeout', () => {
     expect(received?.aborted).toBe(true);
   });
 
+  it('asks for structured output with the caller schema and returns the validated output', async () => {
+    vi.stubEnv('LLM_API_KEY', 'test-key');
+    vi.mocked(generateText).mockResolvedValueOnce({ output: { ok: true } } as never);
+    const schema = z.object({ ok: z.boolean() });
+
+    await expect(generateStructured('the prompt', schema)).resolves.toEqual({ ok: true });
+
+    const options = vi.mocked(generateText).mock.calls.at(-1)?.[0] as { prompt: string; output: { name: string } };
+    expect(options.prompt).toBe('the prompt');
+    expect(options.output.name).toBe('object');
+  });
+
   it('passes no abort signal when no timeout is requested', async () => {
     vi.stubEnv('LLM_API_KEY', 'test-key');
-    vi.mocked(generateObject).mockResolvedValueOnce({ object: { ok: true } } as never);
+    vi.mocked(generateText).mockResolvedValueOnce({ output: { ok: true } } as never);
 
     await generateStructured('p', z.object({ ok: z.boolean() }));
 
-    expect(vi.mocked(generateObject).mock.calls.at(-1)?.[0]).toMatchObject({ abortSignal: undefined });
+    expect(vi.mocked(generateText).mock.calls.at(-1)?.[0]).toMatchObject({ abortSignal: undefined });
   });
 
   it('rethrows non-timeout errors unchanged', async () => {
     vi.stubEnv('LLM_API_KEY', 'test-key');
     const boom = new Error('boom');
-    vi.mocked(generateObject).mockRejectedValueOnce(boom);
+    vi.mocked(generateText).mockRejectedValueOnce(boom);
 
     await expect(generateStructured('p', z.object({}), { timeoutMs: 60_000 })).rejects.toBe(boom);
   });
