@@ -7,7 +7,7 @@
 //   node scripts/smoke-test-package.mjs <tarball>    uses an existing tarball
 //   SMOKE_SKIP_TYPES=1 node scripts/...              skips the type check
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -53,6 +53,10 @@ try {
   for (const command of ['generate', 'studio', 'eval-prompts']) {
     if (!help.includes(command)) throw new Error(`agent-intake --help does not list "${command}".`);
   }
+
+  const installed = JSON.parse(readFileSync(path.join(app, 'node_modules', 'agent-intake', 'package.json'), 'utf-8')).version;
+  const reported = run(npx, ['--no-install', 'agent-intake', '--version'], app).trim();
+  if (reported !== installed) throw new Error(`agent-intake --version prints "${reported}", but the installed package is ${installed}.`);
 
   step('Import every entry point from Node ESM');
   writeFileSync(

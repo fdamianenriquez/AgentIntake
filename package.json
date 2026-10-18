@@ -1,6 +1,6 @@
 {
   "name": "agent-intake",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Turns an OpenAPI spec into a single, AI-orchestrated, multi-step form wizard.",
   "license": "MIT",
   "author": "Damian Enriquez",

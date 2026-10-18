@@ -5,6 +5,7 @@ import { resolveLogLevel } from '../server/src/logger.js';
 import { registerEvalPromptsCommand } from './commands/evalPrompts.js';
 import { registerGenerateCommand } from './commands/generate.js';
 import { registerStudioCommand } from './commands/studio.js';
+import { readPackageVersion } from './version.js';
 
 // .env at the project root (wherever the CLI is invoked from) is the single
 // source of truth for provider settings. Already-set environment variables (e.g.
@@ -26,7 +27,10 @@ try {
 
 const program = new Command();
 
-program.name('agent-intake').description('Turns an OpenAPI spec into a single, AI-orchestrated, multi-step form wizard.').version('1.6.0');
+program
+  .name('agent-intake')
+  .description('Turns an OpenAPI spec into a single, AI-orchestrated, multi-step form wizard.')
+  .version(readPackageVersion());
 
 registerGenerateCommand(program);
 registerStudioCommand(program);
