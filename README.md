@@ -55,8 +55,8 @@ The model can only **show, hide, reorder, annotate, or pre-fill fields that alre
 npm install agent-intake
 ```
 
-- **Node.js** `^20.19.0 || >=22.12.0`.
-- **npm 11 or newer.** npm 10 (bundled with Node 20 and early Node 22 releases) fails with `Cannot read properties of null (reading 'edgesOut')` when it resolves the optional peers of `vite`, whichever package depends on it. Run `npm install --global npm@11`, or pass `--legacy-peer-deps`.
+- **Node.js** `>=22.19.0`.
+- **npm 10.9.5 or newer.** Older npm 10 releases (bundled with Node 22.19 to 22.22.1) fail with `Cannot read properties of null (reading 'edgesOut')` when they resolve the optional peers of `vite`, whichever package depends on it. Run `npm install --global npm@latest`, or pass `--legacy-peer-deps`.
 - **React** 19 (`^19.0.0`) is a peer dependency (`react` and `react-dom`); npm installs it if your project doesn't have it.
 - **ESM only.** The package has no CommonJS build: use `import`, or `await import()` from CommonJS.
 
@@ -568,7 +568,7 @@ Further ideas, roughly in priority order: dynamic enum options, chunked generati
 
 ## Development
 
-Working on AgentIntake itself, or running the demo, starts from a clone (Node.js 22.12+ for the test suite):
+Working on AgentIntake itself, or running the demo, starts from a clone (Node.js 22.19+):
 
 ```bash
 git clone https://github.com/fdamianenriquez/AgentIntake.git

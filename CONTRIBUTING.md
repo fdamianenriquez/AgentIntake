@@ -4,7 +4,7 @@ Thanks for helping. Bug reports, fixes, docs and new eval cases are all welcome.
 
 ## Setup
 
-You need Node.js 22.12 or newer for the tooling (the published package also runs on 20.19+; `.nvmrc` pins 22).
+You need Node.js 22.19 or newer, the same minimum the published package declares in `engines` (`.nvmrc` pins 22).
 
 ```bash
 git clone https://github.com/fdamianenriquez/AgentIntake.git

@@ -45,7 +45,7 @@ body:
     id: environment
     attributes:
       label: Node.js version, OS, and LLM provider and model
-      placeholder: Node 22.12, macOS 15, anthropic / claude-haiku-5-5
+      placeholder: Node 22.19, macOS 15, anthropic / claude-haiku-5-5
   - type: textarea
     id: logs
     attributes:
