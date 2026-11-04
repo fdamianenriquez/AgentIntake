@@ -4,9 +4,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.0.2] — 2026-11-03
+
 ### Changed
 
 - The startup warning about open CORS now says what it allows (any web page can call the server from a browser that can reach it, and spend model calls), and the README says the same.
+- Dependency updates: `ai` 7.0.157, `@ai-sdk/anthropic` 4.0.92, `@ai-sdk/google` 4.0.108, `@ai-sdk/openai` 4.0.105, `js-yaml` 5.5.0 and `vite` 8.3.5, plus patch and minor updates to the development tooling (ESLint, typescript-eslint, Vitest, size-limit, jsdom) and to transitive packages such as `body-parser` 2.4.0. The CodeQL action is now v4.39.1.
 
 ## [1.0.1] — 2026-10-17
 
