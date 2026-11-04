@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Security
+
+- Development tooling only: `minimatch` is forced to 11.0.1 or later with an npm `overrides` entry (ESLint and typescript-eslint still ask for 10.x), which fixes the denial-of-service advisory GHSA-g3hv-75wg-m249 (CVE-2026-118764). `minimatch` is not part of the published package, so installed copies are not affected. The override can go once ESLint and typescript-eslint accept 11.x.
+
 ## [1.0.2] — 2026-11-03
 
 ### Changed
