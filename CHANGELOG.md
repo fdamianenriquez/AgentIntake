@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.0.4] — 2026-11-21
+
+### Changed
+
+- Dependency updates: `ai` 7.0.172, `@ai-sdk/anthropic` 4.0.104, `@ai-sdk/google` 4.0.120, `@ai-sdk/openai` 4.0.117, `@vitejs/plugin-react` 6.3.0, `commander` 15.1.0 and `vite` 8.3.8, plus patch and minor updates to the development tooling (jsdom, Prettier, supertest, typescript-eslint, Testing Library user-event).
+
 ## [1.0.3] — 2026-11-10
 
 ### Security
